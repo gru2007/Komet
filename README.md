@@ -1,7 +1,4 @@
-<center><img src="assets/icon/komet_512.png" width="100"></center>
-<center><h1>Komet Messenger</h1>
-<h3>An Open Source alternative unnoficial client for MAX</h3></center>
-<center><a href="Telegram Group">Telegram Group</a></center>
+<p align="center"> <img src="assets/icon/komet_512.png" width="100" alt="Komet Messenger"> </p><p align="center"> <h1 align="center">Komet Messenger</h1> <h3 align="center">An Open Source alternative unofficial client for MAX</h3> </p><p align="center"> <a href="https://t.me/TeamKomet">Telegram Group</a> </p>
 
 ## How to install?
 ### Download file from releases tab or our telegram group and install it
