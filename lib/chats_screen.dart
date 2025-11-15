@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
 import 'package:gwid/api_service.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter_linux_webview/flutter_linux_webview.dart';
 import 'package:gwid/chat_screen.dart';
 import 'package:gwid/manage_account_screen.dart';
 import 'package:gwid/screens/settings/settings_screen.dart';
@@ -92,6 +93,10 @@ class _ChatsScreenState extends State<ChatsScreen>
   @override
   void initState() {
     super.initState();
+    LinuxWebViewPlugin.initialize();
+    if (Platform.isLinux){
+      WebView.platform = LinuxWebView();
+    }
     _loadMyProfile();
     _chatsFuture = (() async {
       try {
@@ -3507,37 +3512,33 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
               Expanded(
                 child: Stack(
                   children: [
-                    InAppWebView(
-                      initialUrlRequest: URLRequest(url: WebUri(widget.url)),
-                      initialSettings: InAppWebViewSettings(
-                        javaScriptEnabled: true,
-                        transparentBackground: true,
-                        useShouldOverrideUrlLoading: false,
-                        useOnLoadResource: false,
-                        useOnDownloadStart: false,
-                        cacheEnabled: true,
-                      ),
-                      onLoadStart: (controller, url) {
+                    WebView(
+                      
+                      initialUrl: widget.url,
+                      javascriptMode: JavascriptMode.unrestricted,
+                      onPageStarted: (url) {
                         print('🌐 WebView начало загрузки: $url');
                         setState(() {
                           _isLoading = true;
                         });
                       },
-                      onLoadStop: (controller, url) {
+                      onPageFinished: (url) {
                         print('✅ WebView загрузка завершена: $url');
                         setState(() {
                           _isLoading = false;
                         });
                       },
-                      onReceivedError: (controller, request, error) {
+                      onWebResourceError: (error) {
                         print(
-                          '❌ WebView ошибка: ${error.description} (${error.type})',
+                          '❌ WebView ошибка: ${error.description} (${error.errorCode})',
                         );
                       },
+                      backgroundColor: Colors.transparent,
+                      gestureNavigationEnabled: true,
                     ),
                     if (_isLoading)
                       Container(
-                        color: colors.surface,
+                        color: Colors.grey[100], // Use your theme color instead of colors.surface
                         child: const Center(child: CircularProgressIndicator()),
                       ),
                   ],
