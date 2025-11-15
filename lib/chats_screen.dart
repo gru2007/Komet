@@ -1,0 +1,3324 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:intl/intl.dart';
+import 'package:gwid/api_service.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:gwid/chat_screen.dart';
+import 'package:gwid/manage_account_screen.dart';
+import 'package:gwid/screens/settings/settings_screen.dart';
+import 'package:gwid/phone_entry_screen.dart';
+import 'package:gwid/models/chat.dart';
+import 'package:gwid/models/contact.dart';
+import 'package:gwid/models/message.dart';
+import 'package:gwid/models/profile.dart';
+import 'package:gwid/models/chat_folder.dart';
+import 'package:gwid/theme_provider.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:gwid/join_group_screen.dart';
+import 'package:gwid/search_contact_screen.dart';
+import 'package:gwid/channels_list_screen.dart';
+import 'package:gwid/models/channel.dart';
+import 'package:gwid/search_channels_screen.dart';
+import 'package:gwid/downloads_screen.dart';
+import 'package:gwid/user_id_lookup_screen.dart';
+
+class SearchResult {
+  final Chat chat;
+  final Contact? contact;
+  final String matchedText;
+  final String matchType;
+  final int? messageIndex;
+
+  SearchResult({
+    required this.chat,
+    this.contact,
+    required this.matchedText,
+    required this.matchType,
+    this.messageIndex,
+  });
+}
+
+class ChatsScreen extends StatefulWidget {
+  final void Function(
+    Chat chat,
+    Contact contact,
+    bool isGroup,
+    bool isChannel,
+    int? participantCount,
+  )?
+  onChatSelected;
+  final bool hasScaffold;
+
+  const ChatsScreen({super.key, this.onChatSelected, this.hasScaffold = true});
+
+  @override
+  State<ChatsScreen> createState() => _ChatsScreenState();
+}
+
+class _ChatsScreenState extends State<ChatsScreen>
+    with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
+  late Future<Map<String, dynamic>> _chatsFuture;
+  bool _showChannelsRail = false;
+  List<Channel> _channels = [];
+  bool _channelsLoaded = false;
+  StreamSubscription? _apiSubscription;
+  List<Chat> _allChats = [];
+  List<Chat> _filteredChats = [];
+  Map<int, Contact> _contacts = {};
+  bool _isSearchExpanded = false;
+  String _searchQuery = '';
+  Timer? _searchDebounceTimer;
+  List<SearchResult> _searchResults = [];
+  String _searchFilter = 'all';
+  bool _hasRequestedBlockedContacts = false;
+
+  List<ChatFolder> _folders = [];
+  String? _selectedFolderId;
+  late TabController _folderTabController;
+
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  late AnimationController _searchAnimationController;
+  Profile? _myProfile;
+  bool _isProfileLoading = true;
+  String _connectionStatus = 'connecting';
+  StreamSubscription<void>? _connectionStatusSubscription;
+  StreamSubscription<String>? _connectionStateSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMyProfile();
+    _chatsFuture = (() async {
+      try {
+        await ApiService.instance.waitUntilOnline();
+        return ApiService.instance.getChatsAndContacts();
+      } catch (e) {
+        print('Ошибка получения чатов: $e');
+        if (e.toString().contains('Auth token not found') ||
+            e.toString().contains('FAIL_WRONG_PASSWORD')) {
+          _showTokenExpiredDialog(
+            'Токен авторизации недействителен. Требуется повторная авторизация.',
+          );
+        }
+        rethrow;
+      }
+    })();
+    _listenForUpdates();
+
+    _searchAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _folderTabController = TabController(length: 1, vsync: this);
+    _folderTabController.addListener(_onFolderTabChanged);
+
+    _searchController.addListener(_onSearchChanged);
+    _searchFocusNode.addListener(_onSearchFocusChanged);
+
+    _connectionStateSubscription = ApiService.instance.connectionStatus.listen((
+      status,
+    ) {
+      if (mounted) {
+        setState(() {
+          _connectionStatus = status;
+        });
+      }
+    });
+
+    _connectionStatusSubscription = ApiService.instance.reconnectionComplete
+        .listen((_) {
+          if (mounted) {
+            print("🔄 ChatsScreen: Получено уведомление о переподключении");
+            _loadChatsAndContacts();
+            print("🔄 ChatsScreen: Обновление чатов запущено");
+          }
+        });
+
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        _loadChannels();
+      }
+    });
+  }
+
+  @override
+  bool get wantKeepAlive => true;
+
+  Future<void> _loadMyProfile() async {
+    if (!mounted) return;
+    setState(() {
+      _isProfileLoading = true;
+    });
+
+    final cachedProfileData = ApiService.instance.lastChatsPayload?['profile'];
+    if (cachedProfileData != null && mounted) {
+      setState(() {
+        _myProfile = Profile.fromJson(cachedProfileData);
+        _isProfileLoading = false;
+      });
+      return;
+    }
+
+    try {
+      if (!ApiService.instance.isOnline) {
+        await ApiService.instance.waitUntilOnline().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            print("Таймаут ожидания подключения для загрузки профиля");
+            throw TimeoutException("Таймаут подключения");
+          },
+        );
+      }
+
+      final result = await ApiService.instance
+          .getChatsAndContacts(force: true)
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              print("Таймаут загрузки чатов и профиля");
+              throw TimeoutException("Таймаут загрузки");
+            },
+          );
+
+      if (mounted) {
+        final profileJson = result['profile'];
+        if (profileJson != null) {
+          setState(() {
+            _myProfile = Profile.fromJson(profileJson);
+            _isProfileLoading = false;
+          });
+        } else {
+          setState(() {
+            _isProfileLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isProfileLoading = false;
+        });
+        print("Ошибка загрузки профиля в ChatsScreen: $e");
+      }
+    }
+  }
+
+  void _navigateToLogin() {
+    print('Перенаправляем на экран входа из-за недействительного токена');
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (context) => const PhoneEntryScreen()),
+    );
+  }
+
+  void _showTokenExpiredDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Ошибка авторизации'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _navigateToLogin();
+              },
+              child: const Text('Войти заново'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+
+  void _listenForUpdates() {
+    _apiSubscription = ApiService.instance.messages.listen((message) {
+      if (!mounted) return;
+
+
+      if (message['type'] == 'invalid_token') {
+        print(
+          'Получено событие недействительного токена, перенаправляем на вход',
+        );
+        _showTokenExpiredDialog(
+          message['message'] ?? 'Токен авторизации недействителен',
+        );
+        return;
+      }
+
+      final opcode = message['opcode'];
+      final payload = message['payload'];
+      if (payload == null) return;
+      final chatIdValue = payload['chatId'];
+      if (chatIdValue == null) return;
+      final int chatId = chatIdValue;
+
+      if (opcode == 129) {
+        _setTypingForChat(chatId);
+      }
+
+
+      if (opcode == 128) {
+        final newMessage = Message.fromJson(payload['message']);
+        ApiService.instance.clearCacheForChat(chatId);
+
+        final int chatIndex = _allChats.indexWhere((chat) => chat.id == chatId);
+        if (chatIndex != -1) {
+          final oldChat = _allChats[chatIndex];
+          final updatedChat = oldChat.copyWith(
+            lastMessage: newMessage,
+            newMessages: newMessage.senderId != oldChat.ownerId
+                ? oldChat.newMessages + 1
+                : oldChat.newMessages,
+          );
+
+          setState(() {
+            _allChats.removeAt(chatIndex);
+
+            if (_isSavedMessages(updatedChat)) {
+              if (updatedChat.id == 0) {
+
+                _allChats.insert(0, updatedChat);
+              } else {
+
+                final savedIndex = _allChats.indexWhere(
+                  (c) => _isSavedMessages(c) && c.id == 0,
+                );
+                final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
+                _allChats.insert(insertIndex, updatedChat);
+              }
+            } else {
+
+              final savedIndex = _allChats.indexWhere(
+                (c) => _isSavedMessages(c),
+              );
+              final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
+              _allChats.insert(insertIndex, updatedChat);
+            }
+            _filterChats();
+          });
+        }
+      }
+
+      else if (opcode == 67) {
+        final editedMessage = Message.fromJson(payload['message']);
+        ApiService.instance.clearCacheForChat(chatId);
+
+        final int chatIndex = _allChats.indexWhere((chat) => chat.id == chatId);
+        if (chatIndex != -1) {
+          final oldChat = _allChats[chatIndex];
+
+          if (oldChat.lastMessage.id == editedMessage.id) {
+            final updatedChat = oldChat.copyWith(lastMessage: editedMessage);
+            setState(() {
+              _allChats.removeAt(chatIndex);
+
+              if (_isSavedMessages(updatedChat)) {
+                if (updatedChat.id == 0) {
+
+                  _allChats.insert(0, updatedChat);
+                } else {
+
+                  final savedIndex = _allChats.indexWhere(
+                    (c) => _isSavedMessages(c) && c.id == 0,
+                  );
+                  final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
+                  _allChats.insert(insertIndex, updatedChat);
+                }
+              } else {
+                final savedIndex = _allChats.indexWhere(
+                  (c) => _isSavedMessages(c),
+                );
+                final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
+                _allChats.insert(insertIndex, updatedChat);
+              }
+              _filterChats();
+            });
+          }
+        }
+      }
+
+      else if (opcode == 66) {
+        final deletedMessageIds = List<String>.from(
+          payload['messageIds'] ?? [],
+        );
+        ApiService.instance.clearCacheForChat(chatId);
+
+        final int chatIndex = _allChats.indexWhere((chat) => chat.id == chatId);
+        if (chatIndex != -1) {
+          final oldChat = _allChats[chatIndex];
+
+          if (deletedMessageIds.contains(oldChat.lastMessage.id)) {
+
+            ApiService.instance.getChatsAndContacts(force: true).then((data) {
+              if (mounted) {
+                final chats = data['chats'] as List<dynamic>;
+                final filtered = chats
+                    .cast<Map<String, dynamic>>()
+                    .where((chat) => chat['id'] == chatId)
+                    .toList();
+                final Map<String, dynamic>? updatedChatData =
+                    filtered.isNotEmpty ? filtered.first : null;
+                if (updatedChatData != null) {
+                  final updatedChat = Chat.fromJson(updatedChatData);
+                  setState(() {
+                    _allChats.removeAt(chatIndex);
+                    _allChats.insert(0, updatedChat);
+                    _filterChats();
+                  });
+                }
+              }
+            });
+          }
+        }
+      }
+
+
+      if (opcode == 129) {
+        _setTypingForChat(chatId);
+      }
+
+
+      if (opcode == 132) {
+        final bool isOnline = payload['online'] == true;
+
+
+        final dynamic contactIdAny = payload['contactId'] ?? payload['userId'];
+        if (contactIdAny != null) {
+          final int? cid = contactIdAny is int
+              ? contactIdAny
+              : int.tryParse(contactIdAny.toString());
+          if (cid != null) {
+
+            final currentTime =
+                DateTime.now().millisecondsSinceEpoch ~/
+                1000; // Конвертируем в секунды
+            final userPresence = {
+              'seen': currentTime,
+              'on': isOnline ? 'ON' : 'OFF',
+            };
+            ApiService.instance.updatePresenceData({
+              cid.toString(): userPresence,
+            });
+
+            print(
+              'Обновлен presence для пользователя $cid: online=$isOnline, seen=$currentTime',
+            );
+
+            for (final chat in _allChats) {
+              final otherId = chat.participantIds.firstWhere(
+                (id) => id != chat.ownerId,
+                orElse: () => chat.ownerId,
+              );
+              if (otherId == cid) {
+                if (isOnline) {
+                  _onlineChats.add(chat.id);
+                } else {
+                  _onlineChats.remove(chat.id);
+                }
+              }
+            }
+            if (mounted) setState(() {});
+            return;
+          }
+        }
+
+        final dynamic cidAny = payload['chatId'];
+        final int? chatIdFromPayload = cidAny is int
+            ? cidAny
+            : int.tryParse(cidAny?.toString() ?? '');
+        if (chatIdFromPayload != null) {
+          if (isOnline) {
+            _onlineChats.add(chatIdFromPayload);
+          } else {
+            _onlineChats.remove(chatIdFromPayload);
+          }
+          if (mounted) setState(() {});
+        }
+      }
+
+
+      if (opcode == 36 && payload['contacts'] != null) {
+        final List<dynamic> blockedContactsJson = payload['contacts'] as List;
+        final blockedContacts = blockedContactsJson
+            .map((json) => Contact.fromJson(json))
+            .toList();
+
+
+        for (final blockedContact in blockedContacts) {
+          print(
+            'Обновляем контакт ${blockedContact.name} (ID: ${blockedContact.id}): isBlocked=${blockedContact.isBlocked}, isBlockedByMe=${blockedContact.isBlockedByMe}',
+          );
+          if (_contacts.containsKey(blockedContact.id)) {
+
+            _contacts[blockedContact.id] = blockedContact;
+            print(
+              'Обновлен существующий контакт: ${_contacts[blockedContact.id]?.name}',
+            );
+
+            ApiService.instance.notifyContactUpdate(blockedContact);
+          } else {
+
+            _contacts[blockedContact.id] = blockedContact;
+            print(
+              'Добавлен новый заблокированный контакт: ${blockedContact.name}',
+            );
+
+            ApiService.instance.notifyContactUpdate(blockedContact);
+          }
+        }
+
+        if (mounted) setState(() {});
+      }
+
+
+      if (opcode == 48) {
+        print('Получен ответ на создание группы: $payload');
+
+        _refreshChats();
+      }
+
+
+      if (opcode == 272) {
+        print('Получен ответ на обновление папок: $payload');
+
+        if (payload['folders'] != null || payload['foldersOrder'] != null) {
+          try {
+            final foldersJson = payload['folders'] as List<dynamic>?;
+            if (foldersJson != null) {
+              final folders = foldersJson
+                  .map(
+                    (json) => ChatFolder.fromJson(json as Map<String, dynamic>),
+                  )
+                  .toList();
+
+              if (mounted) {
+                setState(() {
+                  _folders = folders;
+                });
+                _filterChats();
+              }
+            }
+          } catch (e) {
+            print('Ошибка обработки папок из opcode 272: $e');
+          }
+        } else {
+          _refreshChats();
+        }
+      }
+
+
+      if (message['type'] == 'channels_found') {
+        final payload = message['payload'];
+        final channelsData = payload['contacts'] as List<dynamic>?;
+
+        if (channelsData != null) {
+          setState(() {
+            _channels = channelsData
+                .map((channelJson) => Channel.fromJson(channelJson))
+                .toList();
+          });
+        }
+      }
+    });
+  }
+
+  final Map<int, Timer> _typingDecayTimers = {};
+  final Set<int> _typingChats = {};
+  final Set<int> _onlineChats = {};
+  void _setTypingForChat(int chatId) {
+    _typingChats.add(chatId);
+    _typingDecayTimers[chatId]?.cancel();
+    _typingDecayTimers[chatId] = Timer(const Duration(seconds: 11), () {
+      _typingChats.remove(chatId);
+      if (mounted) setState(() {});
+    });
+    if (mounted) setState(() {});
+  }
+
+  void _refreshChats() {
+
+    _chatsFuture = ApiService.instance.getChatsAndContacts(force: true);
+    _chatsFuture.then((data) {
+      if (mounted) {
+        final chats = data['chats'] as List<dynamic>;
+        final contacts = data['contacts'] as List<dynamic>;
+
+        _allChats = chats
+            .where((json) => json != null)
+            .map((json) => Chat.fromJson(json))
+            .toList();
+        _contacts.clear();
+        for (final contactJson in contacts) {
+          final contact = Contact.fromJson(contactJson);
+          _contacts[contact.id] = contact;
+        }
+        _filterChats();
+      }
+    });
+  }
+
+  Widget _buildChannelsRail() {
+    final colors = Theme.of(context).colorScheme;
+
+    return Container(
+      width: 280,
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border(
+          right: BorderSide(color: colors.outline.withOpacity(0.2), width: 1),
+        ),
+      ),
+      child: Column(
+        children: [
+
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerHighest,
+              border: Border(
+                bottom: BorderSide(
+                  color: colors.outline.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.broadcast_on_personal,
+                  color: colors.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Каналы',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: colors.onSurface,
+                    fontSize: 16,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.search, size: 20),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const ChannelsListScreen(),
+                      ),
+                    );
+                  },
+                  tooltip: 'Поиск каналов',
+                ),
+              ],
+            ),
+          ),
+
+
+          Expanded(child: _buildChannelsList()),
+        ],
+      ),
+    );
+  }
+
+  void _loadChannels() async {
+    if (_channelsLoaded) return;
+
+    try {
+
+      await ApiService.instance.searchChannels('каналы');
+      _channelsLoaded = true;
+    } catch (e) {
+      print('Ошибка загрузки каналов: $e');
+    }
+  }
+
+  Widget _buildChannelsList() {
+    final colors = Theme.of(context).colorScheme;
+
+    if (_channels.isEmpty) {
+
+      return ListView(
+        padding: const EdgeInsets.all(8),
+        children: [
+          _buildChannelItem(
+            'Новости',
+            'Актуальные новости',
+            Icons.newspaper,
+            colors.primaryContainer,
+            colors.onPrimaryContainer,
+          ),
+          _buildChannelItem(
+            'Технологии',
+            'IT и технологии',
+            Icons.computer,
+            colors.secondaryContainer,
+            colors.onSecondaryContainer,
+          ),
+          _buildChannelItem(
+            'Спорт',
+            'Спортивные новости',
+            Icons.sports,
+            colors.tertiaryContainer,
+            colors.onTertiaryContainer,
+          ),
+          _buildChannelItem(
+            'Развлечения',
+            'Фильмы, музыка, игры',
+            Icons.movie,
+            colors.errorContainer,
+            colors.onErrorContainer,
+          ),
+          _buildChannelItem(
+            'Образование',
+            'Учеба и развитие',
+            Icons.school,
+            colors.primaryContainer,
+            colors.onPrimaryContainer,
+          ),
+        ],
+      );
+    }
+
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: _channels.length,
+      itemBuilder: (context, index) {
+        final channel = _channels[index];
+        return _buildRealChannelItem(channel);
+      },
+    );
+  }
+
+  Widget _buildChannelItem(
+    String title,
+    String subtitle,
+    IconData icon,
+    Color backgroundColor,
+    Color iconColor,
+  ) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        leading: CircleAvatar(
+          radius: 16,
+          backgroundColor: backgroundColor,
+          child: Icon(icon, size: 16, color: iconColor),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        onTap: () {
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Открытие канала: $title'),
+              backgroundColor: Colors.blue,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(10),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildRealChannelItem(Channel channel) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        leading: CircleAvatar(
+          radius: 16,
+          backgroundImage: channel.photoBaseUrl != null
+              ? NetworkImage(channel.photoBaseUrl!)
+              : null,
+          child: channel.photoBaseUrl == null
+              ? Text(
+                  channel.name.isNotEmpty ? channel.name[0].toUpperCase() : '?',
+                  style: TextStyle(
+                    color: colors.onSurface,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                )
+              : null,
+        ),
+        title: Text(
+          channel.name,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        ),
+        subtitle: Text(
+          channel.description ?? 'Канал',
+          style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => ChannelDetailsScreen(channel: channel),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showAddMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Создать',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
+
+
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer,
+                  child: Icon(
+                    Icons.group_add,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                ),
+                title: const Text('Создать группу'),
+                subtitle: const Text('Создать чат с несколькими участниками'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showCreateGroupDialog();
+                },
+              ),
+
+
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer,
+                  child: Icon(
+                    Icons.person_search,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                ),
+                title: const Text('Найти контакт'),
+                subtitle: const Text('Поиск по номеру телефона'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const SearchContactScreen(),
+                    ),
+                  );
+                },
+              ),
+
+
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.tertiaryContainer,
+                  child: Icon(
+                    Icons.broadcast_on_personal,
+                    color: Theme.of(context).colorScheme.onTertiaryContainer,
+                  ),
+                ),
+                title: const Text('Каналы'),
+                subtitle: const Text('Просмотр и подписка на каналы'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const ChannelsListScreen(),
+                    ),
+                  );
+                },
+              ),
+
+
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.secondaryContainer,
+                  child: Icon(
+                    Icons.link,
+                    color: Theme.of(context).colorScheme.onSecondaryContainer,
+                  ),
+                ),
+                title: const Text('Присоединиться к группе'),
+                subtitle: const Text('По ссылке-приглашению'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const JoinGroupScreen(),
+                    ),
+                  );
+                },
+              ),
+
+
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer,
+                  child: Icon(
+                    Icons.download,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                ),
+                title: const Text('Загрузки'),
+                subtitle: const Text('Скачанные файлы'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const DownloadsScreen(),
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showCreateGroupDialog() {
+    final TextEditingController nameController = TextEditingController();
+    final List<int> selectedContacts = [];
+
+    final int? myId = _myProfile?.id;
+
+
+    final List<Contact> availableContacts = _contacts.values.where((contact) {
+      final contactNameLower = contact.name.toLowerCase();
+      return contactNameLower != 'max' &&
+          contactNameLower != 'gigachat' &&
+          (myId == null || contact.id != myId);
+    }).toList();
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Создать группу'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Название группы',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Выберите участников:'),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 200,
+                width: 300,
+
+                child: ListView.builder(
+                  itemCount: availableContacts.length,
+                  itemBuilder: (context, index) {
+                    final contact = availableContacts[index];
+                    final isSelected = selectedContacts.contains(contact.id);
+
+                    return CheckboxListTile(
+                      title: Text(contact.name),
+                      subtitle: Text(
+                        contact.firstName.isNotEmpty &&
+                                contact.lastName.isNotEmpty
+                            ? '${contact.firstName} ${contact.lastName}'
+                            : '',
+                      ),
+                      value: isSelected,
+                      onChanged: (value) {
+                        setState(() {
+                          if (value == true) {
+                            selectedContacts.add(contact.id);
+                          } else {
+                            selectedContacts.remove(contact.id);
+                          }
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Отмена'),
+            ),
+            TextButton(
+              onPressed: () {
+                if (nameController.text.trim().isNotEmpty) {
+                  ApiService.instance.createGroupWithMessage(
+                    nameController.text.trim(),
+                    selectedContacts, // Будет [] если никого не выбрали
+                  );
+                  Navigator.of(context).pop();
+                }
+              },
+              child: const Text('Создать'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _isSavedMessages(Chat chat) {
+    return chat.id == 0;
+  }
+
+  bool _isGroupChat(Chat chat) {
+
+    return chat.type == 'CHAT' || chat.participantIds.length > 2;
+  }
+
+  void _loadFolders(Map<String, dynamic> data) {
+    try {
+      final config = data['config'] as Map<String, dynamic>?;
+      if (config == null) return;
+
+      final chatFolders = config['chatFolders'] as Map<String, dynamic>?;
+      if (chatFolders == null) return;
+
+      final foldersJson = chatFolders['FOLDERS'] as List<dynamic>?;
+      if (foldersJson == null) return;
+
+      final folders = foldersJson
+          .map((json) => ChatFolder.fromJson(json as Map<String, dynamic>))
+          .toList();
+
+      setState(() {
+        final oldIndex = _folderTabController.index;
+        _folders = folders;
+        final newLength = 1 + folders.length;
+        if (_folderTabController.length != newLength) {
+          _folderTabController.removeListener(_onFolderTabChanged);
+          _folderTabController.dispose();
+          _folderTabController = TabController(
+            length: newLength,
+            vsync: this,
+            initialIndex: oldIndex < newLength ? oldIndex : 0,
+          );
+          _folderTabController.addListener(_onFolderTabChanged);
+        }
+
+        if (_selectedFolderId == null) {
+          if (_folderTabController.index != 0) {
+            _folderTabController.animateTo(0);
+          }
+        } else {
+          final folderIndex = folders.indexWhere(
+            (f) => f.id == _selectedFolderId,
+          );
+          if (folderIndex != -1) {
+            final targetIndex = folderIndex + 1;
+            if (_folderTabController.index != targetIndex) {
+              _folderTabController.animateTo(targetIndex);
+            }
+          }
+        }
+      });
+    } catch (e) {
+      print('Ошибка загрузки папок: $e');
+    }
+  }
+
+  bool _chatBelongsToFolder(Chat chat, ChatFolder? folder) {
+    if (folder == null) return true;
+
+    if (folder.include != null && folder.include!.isNotEmpty) {
+      return folder.include!.contains(chat.id);
+    }
+
+    if (folder.filters.isNotEmpty) {
+      final hasContact = folder.filters.any(
+        (f) => f == 9 || f == '9' || f == 'CONTACT',
+      );
+      final hasNotContact = folder.filters.any(
+        (f) => f == 8 || f == '8' || f == 'NOT_CONTACT',
+      );
+
+      if (hasContact && hasNotContact) {
+        if (chat.type != 'DIALOG' ||
+            chat.participantIds.length > 2 ||
+            _isGroupChat(chat)) {
+          return false;
+        }
+
+        final otherParticipantId = chat.participantIds.firstWhere(
+          (id) => id != chat.ownerId,
+          orElse: () => 0,
+        );
+        if (otherParticipantId != 0) {
+          final contact = _contacts[otherParticipantId];
+          if (contact != null && contact.isBot) {
+            return false;
+          }
+        }
+
+        return true;
+      }
+
+      for (final filter in folder.filters) {
+        bool matchesThisFilter = false;
+        if (filter == 0 || filter == '0' || filter == 'UNREAD') {
+          matchesThisFilter = chat.newMessages > 0;
+        } else if (filter == 9 || filter == '9' || filter == 'CONTACT') {
+          if (chat.type != 'DIALOG' ||
+              chat.participantIds.length > 2 ||
+              _isGroupChat(chat)) {
+            matchesThisFilter = false;
+          } else {
+            final otherParticipantId = chat.participantIds.firstWhere(
+              (id) => id != chat.ownerId,
+              orElse: () => 0,
+            );
+            if (otherParticipantId != 0) {
+              final contact = _contacts[otherParticipantId];
+              matchesThisFilter = contact == null || !contact.isBot;
+            } else {
+              matchesThisFilter = true;
+            }
+          }
+        } else if (filter == 8 || filter == '8' || filter == 'NOT_CONTACT') {
+          matchesThisFilter =
+              chat.type == 'CHAT' ||
+              chat.type == 'CHANNEL' ||
+              _isGroupChat(chat);
+        } else {
+          matchesThisFilter = false;
+        }
+
+        if (matchesThisFilter) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    return false;
+  }
+
+  void _filterChats() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      List<Chat> chatsToFilter = _allChats;
+
+      if (_selectedFolderId != null) {
+        final selectedFolder = _folders.firstWhere(
+          (f) => f.id == _selectedFolderId,
+          orElse: () => _folders.first,
+        );
+        chatsToFilter = _allChats
+            .where((chat) => _chatBelongsToFolder(chat, selectedFolder))
+            .toList();
+      }
+
+      if (query.isEmpty && !_searchFocusNode.hasFocus) {
+        _filteredChats = List.from(chatsToFilter);
+
+        _filteredChats.sort((a, b) {
+          final aIsSaved = _isSavedMessages(a);
+          final bIsSaved = _isSavedMessages(b);
+          if (aIsSaved && !bIsSaved) return -1; // Избранное в начало
+          if (!aIsSaved && bIsSaved) return 1; // Избранное в начало
+
+          if (aIsSaved && bIsSaved) {
+            if (a.id == 0) return -1;
+            if (b.id == 0) return 1;
+          }
+          return 0; // Остальные чаты сохраняют порядок
+        });
+      } else if (_searchFocusNode.hasFocus && query.isEmpty) {
+
+        _filteredChats = [];
+      } else if (query.isNotEmpty) {
+        _filteredChats = chatsToFilter.where((chat) {
+          final isSavedMessages = _isSavedMessages(chat);
+          if (isSavedMessages) {
+            return "избранное".contains(query);
+          }
+          final otherParticipantId = chat.participantIds.firstWhere(
+            (id) => id != chat.ownerId,
+            orElse: () => 0,
+          );
+          final contactName =
+              _contacts[otherParticipantId]?.name.toLowerCase() ?? '';
+          return contactName.contains(query);
+        }).toList();
+
+        _filteredChats.sort((a, b) {
+          final aIsSaved = _isSavedMessages(a);
+          final bIsSaved = _isSavedMessages(b);
+          if (aIsSaved && !bIsSaved) return -1;
+          if (!aIsSaved && bIsSaved) return 1;
+
+          if (aIsSaved && bIsSaved) {
+            if (a.id == 0) return -1;
+            if (b.id == 0) return 1;
+          }
+          return 0;
+        });
+      } else {
+
+        _filteredChats = [];
+      }
+    });
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text;
+    _searchQuery = query;
+
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      _performSearch();
+    });
+  }
+
+  void _onSearchFocusChanged() {
+    if (_searchFocusNode.hasFocus) {
+      _isSearchExpanded = true;
+      _searchAnimationController.forward();
+    } else if (_searchController.text.isEmpty) {
+      _isSearchExpanded = false;
+      _searchAnimationController.reverse();
+    }
+  }
+
+  void _performSearch() async {
+    if (_searchQuery.isEmpty) {
+      setState(() {
+        _searchResults.clear();
+      });
+      return;
+    }
+
+    setState(() {
+
+    });
+
+    final results = <SearchResult>[];
+    final query = _searchQuery.toLowerCase();
+
+    for (final chat in _allChats) {
+      final isSavedMessages = _isSavedMessages(chat);
+
+      if (isSavedMessages) {
+        if ("избранное".contains(query)) {
+          results.add(
+            SearchResult(
+              chat: chat,
+              contact: _contacts[chat.ownerId],
+              matchedText: "Избранное",
+              matchType: 'name',
+            ),
+          );
+        }
+        continue;
+      }
+
+      final otherParticipantId = chat.participantIds.firstWhere(
+        (id) => id != chat.ownerId,
+        orElse: () => 0,
+      );
+      final contact = _contacts[otherParticipantId];
+
+      if (contact == null) continue;
+
+
+      if (contact.name.toLowerCase().contains(query)) {
+        results.add(
+          SearchResult(
+            chat: chat,
+            contact: contact,
+            matchedText: contact.name,
+            matchType: 'name',
+          ),
+        );
+        continue;
+      }
+
+
+      if (contact.description != null &&
+          contact.description?.toLowerCase().contains(query) == true) {
+        results.add(
+          SearchResult(
+            chat: chat,
+            contact: contact,
+            matchedText: contact.description ?? '',
+            matchType: 'description',
+          ),
+        );
+        continue;
+      }
+
+
+      if (chat.lastMessage.text.toLowerCase().contains(query) ||
+          (chat.lastMessage.text.contains("welcome.saved.dialog.message") &&
+              'привет избранные майор'.contains(query.toLowerCase()))) {
+        results.add(
+          SearchResult(
+            chat: chat,
+            contact: contact,
+            matchedText:
+                chat.lastMessage.text.contains("welcome.saved.dialog.message")
+                ? 'Привет! Это твои избранные...'
+                : chat.lastMessage.text,
+            matchType: 'message',
+          ),
+        );
+      }
+    }
+
+
+    List<SearchResult> filteredResults = results;
+    if (_searchFilter == 'recent') {
+
+      final weekAgo = DateTime.now().subtract(const Duration(days: 7));
+      filteredResults = results.where((result) {
+        final lastMessageTime = DateTime.fromMillisecondsSinceEpoch(
+          result.chat.lastMessage.time,
+        );
+        return lastMessageTime.isAfter(weekAgo);
+      }).toList();
+    }
+
+    setState(() {
+      _searchResults = filteredResults;
+    });
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    _searchFocusNode.unfocus();
+    setState(() {
+      _searchQuery = '';
+      _searchResults.clear();
+      _isSearchExpanded = false;
+    });
+    _searchAnimationController.reverse();
+  }
+
+  void _loadChatsAndContacts() {
+    setState(() {
+      _chatsFuture = ApiService.instance.getChatsAndContacts(force: true);
+    });
+
+    _chatsFuture.then((data) {
+      if (mounted) {
+        final chats = data['chats'] as List;
+        final contacts = data['contacts'] as List;
+
+        _allChats = chats
+            .where((json) => json != null)
+            .map((json) => Chat.fromJson(json))
+            .toList();
+
+        _contacts.clear();
+        for (final contactJson in contacts) {
+          final contact = Contact.fromJson(contactJson);
+          _contacts[contact.id] = contact;
+        }
+
+        _filterChats();
+      }
+    });
+  }
+
+  Future<void> _loadChatOrder() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedOrder = prefs.getStringList('chat_order');
+    if (savedOrder != null && savedOrder.isNotEmpty) {
+      final chatIds = savedOrder.map((id) => int.parse(id)).toList();
+      final orderedChats = <Chat>[];
+      final remainingChats = List<Chat>.from(_allChats);
+
+
+      for (final id in chatIds) {
+        final chatIndex = remainingChats.indexWhere((chat) => chat.id == id);
+        if (chatIndex != -1) {
+          orderedChats.add(remainingChats.removeAt(chatIndex));
+        }
+      }
+
+
+      orderedChats.addAll(remainingChats);
+
+      _allChats = orderedChats;
+      _filteredChats = List.from(_allChats);
+    }
+  }
+
+  String _formatTimestamp(int timestamp) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    final now = DateTime.now();
+    if (now.day == dt.day && now.month == dt.month && now.year == dt.year) {
+      return DateFormat('HH:mm', 'ru').format(dt);
+    } else {
+      final yesterday = now.subtract(const Duration(days: 1));
+      if (dt.day == yesterday.day &&
+          dt.month == yesterday.month &&
+          dt.year == yesterday.year) {
+        return 'Вчера';
+      } else {
+        return DateFormat('d MMM', 'ru').format(dt);
+      }
+    }
+  }
+
+  Future<void> _openSferum() async {
+    try {
+      await ApiService.instance.waitUntilOnline();
+      final seq32 = ApiService.instance.sendAndTrackFullJsonRequest(
+        jsonEncode({
+          "ver": 11,
+          "cmd": 0,
+          "seq": 0,
+          "opcode": 32,
+          "payload": {
+            "contactIds": [2340831],
+          },
+        }),
+      );
+
+      final resp32 = await ApiService.instance.messages
+          .firstWhere((m) => m['seq'] == seq32)
+          .timeout(const Duration(seconds: 10));
+
+      final contacts = resp32['payload']['contacts'] as List;
+      if (contacts.isEmpty) {
+        throw Exception('Не удалось получить информацию о боте');
+      }
+      final webAppUrl = contacts[0]['webApp'] as String?;
+      if (webAppUrl == null) {
+        throw Exception('Бот не имеет веб-приложения');
+      }
+
+      int? chatId;
+      for (var chat in _allChats) {
+        if (chat.participantIds.contains(2340831)) {
+          chatId = chat.id;
+          break;
+        }
+      }
+
+      print('🔍 Найден chatId для бота Сферума: ${chatId ?? "не найден"}');
+
+      final seq160 = ApiService.instance.sendAndTrackFullJsonRequest(
+        jsonEncode({
+          "ver": 11,
+          "cmd": 0,
+          "seq": 0,
+          "opcode": 160,
+          "payload": {"botId": 2340831, "chatId": chatId ?? 0},
+        }),
+      );
+
+      print('📤 Отправлен opcode 160 с seq: $seq160');
+
+      final resp160 = await ApiService.instance.messages
+          .firstWhere((m) => m['seq'] == seq160)
+          .timeout(const Duration(seconds: 10));
+
+      print('📥 Получен ответ на opcode 160: ${resp160.toString()}');
+
+      final webUrl = resp160['payload']['url'] as String?;
+      if (webUrl == null) {
+        throw Exception('Не удалось получить URL веб-приложения');
+      }
+
+      print('🌐 URL веб-приложения: $webUrl');
+
+      if (mounted) {
+        _showSferumWebView(context, webUrl);
+      }
+    } catch (e, stackTrace) {
+      print('❌ Ошибка открытия Сферума: $e');
+      print('Stack trace: $stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка открытия Сферума: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showSferumWebView(BuildContext context, String url) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => SferumWebViewPanel(url: url),
+    );
+  }
+
+  Widget _buildConnectionScreen() {
+    final colors = Theme.of(context).colorScheme;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+
+            CircularProgressIndicator(
+              strokeWidth: 3,
+              valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+            ),
+            const SizedBox(height: 24),
+
+
+            Text(
+              'Подключение',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: colors.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+
+
+            Text(
+              'Устанавливаем соединение с сервером...',
+              style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+
+    final Widget bodyContent = Stack(
+      children: [
+        FutureBuilder<Map<String, dynamic>>(
+          future: _chatsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return _buildConnectionScreen();
+            }
+            if (snapshot.hasError) {
+              return Center(
+                child: Text('Ошибка загрузки чатов: ${snapshot.error}'),
+              );
+            }
+            if (snapshot.hasData) {
+              if (_allChats.isEmpty) {
+                final chatListJson = snapshot.data!['chats'] as List;
+                final contactListJson = snapshot.data!['contacts'] as List;
+                _allChats = chatListJson
+                    .map((json) => Chat.fromJson(json))
+                    .toList();
+                final contacts = contactListJson.map(
+                  (json) => Contact.fromJson(json),
+                );
+                _contacts = {for (var c in contacts) c.id: c};
+
+
+                final presence =
+                    snapshot.data!['presence'] as Map<String, dynamic>?;
+                if (presence != null) {
+                  print('Получен presence: $presence');
+
+                }
+
+
+                if (!_hasRequestedBlockedContacts) {
+                  _hasRequestedBlockedContacts = true;
+                  ApiService.instance.getBlockedContacts();
+                }
+
+                _loadFolders(snapshot.data!);
+
+
+                _loadChatOrder().then((_) {
+                  setState(() {
+                    _filteredChats = List.from(_allChats);
+                  });
+                });
+              }
+              if (_filteredChats.isEmpty && _allChats.isEmpty) {
+
+                return const Center(child: CircularProgressIndicator());
+              }
+
+
+              if (_isSearchExpanded) {
+                return _buildSearchResults();
+              } else {
+                return Column(
+                  children: [
+                    _buildFolderTabs(),
+                    Expanded(
+                      child: TabBarView(
+                        controller: _folderTabController,
+                        children: _buildFolderPages(),
+                      ),
+                    ),
+                  ],
+                );
+              }
+            }
+            return const Center(child: Text('Нет данных'));
+          },
+        ),
+
+        if (!_isSearchExpanded) _buildDebugRefreshPanel(context),
+      ],
+    );
+
+    if (widget.hasScaffold) {
+      return Builder(
+        builder: (context) {
+          return Scaffold(
+            appBar: _buildAppBar(context),
+            drawer: _buildAppDrawer(context),
+            body: Row(children: [Expanded(child: bodyContent)]),
+            floatingActionButton: FloatingActionButton(
+              onPressed: () {
+                _showAddMenu(context);
+              },
+              tooltip: 'Создать',
+              heroTag: 'create_menu',
+              child: const Icon(Icons.edit),
+            ),
+          );
+        },
+      );
+    } else {
+      return bodyContent;
+    }
+  }
+
+  Widget _buildAppDrawer(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    final themeProvider = context.watch<ThemeProvider>();
+    final isDarkMode = themeProvider.themeMode == ThemeMode.dark;
+
+    return Drawer(
+
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            width: double.infinity,
+
+            padding: EdgeInsets.only(
+              top: MediaQuery.of(context).padding.top + 16.0,
+              left: 16.0,
+              right: 16.0,
+              bottom: 16.0,
+            ),
+            decoration: BoxDecoration(color: colors.primaryContainer),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+
+                    CircleAvatar(
+                      radius: 30, // Чуть крупнее
+                      backgroundColor: colors.primary,
+                      backgroundImage:
+                          _isProfileLoading || _myProfile?.photoBaseUrl == null
+                          ? null
+                          : NetworkImage(_myProfile!.photoBaseUrl!),
+                      child: _isProfileLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : (_myProfile?.photoBaseUrl == null
+                                ? Text(
+                                    _myProfile?.displayName.isNotEmpty == true
+                                        ? _myProfile!.displayName[0]
+                                              .toUpperCase()
+                                        : '?',
+                                    style: TextStyle(
+                                      color: colors.onPrimary,
+                                      fontSize: 28, // Крупнее
+                                    ),
+                                  )
+                                : null),
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        isDarkMode
+                            ? Icons.brightness_7
+                            : Icons.brightness_4, // Солнце / Луна
+                        color: colors.onPrimaryContainer,
+                        size: 26,
+                      ),
+                      onPressed: () {
+                        themeProvider.toggleTheme();
+                      },
+                      tooltip: isDarkMode ? 'Светлая тема' : 'Темная тема',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+
+                Text(
+                  _myProfile?.displayName ?? 'Загрузка...',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: colors.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(height: 4),
+
+
+                Text(
+                  _myProfile?.formattedPhone ?? '',
+                  style: TextStyle(
+                    color: colors.onPrimaryContainer.withOpacity(0.8),
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          Expanded(
+            child: Column(
+
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: const Text('Мой профиль'),
+                  onTap: () {
+                    Navigator.pop(context); // Закрыть Drawer
+                    _navigateToProfileEdit(); // Этот метод у вас уже есть
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.call_outlined),
+                  title: const Text('Звонки'),
+                  onTap: () {
+                    Navigator.pop(context); // Закрыть Drawer
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const CallsScreen(),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.settings_outlined),
+                  title: const Text('Настройки'),
+                  onTap: () {
+                    Navigator.pop(context); // Закрыть Drawer
+
+
+                    final screenSize = MediaQuery.of(context).size;
+                    final screenWidth = screenSize.width;
+                    final screenHeight = screenSize.height;
+                    final isDesktopOrTablet =
+                        screenWidth >= 600 &&
+                        screenHeight >= 800; // Планшеты и десктопы
+
+                    print(
+                      'Screen size: ${screenWidth}x${screenHeight}, isDesktopOrTablet: $isDesktopOrTablet',
+                    );
+
+                    if (isDesktopOrTablet) {
+
+                      showDialog(
+                        context: context,
+                        barrierDismissible: true,
+                        builder: (context) => SettingsScreen(
+                          showBackToChats: true,
+                          onBackToChats: () => Navigator.of(context).pop(),
+                          myProfile: _myProfile,
+                          isModal: true, // Включаем модальный режим
+                        ),
+                      );
+                    } else {
+
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => SettingsScreen(
+                            showBackToChats: true,
+                            onBackToChats: () => Navigator.of(context).pop(),
+                            myProfile: _myProfile,
+                            isModal: false, // Отключаем модальный режим
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                ),
+
+                const Spacer(),
+
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                ListTile(
+                  leading: Icon(Icons.logout, color: colors.error),
+                  title: Text('Выйти', style: TextStyle(color: colors.error)),
+                  onTap: () {
+                    Navigator.pop(context); // Закрыть Drawer
+                    _showLogoutDialog();
+                  },
+                ),
+                const SizedBox(height: 8), // Небольшой отступ снизу
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchResults() {
+    final colors = Theme.of(context).colorScheme;
+
+    if (_searchQuery.isEmpty) {
+      return Column(
+        children: [
+
+          _buildRecentChatsIcons(),
+          const Divider(height: 1),
+
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.search,
+                    size: 64,
+                    color: colors.onSurfaceVariant.withOpacity(0.5),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Начните вводить для поиска',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: colors.onSurfaceVariant.withOpacity(0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Или выберите чат из списка выше',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: colors.onSurfaceVariant.withOpacity(0.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_searchResults.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off,
+              size: 64,
+              color: colors.onSurfaceVariant.withOpacity(0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Ничего не найдено',
+              style: TextStyle(
+                fontSize: 18,
+                color: colors.onSurfaceVariant.withOpacity(0.7),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Попробуйте изменить поисковый запрос',
+              style: TextStyle(
+                fontSize: 14,
+                color: colors.onSurfaceVariant.withOpacity(0.5),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: _searchResults.length,
+      itemBuilder: (context, index) {
+        return _buildSearchResultItem(_searchResults[index]);
+      },
+    );
+  }
+
+  Widget _buildSearchResultItem(SearchResult result) {
+    final colors = Theme.of(context).colorScheme;
+    final chat = result.chat;
+    final contact = result.contact;
+
+    if (contact == null) return const SizedBox.shrink();
+
+    return ListTile(
+      onTap: () {
+        final bool isSavedMessages = _isSavedMessages(chat);
+        final bool isGroupChat = _isGroupChat(chat);
+        final bool isChannel = chat.type == 'CHANNEL';
+        final participantCount =
+            chat.participantsCount ?? chat.participantIds.length;
+
+        if (widget.onChatSelected != null) {
+          widget.onChatSelected!(
+            chat,
+            contact,
+            isGroupChat,
+            isChannel,
+            participantCount,
+          );
+        } else {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => ChatScreen(
+                chatId: chat.id,
+                contact: contact,
+                myId: chat.ownerId,
+                isGroupChat: isGroupChat,
+                isChannel: isChannel,
+                participantCount: participantCount,
+                onChatUpdated: () {
+                  print('Chat updated, но не обновляем список чатов...');
+                },
+              ),
+            ),
+          );
+        }
+      },
+      leading: CircleAvatar(
+        radius: 24,
+        backgroundColor: colors.primaryContainer,
+        backgroundImage: contact.photoBaseUrl != null
+            ? NetworkImage(contact.photoBaseUrl ?? '')
+            : null,
+        child: contact.photoBaseUrl == null
+            ? Text(
+                contact.name.isNotEmpty ? contact.name[0].toUpperCase() : '?',
+                style: TextStyle(color: colors.onPrimaryContainer),
+              )
+            : null,
+      ),
+      title: _buildHighlightedText(contact.name, result.matchedText),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (result.matchType == 'message')
+            chat.lastMessage.text.contains("welcome.saved.dialog.message")
+                ? _buildWelcomeMessage()
+                : _buildSearchMessagePreview(chat, result.matchedText),
+          if (result.matchType == 'description')
+            _buildHighlightedText(
+              contact.description ?? '',
+              result.matchedText,
+            ),
+          const SizedBox(height: 4),
+          Text(
+            _formatTimestamp(chat.lastMessage.time),
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
+          ),
+        ],
+      ),
+      trailing: chat.newMessages > 0
+          ? CircleAvatar(
+              radius: 10,
+              backgroundColor: colors.primary,
+              child: Text(
+                chat.newMessages.toString(),
+                style: TextStyle(color: colors.onPrimary, fontSize: 12),
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildHighlightedText(String text, String query) {
+    if (query.isEmpty) return Text(text);
+
+    final lowerText = text.toLowerCase();
+    final lowerQuery = query.toLowerCase();
+    final index = lowerText.indexOf(lowerQuery);
+
+    if (index == -1) return Text(text);
+
+    return RichText(
+      text: TextSpan(
+        children: [
+          TextSpan(
+            text: text.substring(0, index),
+            style: const TextStyle(color: Colors.black),
+          ),
+          TextSpan(
+            text: text.substring(index, index + query.length),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          TextSpan(
+            text: text.substring(index + query.length),
+            style: const TextStyle(color: Colors.black),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentChatsIcons() {
+    final colors = Theme.of(context).colorScheme;
+
+    final recentChats = _allChats.take(15).toList();
+
+    return Container(
+      height: 100,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: recentChats.length,
+        itemBuilder: (context, index) {
+          final chat = recentChats[index];
+          final bool isGroupChat = _isGroupChat(chat);
+          final bool isSavedMessages = _isSavedMessages(chat);
+
+          final Contact? contact;
+          if (isSavedMessages) {
+            contact = _contacts[chat.ownerId];
+          } else if (isGroupChat) {
+            contact = null;
+          } else {
+            final otherParticipantId = chat.participantIds.firstWhere(
+              (id) => id != chat.ownerId,
+              orElse: () => 0,
+            );
+            contact = _contacts[otherParticipantId];
+          }
+
+          return Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: GestureDetector(
+              onTap: () {
+                final bool isChannel = chat.type == 'CHANNEL';
+                final String title = isGroupChat
+                    ? (chat.title?.isNotEmpty == true ? chat.title! : "Группа")
+                    : (isSavedMessages
+                          ? "Избранное"
+                          : contact?.name ?? "Unknown");
+                final String? avatarUrl = isGroupChat
+                    ? chat.baseIconUrl
+                    : (isSavedMessages ? null : contact?.photoBaseUrl);
+                final participantCount =
+                    chat.participantsCount ?? chat.participantIds.length;
+
+                final Contact contactFallback =
+                    contact ??
+                    Contact(
+                      id: chat.id,
+                      name: title,
+                      firstName: "",
+                      lastName: "",
+                      photoBaseUrl: avatarUrl,
+                      description: isChannel ? chat.description : null,
+                      isBlocked: false,
+                      isBlockedByMe: false,
+                    );
+
+                if (widget.onChatSelected != null) {
+                  widget.onChatSelected!(
+                    chat,
+                    contactFallback,
+                    isGroupChat,
+                    isChannel,
+                    participantCount,
+                  );
+                } else {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => ChatScreen(
+                        chatId: chat.id,
+                        contact: contactFallback,
+                        myId: chat.ownerId,
+                        isGroupChat: isGroupChat,
+                        isChannel: isChannel,
+                        participantCount: participantCount,
+                        onChatUpdated: () {
+                          _loadChatsAndContacts();
+                        },
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 28,
+                        backgroundColor: colors.primaryContainer,
+                        backgroundImage:
+                            !isSavedMessages &&
+                                !isGroupChat &&
+                                contact?.photoBaseUrl != null
+                            ? NetworkImage(contact?.photoBaseUrl ?? '')
+                            : (isGroupChat && chat.baseIconUrl != null)
+                            ? NetworkImage(chat.baseIconUrl ?? '')
+                            : null,
+                        child:
+                            isSavedMessages ||
+                                (isGroupChat && chat.baseIconUrl == null)
+                            ? Icon(
+                                isSavedMessages ? Icons.bookmark : Icons.group,
+                                color: colors.onPrimaryContainer,
+                                size: 20,
+                              )
+                            : (contact?.photoBaseUrl == null
+                                  ? Text(
+                                      (contact != null &&
+                                              contact.name.isNotEmpty)
+                                          ? contact.name[0].toUpperCase()
+                                          : '?',
+                                      style: TextStyle(
+                                        color: colors.onSurface,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 16,
+                                      ),
+                                    )
+                                  : null),
+                      ),
+
+                      if (chat.newMessages > 0)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            width: 16,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: colors.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: colors.surface,
+                                width: 2,
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                chat.newMessages > 9
+                                    ? '9+'
+                                    : chat.newMessages.toString(),
+                                style: TextStyle(
+                                  color: colors.onPrimary,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: 56,
+                    child: isGroupChat
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.group,
+                                size: 10,
+                                color: colors.onSurface,
+                              ),
+                              const SizedBox(width: 2),
+                              Expanded(
+                                child: Text(
+                                  chat.title?.isNotEmpty == true
+                                      ? chat.title!
+                                      : "Группа (${chat.participantIds.length})",
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colors.onSurface,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Text(
+                            isSavedMessages
+                                ? "Избранное"
+                                : (contact?.name ?? 'Unknown'),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colors.onSurface,
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _onFolderTabChanged() {
+    if (!_folderTabController.indexIsChanging) {
+      final index = _folderTabController.index;
+      final folderId = index == 0 ? null : _folders[index - 1].id;
+
+      if (_selectedFolderId != folderId) {
+        setState(() {
+          _selectedFolderId = folderId;
+        });
+        _filterChats();
+      }
+    }
+  }
+
+  List<Widget> _buildFolderPages() {
+    final List<Widget> pages = [
+      _buildChatsListForFolder(null),
+      ..._folders.map((folder) => _buildChatsListForFolder(folder)),
+    ];
+
+    return pages;
+  }
+
+  Widget _buildChatsListForFolder(ChatFolder? folder) {
+    List<Chat> chatsForFolder = _allChats;
+
+    if (folder != null) {
+      chatsForFolder = _allChats
+          .where((chat) => _chatBelongsToFolder(chat, folder))
+          .toList();
+    }
+
+    chatsForFolder.sort((a, b) {
+      final aIsSaved = _isSavedMessages(a);
+      final bIsSaved = _isSavedMessages(b);
+      if (aIsSaved && !bIsSaved) return -1;
+      if (!aIsSaved && bIsSaved) return 1;
+      if (aIsSaved && bIsSaved) {
+        if (a.id == 0) return -1;
+        if (b.id == 0) return 1;
+      }
+      return 0;
+    });
+
+    final query = _searchController.text.toLowerCase();
+    if (query.isNotEmpty) {
+      chatsForFolder = chatsForFolder.where((chat) {
+        final isSavedMessages = _isSavedMessages(chat);
+        if (isSavedMessages) {
+          return "избранное".contains(query);
+        }
+        final otherParticipantId = chat.participantIds.firstWhere(
+          (id) => id != chat.ownerId,
+          orElse: () => 0,
+        );
+        final contactName =
+            _contacts[otherParticipantId]?.name.toLowerCase() ?? '';
+        return contactName.contains(query);
+      }).toList();
+    }
+
+    if (chatsForFolder.isEmpty) {
+      return Center(
+        child: Text(
+          folder == null ? 'Нет чатов' : 'В этой папке пока нет чатов',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: chatsForFolder.length,
+      itemBuilder: (context, index) {
+        return _buildChatListItem(chatsForFolder[index], index);
+      },
+    );
+  }
+
+  Widget _buildFolderTabs() {
+    final colors = Theme.of(context).colorScheme;
+
+    final List<Widget> tabs = [
+      Tab(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [Text('Все чаты', style: TextStyle(fontSize: 14))],
+        ),
+      ),
+      ..._folders.map(
+        (folder) => Tab(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (folder.emoji != null) ...[
+                Text(folder.emoji!, style: const TextStyle(fontSize: 16)),
+                const SizedBox(width: 6),
+              ],
+              Text(folder.title, style: const TextStyle(fontSize: 14)),
+            ],
+          ),
+        ),
+      ),
+    ];
+
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border(
+          bottom: BorderSide(color: colors.outline.withOpacity(0.2), width: 1),
+        ),
+      ),
+      child: TabBar(
+        controller: _folderTabController,
+        isScrollable: true,
+        labelColor: colors.primary,
+        unselectedLabelColor: colors.onSurfaceVariant,
+        indicator: UnderlineTabIndicator(
+          borderSide: BorderSide(width: 3, color: colors.primary),
+          insets: const EdgeInsets.symmetric(horizontal: 16),
+        ),
+        indicatorSize: TabBarIndicatorSize.label,
+        labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        unselectedLabelStyle: const TextStyle(
+          fontWeight: FontWeight.normal,
+          fontSize: 14,
+        ),
+        dividerColor: Colors.transparent,
+        tabs: tabs,
+        onTap: (index) {},
+      ),
+    );
+  }
+
+  Widget _buildDebugRefreshPanel(BuildContext context) {
+    final theme = context.watch<ThemeProvider>();
+    if (!theme.debugShowChatsRefreshPanel) return const SizedBox.shrink();
+    final bool hasBottomBar = theme.debugShowBottomBar;
+    final double bottomPadding = hasBottomBar ? 80.0 : 20.0;
+    final colors = Theme.of(context).colorScheme;
+    return Positioned(
+      left: 12,
+      right: 12,
+      bottom: bottomPadding,
+      child: SafeArea(
+        top: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Material(
+              color: colors.surface.withOpacity(0.95),
+              elevation: 6,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () async {
+
+                  SchedulerBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      setState(() {
+                        _allChats.clear();
+                        _filteredChats.clear();
+                        _chatsFuture = ApiService.instance.getChatsAndContacts(
+                          force: true,
+                        );
+                      });
+                    }
+                  });
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.refresh),
+                      const SizedBox(width: 8),
+                      const Text('Обновить список чатов'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusRow({
+    required Key key,
+    required String text,
+    required Widget icon,
+  }) {
+    return Row(
+      key: key,
+      children: [
+        SizedBox(width: 18, height: 18, child: Center(child: icon)),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCurrentTitleWidget() {
+    final colors = Theme.of(context).colorScheme;
+    final onSurfaceVariant = colors.onSurfaceVariant;
+
+    if (_connectionStatus == 'connecting') {
+      return _buildStatusRow(
+        key: const ValueKey('status_connecting'),
+        text: 'Подключение...',
+        icon: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: onSurfaceVariant,
+        ),
+      );
+    }
+
+    if (_connectionStatus == 'authorizing') {
+      return _buildStatusRow(
+        key: const ValueKey('status_authorizing'),
+        text: 'Авторизация...',
+        icon: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: onSurfaceVariant,
+        ),
+      );
+    }
+
+    if (_connectionStatus == 'disconnected' ||
+        _connectionStatus == 'Все серверы недоступны') {
+      return _buildStatusRow(
+        key: const ValueKey('status_error'),
+        text: 'Нет сети',
+        icon: Icon(Icons.cloud_off, size: 18, color: colors.error),
+      );
+    }
+
+    if (_isProfileLoading) {
+      return _buildStatusRow(
+        key: const ValueKey('status_loading'),
+        text: 'Загрузка...',
+        icon: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: onSurfaceVariant,
+        ),
+      );
+    }
+
+    return Text(
+      _myProfile?.displayName ?? 'Komet',
+      key: const ValueKey('status_username'),
+      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    );
+  }
+
+  AppBar _buildAppBar(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return AppBar(
+      titleSpacing: 4.0,
+
+      leading: _isSearchExpanded
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: _clearSearch,
+            )
+          : Builder(
+              builder: (context) {
+                return IconButton(
+                  icon: const Icon(Icons.menu_rounded),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                  tooltip: 'Меню',
+                );
+              },
+            ),
+
+      title: _isSearchExpanded
+          ? _buildSearchField(colors)
+          : Row(
+              children: [
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    transitionBuilder:
+                        (Widget child, Animation<double> animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          );
+                        },
+                    layoutBuilder: (currentChild, previousChildren) {
+                      return Stack(
+                        alignment: Alignment.centerLeft,
+                        children: [
+                          ...previousChildren,
+                          if (currentChild != null) currentChild,
+                        ],
+                      );
+                    },
+                    child: _buildCurrentTitleWidget(),
+                  ),
+                ),
+              ],
+            ),
+      actions: _isSearchExpanded
+          ? [
+              if (_searchQuery.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(left: 4),
+                  child: IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      _searchController.clear();
+                    },
+                  ),
+                ),
+              Container(
+                margin: const EdgeInsets.only(left: 4),
+                child: IconButton(
+                  icon: const Icon(Icons.filter_list),
+                  onPressed: _showSearchFilters,
+                ),
+              ),
+            ]
+          : [
+              IconButton(
+                icon: Image.asset(
+                  'assets/images/spermum.webp',
+                  width: 28,
+                  height: 28,
+                ),
+                onPressed: _openSferum,
+                tooltip: 'Сферум',
+              ),
+              IconButton(
+                icon: const Icon(Icons.download),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const DownloadsScreen(),
+                    ),
+                  );
+                },
+                tooltip: 'Загрузки',
+              ),
+              InkWell(
+
+                onTap: () {
+                  setState(() {
+                    _isSearchExpanded = true;
+                  });
+                  _searchAnimationController.forward();
+                  _searchFocusNode.requestFocus();
+                },
+
+                onLongPress: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const UserIdLookupScreen(),
+                    ),
+                  );
+                },
+                customBorder: const CircleBorder(),
+                child: Container(
+                  padding: const EdgeInsets.all(8.0),
+                  child: const Icon(Icons.search),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+    );
+  }
+
+  Widget _buildWelcomeMessage() {
+    return Text(
+      'Привет! Это твои избранные. Все написанное сюда попадёт прямиком к дяде Майору.',
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        fontSize: 12,
+        fontStyle: FontStyle.italic,
+      ),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  Widget _buildSearchField(ColorScheme colors) {
+    return SizedBox(
+      height: 40,
+      child: TextField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        autofocus: true,
+        decoration: InputDecoration(
+          contentPadding: EdgeInsets.zero,
+          prefixIcon: Icon(
+            Icons.search,
+            color: colors.onSurfaceVariant,
+            size: 18,
+          ),
+          hintText: 'Поиск в чатах...',
+          hintStyle: TextStyle(color: colors.onSurfaceVariant),
+          filled: true,
+          fillColor: colors.surfaceContainerHighest.withOpacity(0.3),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide.none,
+          ),
+        ),
+        style: const TextStyle(fontSize: 16),
+      ),
+    );
+  }
+
+  void _navigateToProfileEdit() {
+    if (_myProfile != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => ManageAccountScreen(myProfile: _myProfile!),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Профиль еще не загружен')));
+    }
+  }
+
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Выход из аккаунта'),
+          content: const Text('Вы действительно хотите выйти из аккаунта?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Отмена'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _logout();
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Выйти'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _logout() async {
+    try {
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const PhoneEntryScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Ошибка при выходе: $e')));
+      }
+    }
+  }
+
+  void _showSearchFilters() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Фильтры поиска',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 16),
+            _buildFilterOption('all', 'Все чаты', Icons.chat_bubble_outline),
+            _buildFilterOption('recent', 'Недавние', Icons.access_time),
+            _buildFilterOption(
+              'channels',
+              'Каналы',
+              Icons.broadcast_on_personal,
+            ),
+            _buildFilterOption('groups', 'Группы', Icons.group),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterOption(String value, String title, IconData icon) {
+    final isSelected = _searchFilter == value;
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: isSelected ? Theme.of(context).colorScheme.primary : null,
+      ),
+      title: Text(title),
+      trailing: isSelected ? const Icon(Icons.check) : null,
+      onTap: () {
+        setState(() {
+          _searchFilter = value;
+        });
+        Navigator.pop(context);
+        _performSearch();
+      },
+    );
+  }
+
+  Widget _buildLastMessagePreview(Chat chat) {
+    final message = chat.lastMessage;
+
+
+
+    if (message.attaches.isNotEmpty) {
+
+      for (final attach in message.attaches) {
+        final type = attach['_type'];
+        if (type == 'CALL' || type == 'call') {
+
+          return _buildCallPreview(attach, message, chat);
+        }
+      }
+    }
+
+
+    if (message.text.isEmpty && message.attaches.isNotEmpty) {
+      return Text('Вложение', maxLines: 1, overflow: TextOverflow.ellipsis);
+    }
+
+
+    return Text(message.text, maxLines: 1, overflow: TextOverflow.ellipsis);
+  }
+
+  Widget _buildSearchMessagePreview(Chat chat, String matchedText) {
+    final message = chat.lastMessage;
+
+
+    if (message.attaches.isNotEmpty) {
+      final callAttachments = message.attaches.where((attach) {
+        final type = attach['_type'];
+        return type == 'CALL' || type == 'call';
+      }).toList();
+
+      if (callAttachments.isNotEmpty) {
+
+        return _buildCallPreview(callAttachments.first, message, chat);
+      }
+    }
+
+
+    if (message.text.isEmpty && message.attaches.isNotEmpty) {
+      return Text('Вложение', maxLines: 1, overflow: TextOverflow.ellipsis);
+    }
+
+    return _buildHighlightedText(message.text, matchedText);
+  }
+
+  Widget _buildCallPreview(
+    Map<String, dynamic> callAttach,
+    Message message,
+    Chat chat,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    final hangupType = callAttach['hangupType'] as String? ?? '';
+    final callType = callAttach['callType'] as String? ?? 'AUDIO';
+    final duration = callAttach['duration'] as int? ?? 0;
+
+    String callText;
+    IconData callIcon;
+    Color? callColor;
+
+
+    switch (hangupType) {
+      case 'HUNGUP':
+
+        final minutes = duration ~/ 60000;
+        final seconds = (duration % 60000) ~/ 1000;
+        final durationText = minutes > 0
+            ? '$minutes:${seconds.toString().padLeft(2, '0')}'
+            : '$seconds сек';
+
+        final callTypeText = callType == 'VIDEO' ? 'Видеозвонок' : 'Звонок';
+        callText = '$callTypeText, $durationText';
+        callIcon = callType == 'VIDEO' ? Icons.videocam : Icons.call;
+        callColor = colors.primary;
+        break;
+
+      case 'MISSED':
+
+        final callTypeText = callType == 'VIDEO'
+            ? 'Пропущенный видеозвонок'
+            : 'Пропущенный звонок';
+        callText = callTypeText;
+        callIcon = callType == 'VIDEO' ? Icons.videocam_off : Icons.call_missed;
+        callColor = colors.error;
+        break;
+
+      case 'CANCELED':
+
+        final callTypeText = callType == 'VIDEO'
+            ? 'Видеозвонок отменен'
+            : 'Звонок отменен';
+        callText = callTypeText;
+        callIcon = callType == 'VIDEO' ? Icons.videocam_off : Icons.call_end;
+        callColor = colors.onSurfaceVariant;
+        break;
+
+      case 'REJECTED':
+
+        final callTypeText = callType == 'VIDEO'
+            ? 'Видеозвонок отклонен'
+            : 'Звонок отклонен';
+        callText = callTypeText;
+        callIcon = callType == 'VIDEO' ? Icons.videocam_off : Icons.call_end;
+        callColor = colors.onSurfaceVariant;
+        break;
+
+      default:
+
+        callText = callType == 'VIDEO' ? 'Видеозвонок' : 'Звонок';
+        callIcon = callType == 'VIDEO' ? Icons.videocam : Icons.call;
+        callColor = colors.onSurfaceVariant;
+        break;
+    }
+
+    return Row(
+      children: [
+        Icon(callIcon, size: 16, color: callColor),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            callText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: callColor),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChatListItem(Chat chat, int index) {
+    final colors = Theme.of(context).colorScheme;
+
+    final bool isSavedMessages = _isSavedMessages(chat);
+    final bool isGroupChat = _isGroupChat(chat);
+    final bool isChannel = chat.type == 'CHANNEL';
+
+    Contact? contact;
+    String title;
+    final String? avatarUrl;
+    IconData leadingIcon;
+
+    if (isSavedMessages) {
+      contact = _contacts[chat.ownerId];
+      title = "Избранное";
+      leadingIcon = Icons.bookmark;
+      avatarUrl = null;
+    } else if (isChannel) {
+      contact = null;
+      title = chat.title ?? "Канал";
+      leadingIcon = Icons.campaign;
+      avatarUrl = chat.baseIconUrl;
+    } else if (isGroupChat) {
+      contact = null;
+      title = chat.title?.isNotEmpty == true
+          ? chat.title!
+          : "Группа (${chat.participantIds.length} участников)";
+      leadingIcon = Icons.group;
+      avatarUrl = chat.baseIconUrl;
+    } else {
+      final myId = chat.ownerId;
+      final otherParticipantId = chat.participantIds.firstWhere(
+        (id) => id != myId,
+        orElse: () => myId,
+      );
+      contact = _contacts[otherParticipantId];
+
+      title = contact?.name ?? "Неизвестный чат";
+      avatarUrl = contact?.photoBaseUrl;
+      leadingIcon = Icons.person;
+    }
+
+    return ListTile(
+      key: ValueKey(chat.id),
+
+      onTap: () {
+        final theme = context.read<ThemeProvider>();
+        if (theme.debugReadOnEnter) {
+          final chatIndex = _allChats.indexWhere((c) => c.id == chat.id);
+          if (chatIndex != -1) {
+            final oldChat = _allChats[chatIndex];
+            if (oldChat.newMessages > 0) {
+              final updatedChat = oldChat.copyWith(newMessages: 0);
+              SchedulerBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() {
+                    _allChats[chatIndex] = updatedChat;
+                    _filterChats();
+                  });
+                }
+              });
+            }
+          }
+        }
+
+        final Contact contactFallback =
+            contact ??
+            Contact(
+              id: chat.id,
+              name: title,
+              firstName: "",
+              lastName: "",
+              photoBaseUrl: avatarUrl,
+              description: isChannel ? chat.description : null,
+              isBlocked: false,
+              isBlockedByMe: false,
+            );
+
+
+        final participantCount =
+            chat.participantsCount ?? chat.participantIds.length;
+
+        if (widget.onChatSelected != null) {
+          widget.onChatSelected!(
+            chat,
+            contactFallback,
+            isGroupChat,
+            isChannel,
+            participantCount,
+          );
+        } else {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => ChatScreen(
+                chatId: chat.id,
+                contact: contactFallback,
+                myId: chat.ownerId,
+                isGroupChat: isGroupChat,
+                isChannel: isChannel,
+                participantCount: participantCount,
+                onChatUpdated: () {
+                  print('Chat updated, но не обновляем список чатов...');
+                },
+              ),
+            ),
+          );
+        }
+      },
+      leading: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: colors.primaryContainer,
+
+            backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+
+            child: avatarUrl == null
+                ? (isSavedMessages || isGroupChat || isChannel)
+
+                      ? Icon(leadingIcon, color: colors.onPrimaryContainer)
+
+                      : Text(
+                          title.isNotEmpty ? title[0].toUpperCase() : '?',
+                          style: TextStyle(color: colors.onPrimaryContainer),
+                        )
+                : null,
+          ),
+          Positioned(
+            right: -4,
+            bottom: -2,
+            child: _typingChats.contains(chat.id)
+                ? _TypingDots(color: colors.primary, size: 20)
+                : (_onlineChats.contains(chat.id)
+                      ? _PresenceDot(isOnline: true, size: 12)
+                      : const SizedBox.shrink()),
+          ),
+        ],
+      ),
+      title: Row(
+        children: [
+          if (isGroupChat) ...[
+            Icon(Icons.group, size: 16, color: colors.onSurfaceVariant),
+            const SizedBox(width: 6),
+          ],
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+      subtitle: chat.lastMessage.text.contains("welcome.saved.dialog.message")
+          ? _buildWelcomeMessage()
+          : _buildLastMessagePreview(chat),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            _formatTimestamp(chat.lastMessage.time),
+            style: TextStyle(
+              color: chat.newMessages > 0
+                  ? colors.primary
+                  : colors.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+          if (chat.newMessages > 0 && !isSavedMessages) ...[
+            const SizedBox(height: 4),
+            CircleAvatar(
+              radius: 10,
+              backgroundColor: colors.primary,
+              child: Text(
+                chat.newMessages.toString(),
+                style: TextStyle(color: colors.onPrimary, fontSize: 12),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _apiSubscription?.cancel();
+    _connectionStatusSubscription?.cancel();
+    _connectionStateSubscription?.cancel();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    _searchDebounceTimer?.cancel();
+    _searchAnimationController.dispose();
+    _folderTabController.dispose();
+    super.dispose();
+  }
+}
+
+class _TypingDots extends StatefulWidget {
+  final Color color;
+  final double size;
+  const _TypingDots({required this.color, this.size = 18});
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget.size;
+    return SizedBox(
+      width: w,
+      height: w * 0.6,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) {
+          final t = _c.value;
+          double a(int i) => 0.3 + 0.7 * ((t + i / 3) % 1.0);
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(3, (i) {
+              return Opacity(
+                opacity: a(i),
+                child: Container(
+                  width: w * 0.22,
+                  height: w * 0.22,
+                  decoration: BoxDecoration(
+                    color: widget.color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              );
+            }),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _PresenceDot extends StatelessWidget {
+  final bool isOnline;
+  final double size;
+  const _PresenceDot({required this.isOnline, this.size = 10});
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isOnline ? colors.primary : colors.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+class CallsScreen extends StatelessWidget {
+  const CallsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Звонки')),
+      body: const Center(child: Text('Звонки скоро будут доступны')),
+    );
+  }
+}
+
+class SferumWebViewPanel extends StatefulWidget {
+  final String url;
+
+  const SferumWebViewPanel({super.key, required this.url});
+
+  @override
+  State<SferumWebViewPanel> createState() => _SferumWebViewPanelState();
+}
+
+class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
+  bool _isLoading = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.9,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: colors.outline.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Image.asset(
+                      'assets/images/spermum.webp',
+                      width: 28,
+                      height: 28,
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Сферум',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+              ),
+
+              Expanded(
+                child: Stack(
+                  children: [
+                    InAppWebView(
+                      initialUrlRequest: URLRequest(url: WebUri(widget.url)),
+                      initialSettings: InAppWebViewSettings(
+                        javaScriptEnabled: true,
+                        transparentBackground: true,
+                        useShouldOverrideUrlLoading: false,
+                        useOnLoadResource: false,
+                        useOnDownloadStart: false,
+                        cacheEnabled: true,
+                      ),
+                      onLoadStart: (controller, url) {
+                        print('🌐 WebView начало загрузки: $url');
+                        setState(() {
+                          _isLoading = true;
+                        });
+                      },
+                      onLoadStop: (controller, url) {
+                        print('✅ WebView загрузка завершена: $url');
+                        setState(() {
+                          _isLoading = false;
+                        });
+                      },
+                      onReceivedError: (controller, request, error) {
+                        print(
+                          '❌ WebView ошибка: ${error.description} (${error.type})',
+                        );
+                      },
+                    ),
+                    if (_isLoading)
+                      Container(
+                        color: colors.surface,
+                        child: const Center(child: CircularProgressIndicator()),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}

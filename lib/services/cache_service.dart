@@ -1,0 +1,332 @@
+
+
+import 'dart:async';
+import 'dart:io';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
+
+
+class CacheService {
+  static final CacheService _instance = CacheService._internal();
+  factory CacheService() => _instance;
+  CacheService._internal();
+
+
+  final Map<String, dynamic> _memoryCache = {};
+  final Map<String, DateTime> _cacheTimestamps = {};
+
+
+  static const Duration _defaultTTL = Duration(hours: 24);
+  static const int _maxMemoryCacheSize = 1000;
+
+
+  SharedPreferences? _prefs;
+
+
+  Directory? _cacheDirectory;
+
+
+  Future<void> initialize() async {
+    _prefs = await SharedPreferences.getInstance();
+    _cacheDirectory = await getApplicationCacheDirectory();
+
+
+    await _createCacheDirectories();
+
+    print('CacheService инициализирован');
+  }
+
+
+  Future<void> _createCacheDirectories() async {
+    if (_cacheDirectory == null) return;
+
+    final directories = ['avatars', 'images', 'files', 'chats', 'contacts'];
+
+    for (final dir in directories) {
+      final directory = Directory('${_cacheDirectory!.path}/$dir');
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+    }
+  }
+
+
+  Future<T?> get<T>(String key, {Duration? ttl}) async {
+
+    if (_memoryCache.containsKey(key)) {
+      final timestamp = _cacheTimestamps[key];
+      if (timestamp != null && !_isExpired(timestamp, ttl ?? _defaultTTL)) {
+        return _memoryCache[key] as T?;
+      } else {
+
+        _memoryCache.remove(key);
+        _cacheTimestamps.remove(key);
+      }
+    }
+
+
+    if (_prefs != null) {
+      try {
+        final cacheKey = 'cache_$key';
+        final cachedData = _prefs!.getString(cacheKey);
+
+        if (cachedData != null) {
+          final Map<String, dynamic> data = jsonDecode(cachedData);
+          final timestamp = DateTime.fromMillisecondsSinceEpoch(
+            data['timestamp'],
+          );
+          final value = data['value'];
+
+          if (!_isExpired(timestamp, ttl ?? _defaultTTL)) {
+
+            _memoryCache[key] = value;
+            _cacheTimestamps[key] = timestamp;
+            return value as T?;
+          }
+        }
+      } catch (e) {
+        print('Ошибка получения данных из кэша: $e');
+      }
+    }
+
+    return null;
+  }
+
+
+  Future<void> set<T>(String key, T value, {Duration? ttl}) async {
+    final timestamp = DateTime.now();
+
+
+    _memoryCache[key] = value;
+    _cacheTimestamps[key] = timestamp;
+
+
+    if (_memoryCache.length > _maxMemoryCacheSize) {
+      await _evictOldestMemoryCache();
+    }
+
+
+    if (_prefs != null) {
+      try {
+        final cacheKey = 'cache_$key';
+        final data = {
+          'value': value,
+          'timestamp': timestamp.millisecondsSinceEpoch,
+          'ttl': (ttl ?? _defaultTTL).inMilliseconds,
+        };
+
+        await _prefs!.setString(cacheKey, jsonEncode(data));
+      } catch (e) {
+        print('Ошибка сохранения данных в кэш: $e');
+      }
+    }
+  }
+
+
+  Future<void> remove(String key) async {
+    _memoryCache.remove(key);
+    _cacheTimestamps.remove(key);
+
+    if (_prefs != null) {
+      try {
+        final cacheKey = 'cache_$key';
+        await _prefs!.remove(cacheKey);
+      } catch (e) {
+        print('Ошибка удаления данных из кэша: $e');
+      }
+    }
+  }
+
+
+  Future<void> clear() async {
+    _memoryCache.clear();
+    _cacheTimestamps.clear();
+
+    if (_prefs != null) {
+      try {
+
+        final keys = _prefs!.getKeys().where((key) => key.startsWith('cache_'));
+        for (final key in keys) {
+          await _prefs!.remove(key);
+        }
+      } catch (e) {
+        print('Ошибка очистки кэша: $e');
+      }
+    }
+
+
+    if (_cacheDirectory != null) {
+      try {
+        for (final dir in ['avatars', 'images', 'files', 'chats', 'contacts']) {
+          final directory = Directory('${_cacheDirectory!.path}/$dir');
+          if (await directory.exists()) {
+            await directory.delete(recursive: true);
+            await directory.create(recursive: true);
+          }
+        }
+      } catch (e) {
+        print('Ошибка очистки файлового кэша: $e');
+      }
+    }
+  }
+
+
+  bool _isExpired(DateTime timestamp, Duration ttl) {
+    return DateTime.now().difference(timestamp) > ttl;
+  }
+
+
+  Future<void> _evictOldestMemoryCache() async {
+    if (_memoryCache.isEmpty) return;
+
+
+    final sortedEntries = _cacheTimestamps.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+
+    final toRemove = (sortedEntries.length * 0.2).ceil();
+    for (int i = 0; i < toRemove && i < sortedEntries.length; i++) {
+      final key = sortedEntries[i].key;
+      _memoryCache.remove(key);
+      _cacheTimestamps.remove(key);
+    }
+  }
+
+
+  Future<Map<String, int>> getCacheSize() async {
+    final memorySize = _memoryCache.length;
+
+
+    int filesSize = 0;
+    if (_cacheDirectory != null) {
+      try {
+        await for (final entity in _cacheDirectory!.list(recursive: true)) {
+          if (entity is File) {
+            filesSize += await entity.length();
+          }
+        }
+      } catch (e) {
+        print('Ошибка подсчета размера файлового кэша: $e');
+      }
+    }
+
+    return {
+      'memory': memorySize,
+      'database': 0, // Нет SQLite базы данных
+      'files': filesSize,
+      'total': filesSize,
+    };
+  }
+
+
+  Future<String?> cacheFile(String url, {String? customKey}) async {
+    if (_cacheDirectory == null) return null;
+
+    try {
+
+      final fileName = _generateFileName(url, customKey);
+      final filePath = '${_cacheDirectory!.path}/images/$fileName';
+
+
+      final existingFile = File(filePath);
+      if (await existingFile.exists()) {
+        return filePath;
+      }
+
+
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+
+        await existingFile.writeAsBytes(response.bodyBytes);
+        return filePath;
+      }
+    } catch (e) {
+      print('Ошибка кэширования файла $url: $e');
+    }
+
+    return null;
+  }
+
+
+  Future<File?> getCachedFile(String url, {String? customKey}) async {
+    if (_cacheDirectory == null) return null;
+
+    try {
+      final fileName = _generateFileName(url, customKey);
+      final filePath = '${_cacheDirectory!.path}/images/$fileName';
+
+      final file = File(filePath);
+      if (await file.exists()) {
+        return file;
+      }
+    } catch (e) {
+      print('Ошибка получения кэшированного файла: $e');
+    }
+
+    return null;
+  }
+
+
+  String _generateFileName(String url, String? customKey) {
+    final key = customKey ?? url;
+    final hash = key.hashCode.abs().toString().substring(0, 16);
+    final extension = _getFileExtension(url);
+    return '$hash$extension';
+  }
+
+
+  String _getFileExtension(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final path = uri.path;
+      final extension = path.substring(path.lastIndexOf('.'));
+      return extension.isNotEmpty && extension.length < 10 ? extension : '.jpg';
+    } catch (e) {
+      return '.jpg';
+    }
+  }
+
+
+  Future<bool> hasCachedFile(String url, {String? customKey}) async {
+    final file = await getCachedFile(url, customKey: customKey);
+    return file != null;
+  }
+
+
+  Future<Map<String, dynamic>> getDetailedCacheStats() async {
+    final memorySize = _memoryCache.length;
+    final cacheSize = await getCacheSize();
+
+    return {
+      'memory': {'items': memorySize, 'max_items': _maxMemoryCacheSize},
+      'filesystem': {
+        'total_size': cacheSize['total'],
+        'files_size': cacheSize['files'],
+      },
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    };
+  }
+
+
+  Future<void> removeCachedFile(String url, {String? customKey}) async {
+
+
+  }
+
+
+  Future<Map<String, dynamic>> getCacheStats() async {
+    final sizes = await getCacheSize();
+    final memoryEntries = _memoryCache.length;
+    final diskEntries =
+        _prefs?.getKeys().where((key) => key.startsWith('cache_')).length ?? 0;
+
+    return {
+      'memoryEntries': memoryEntries,
+      'diskEntries': diskEntries,
+      'memorySize': sizes['memory'],
+      'filesSizeMB': (sizes['files']! / (1024 * 1024)).toStringAsFixed(2),
+      'maxMemorySize': _maxMemoryCacheSize,
+    };
+  }
+}
