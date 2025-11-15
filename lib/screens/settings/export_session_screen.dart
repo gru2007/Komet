@@ -1,9 +1,10 @@
 
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:file_saver/file_saver.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:gwid/api_service.dart';
 import 'package:gwid/proxy_service.dart';
 import 'package:gwid/spoofing_service.dart';
@@ -22,7 +23,6 @@ class _ExportSessionScreenState extends State<ExportSessionScreen> {
   bool _isPasswordVisible = false;
   bool _isExporting = false;
   bool _saveProxySettings = false;
-
 
   Future<void> _exportAndSaveSession() async {
     if (!mounted) return;
@@ -73,32 +73,30 @@ class _ExportSessionScreenState extends State<ExportSessionScreen> {
 
       Uint8List bytes = Uint8List.fromList(utf8.encode(finalFileContent));
 
-      String? filePath = await FileSaver.instance.saveAs(
-        name: 'komet_session_${DateTime.now().millisecondsSinceEpoch}',
-        bytes: bytes,
-        fileExtension: 'json',
-        mimeType: MimeType.json,
-      );
+      final Directory directory = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+      final String filePath = '${directory.path}/komet_session_${DateTime.now().millisecondsSinceEpoch}.ksession';
+      
+      final File file = File(filePath);
+      await file.writeAsBytes(bytes);
 
-      if (filePath != null && mounted) {
+      if (mounted) {
         messenger.showSnackBar(
-          const SnackBar(
-            content: Text('Файл сессии успешно сохранен'),
+          SnackBar(
+            content: Text('Файл сессии успешно сохранен: $filePath'),
             backgroundColor: Colors.green,
           ),
         );
-      } else if (mounted) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Сохранение файла было отменено.')),
-        );
       }
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(
-          backgroundColor: Colors.red,
-          content: Text('Не удалось экспортировать сессию: $e'),
-        ),
-      );
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red,
+            content: Text('Не удалось экспортировать сессию: $e'),
+          ),
+        );
+      }
+      rethrow;
     } finally {
       if (mounted) {
         setState(() => _isExporting = false);

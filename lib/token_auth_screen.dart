@@ -104,7 +104,7 @@ class _TokenAuthScreenState extends State<TokenAuthScreen> {
 
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['json'],
+      allowedExtensions: ['json','ksession'],
     );
     if (result == null || result.files.single.path == null) return;
     final filePath = result.files.single.path!;
@@ -322,7 +322,7 @@ class _TokenAuthScreenState extends State<TokenAuthScreen> {
                 icon: Icons.file_open_outlined,
                 title: 'Вход по файлу сессии',
                 subtitle:
-                    'Загрузите ранее экспортированный .json файл для восстановления сессии.',
+                    'Загрузите ранее экспортированный .json или .ksession файл для восстановления сессии.',
                 buttonLabel: 'Загрузить файл',
                 onPressed: _loadSessionFile,
                 isOutlined: true,
