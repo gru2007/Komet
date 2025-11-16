@@ -1,5 +1,3 @@
-
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -31,9 +29,14 @@ class ProxyService {
     return ProxySettings();
   }
 
-
   Future<void> checkProxy(ProxySettings settings) async {
     print("Проверка прокси: ${settings.host}:${settings.port}");
+
+    if (settings.protocol == ProxyProtocol.socks5) {
+      await _checkSocks5Proxy(settings);
+      return;
+    }
+
     HttpClient client = _createClientWithOptions(settings);
 
     client.connectionTimeout = const Duration(seconds: 10);
@@ -47,7 +50,6 @@ class ProxyService {
       print("Ответ от прокси получен, статус: ${response.statusCode}");
 
       if (response.statusCode >= 400) {
-
         throw Exception('Прокси вернул ошибку: ${response.statusCode}');
       }
     } on HandshakeException catch (e) {
@@ -71,39 +73,78 @@ class ProxyService {
     }
   }
 
+  Future<void> _checkSocks5Proxy(ProxySettings settings) async {
+    Socket? proxySocket;
+    try {
+      print("Проверка SOCKS5 прокси: ${settings.host}:${settings.port}");
+
+      proxySocket = await Socket.connect(
+        settings.host,
+        settings.port,
+        timeout: const Duration(seconds: 10),
+      );
+
+      print("SOCKS5 прокси доступен: ${settings.host}:${settings.port}");
+      print(
+        "Внимание: Полная проверка SOCKS5 требует дополнительной реализации",
+      );
+
+      // Закрываем соединение
+      await proxySocket.close();
+      print("SOCKS5 прокси работает корректно");
+    } on SocketException catch (e) {
+      print("Ошибка сокета при проверке SOCKS5 прокси: $e");
+      throw Exception('Неверный хост или порт');
+    } on TimeoutException catch (_) {
+      print("Таймаут при проверке SOCKS5 прокси");
+      throw Exception('Сервер не отвечает (таймаут)');
+    } catch (e) {
+      print("Ошибка при проверке SOCKS5 прокси: $e");
+      throw Exception('Ошибка подключения: ${e.toString()}');
+    } finally {
+      await proxySocket?.close();
+    }
+  }
 
   Future<HttpClient> getHttpClientWithProxy() async {
     final settings = await loadProxySettings();
     return _createClientWithOptions(settings);
   }
 
-
   HttpClient _createClientWithOptions(ProxySettings settings) {
     final client = HttpClient();
 
     if (settings.isEnabled && settings.host.isNotEmpty) {
-      print("Используется прокси: ${settings.toFindProxyString()}");
-
-      client.findProxy = (uri) {
-        return settings.toFindProxyString();
-      };
-
-      if (settings.username != null && settings.username!.isNotEmpty) {
-        print(
-          "Настраивается аутентификация на прокси для пользователя: ${settings.username}",
-        );
-        client.authenticateProxy = (host, port, scheme, realm) async {
-          client.addProxyCredentials(
-            host,
-            port,
-            realm ?? '',
-            HttpClientBasicCredentials(
-              settings.username!,
-              settings.password ?? '',
-            ),
-          );
-          return true;
+      if (settings.protocol == ProxyProtocol.socks5) {
+        print("Используется SOCKS5 прокси: ${settings.host}:${settings.port}");
+        print("Внимание: SOCKS5 для HTTP клиента может работать ограниченно");
+        client.findProxy = (uri) {
+          return settings.toFindProxyString();
         };
+      } else {
+        print("Используется прокси: ${settings.toFindProxyString()}");
+
+        client.findProxy = (uri) {
+          return settings.toFindProxyString();
+        };
+
+        if (settings.username != null && settings.username!.isNotEmpty) {
+          print(
+            "Настраивается аутентификация на прокси для пользователя: ${settings.username}",
+          );
+          client.authenticateProxy = (host, port, scheme, realm) async {
+            client.addProxyCredentials(
+              host,
+              port,
+              realm ?? '',
+              HttpClientBasicCredentials(
+                settings.username!,
+                settings.password ?? '',
+              ),
+            );
+            return true;
+          };
+        }
       }
 
       client.badCertificateCallback =

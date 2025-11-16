@@ -168,7 +168,14 @@ class ApiService {
   Future<void> _connectToUrl(String url) async {
     _isSessionOnline = false;
     _onlineCompleter = Completer<void>();
-    _chatsFetchedInThisSession = false;
+    final bool hadChatsFetched = _chatsFetchedInThisSession;
+    final bool hasValidToken = authToken != null;
+
+    if (!hasValidToken) {
+      _chatsFetchedInThisSession = false;
+    } else {
+      _chatsFetchedInThisSession = hadChatsFetched;
+    }
 
     _connectionStatusController.add('connecting');
 
@@ -192,7 +199,7 @@ class ApiService {
 
     if (proxySettings.isEnabled && proxySettings.host.isNotEmpty) {
       print(
-        'Используем HTTP/HTTPS прокси ${proxySettings.host}:${proxySettings.port}',
+        'Используем ${proxySettings.protocol.name.toUpperCase()} прокси ${proxySettings.host}:${proxySettings.port}',
       );
       final customHttpClient = await ProxyService.instance
           .getHttpClientWithProxy();
@@ -1250,7 +1257,6 @@ class ApiService {
   void clearChatsCache() {
     _lastChatsPayload = null;
     _lastChatsAt = null;
-    _chatsFetchedInThisSession = false;
     print("Кэш чатов очищен.");
   }
 
@@ -1903,9 +1909,9 @@ class ApiService {
     authToken = token;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('authToken', token);
-    if (_channel != null) {
-      disconnect();
-    }
+
+    disconnect();
+
     await connect();
     await getChatsAndContacts(force: true);
     if (userId != null) {

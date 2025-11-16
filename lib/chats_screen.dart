@@ -351,7 +351,7 @@ class _ChatsScreenState extends State<ChatsScreen>
           final oldChat = _allChats[chatIndex];
 
           if (deletedMessageIds.contains(oldChat.lastMessage.id)) {
-            ApiService.instance.getChatsAndContacts(force: true).then((data) {
+            ApiService.instance.getChatsOnly(force: true).then((data) {
               if (mounted) {
                 final chats = data['chats'] as List<dynamic>;
                 final filtered = chats
@@ -3547,7 +3547,6 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
-                              
                             ),
                           ),
                         ),

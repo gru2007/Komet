@@ -39,7 +39,6 @@ class _PasswordManagementScreenState extends State<PasswordManagementScreen> {
     _apiSubscription = ApiService.instance.messages.listen((message) {
       if (!mounted) return;
 
-
       if (message['type'] == 'password_set_success') {
         setState(() {
           _isLoading = false;
@@ -59,7 +58,6 @@ class _PasswordManagementScreenState extends State<PasswordManagementScreen> {
           ),
         );
       }
-
 
       if (message['cmd'] == 3 && message['opcode'] == 116) {
         setState(() {
@@ -147,7 +145,6 @@ class _PasswordManagementScreenState extends State<PasswordManagementScreen> {
       return;
     }
 
-
     if (!password.contains(RegExp(r'[A-Z]')) ||
         !password.contains(RegExp(r'[a-z]'))) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -166,7 +163,6 @@ class _PasswordManagementScreenState extends State<PasswordManagementScreen> {
       return;
     }
 
-
     if (!password.contains(RegExp(r'[0-9]'))) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -181,7 +177,6 @@ class _PasswordManagementScreenState extends State<PasswordManagementScreen> {
       );
       return;
     }
-
 
     if (!password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -252,7 +247,6 @@ class _PasswordManagementScreenState extends State<PasswordManagementScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -287,7 +281,6 @@ class _PasswordManagementScreenState extends State<PasswordManagementScreen> {
                 ),
 
                 const SizedBox(height: 24),
-
 
                 Text(
                   'Установить пароль',
@@ -337,7 +330,6 @@ class _PasswordManagementScreenState extends State<PasswordManagementScreen> {
                   maxLength: 30,
                 ),
                 const SizedBox(height: 16),
-
 
                 Container(
                   padding: const EdgeInsets.all(12),

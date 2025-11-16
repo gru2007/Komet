@@ -5,6 +5,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:gwid/api_service.dart';
 import 'package:gwid/otp_screen.dart';
+import 'package:gwid/proxy_service.dart';
+import 'package:gwid/screens/settings/proxy_settings_screen.dart';
 import 'package:gwid/screens/settings/session_spoofing_screen.dart';
 import 'package:gwid/token_auth_screen.dart';
 import 'package:gwid/tos_screen.dart'; // Импорт экрана ToS
@@ -61,6 +63,7 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen>
   bool _isButtonEnabled = false;
   bool _isLoading = false;
   bool _hasCustomAnonymity = false;
+  bool _hasProxyConfigured = false;
   StreamSubscription? _apiSubscription;
   bool _showContent = false;
   bool _isTosAccepted = false; // Состояние для отслеживания принятия соглашения
@@ -103,6 +106,7 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen>
 
     _initializeMaskFormatter();
     _checkAnonymitySettings();
+    _checkProxySettings();
     _phoneController.addListener(_onPhoneChanged);
 
     Future.delayed(const Duration(milliseconds: 300), () {
@@ -204,6 +208,19 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen>
     final prefs = await SharedPreferences.getInstance();
     final anonymityEnabled = prefs.getBool('anonymity_enabled') ?? false;
     if (mounted) setState(() => _hasCustomAnonymity = anonymityEnabled);
+  }
+
+  Future<void> _checkProxySettings() async {
+    final settings = await ProxyService.instance.loadProxySettings();
+    if (mounted) {
+      setState(() {
+        _hasProxyConfigured = settings.isEnabled && settings.host.isNotEmpty;
+      });
+    }
+  }
+
+  void refreshProxySettings() {
+    _checkProxySettings();
   }
 
   void _requestOtp() async {
@@ -413,6 +430,8 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen>
                           ),
                           const SizedBox(height: 32),
                           _AnonymityCard(isConfigured: _hasCustomAnonymity),
+                          const SizedBox(height: 16),
+                          _ProxyCard(isConfigured: _hasProxyConfigured),
                           const SizedBox(height: 24),
                           Text.rich(
                             textAlign: TextAlign.center,
@@ -661,6 +680,92 @@ class _AnonymityCard extends StatelessWidget {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (context) => const SessionSpoofingScreen()),
       );
+    };
+  }
+}
+
+class _ProxyCard extends StatelessWidget {
+  final bool isConfigured;
+  const _ProxyCard({required this.isConfigured});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    final Color cardColor = isConfigured
+        ? colors.secondaryContainer
+        : colors.surfaceContainerHighest.withOpacity(0.5);
+    final Color onCardColor = isConfigured
+        ? colors.onSecondaryContainer
+        : colors.onSurfaceVariant;
+    final IconData icon = isConfigured ? Icons.vpn_key : Icons.vpn_key_outlined;
+
+    return Card(
+      elevation: 0,
+      color: cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colors.outline.withOpacity(0.5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: onCardColor, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    isConfigured
+                        ? 'Прокси-сервер настроен и активен'
+                        : 'Настройте прокси-сервер для подключения',
+                    style: GoogleFonts.manrope(
+                      textStyle: textTheme.bodyMedium,
+                      color: onCardColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: isConfigured
+                  ? FilledButton.tonalIcon(
+                      onPressed: _navigateToProxyScreen(context),
+                      icon: const Icon(Icons.settings, size: 18),
+                      label: Text(
+                        'Изменить настройки',
+                        style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+                      ),
+                    )
+                  : FilledButton.icon(
+                      onPressed: _navigateToProxyScreen(context),
+                      icon: const Icon(Icons.vpn_key, size: 18),
+                      label: Text(
+                        'Настроить прокси',
+                        style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  VoidCallback _navigateToProxyScreen(BuildContext context) {
+    return () async {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => const ProxySettingsScreen()),
+      );
+      if (context.mounted) {
+        final state = context.findAncestorStateOfType<_PhoneEntryScreenState>();
+        state?.refreshProxySettings();
+      }
     };
   }
 }

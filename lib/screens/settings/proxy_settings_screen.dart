@@ -1,5 +1,3 @@
-
-
 import 'package:flutter/material.dart';
 import 'package:gwid/proxy_service.dart';
 import 'package:gwid/proxy_settings.dart';
@@ -40,7 +38,6 @@ class _ProxySettingsScreenState extends State<ProxySettingsScreen> {
     });
   }
 
-
   Future<void> _testProxyConnection() async {
     if (_formKey.currentState?.validate() != true) {
       return;
@@ -48,7 +45,6 @@ class _ProxySettingsScreenState extends State<ProxySettingsScreen> {
     setState(() {
       _isTesting = true;
     });
-
 
     final settingsToTest = ProxySettings(
       isEnabled: true, // Для теста прокси всегда должен быть включен
@@ -164,12 +160,7 @@ class _ProxySettingsScreenState extends State<ProxySettingsScreen> {
                       border: OutlineInputBorder(),
                     ),
                     items: ProxyProtocol.values
-
-                        .where(
-                          (p) =>
-                              p != ProxyProtocol.socks4 &&
-                              p != ProxyProtocol.socks5,
-                        )
+                        .where((p) => p != ProxyProtocol.socks4)
                         .map(
                           (protocol) => DropdownMenuItem(
                             value: protocol,

@@ -8,6 +8,202 @@ import 'package:gwid/api_service.dart';
 import 'package:gwid/widgets/chat_message_bubble.dart';
 import 'package:gwid/chat_screen.dart';
 
+class ControlMessageChip extends StatelessWidget {
+  final Message message;
+  final Map<int, Contact> contacts;
+  final int myId;
+
+  const ControlMessageChip({
+    super.key,
+    required this.message,
+    required this.contacts,
+    required this.myId,
+  });
+
+  String _formatControlMessage() {
+    final controlAttach = message.attaches.firstWhere(
+      (a) => a['_type'] == 'CONTROL',
+    );
+
+    final eventType = controlAttach['event'];
+    final senderName = contacts[message.senderId]?.name ?? 'Неизвестный';
+    final isMe = message.senderId == myId;
+    final senderDisplayName = isMe ? 'Вы' : senderName;
+
+    String _formatUserList(List<int> userIds) {
+      if (userIds.isEmpty) {
+        return '';
+      }
+      final userNames = userIds
+          .map((id) {
+            if (id == myId) {
+              return 'Вы';
+            }
+            return contacts[id]?.name ?? 'участник с ID $id';
+          })
+          .where((name) => name.isNotEmpty)
+          .join(', ');
+      return userNames;
+    }
+
+    switch (eventType) {
+      case 'new':
+        final title = controlAttach['title'] ?? 'Новая группа';
+        return '$senderDisplayName создал(а) группу "$title"';
+
+      case 'add':
+        final userIds = List<int>.from(
+          (controlAttach['userIds'] as List?)?.map((id) => id as int) ?? [],
+        );
+        if (userIds.isEmpty) {
+          return 'К чату присоединились новые участники';
+        }
+        final userNames = _formatUserList(userIds);
+        if (userNames.isEmpty) {
+          return 'К чату присоединились новые участники';
+        }
+        return '$senderDisplayName добавил(а) в чат: $userNames';
+
+      case 'remove':
+      case 'kick':
+        final userIds = List<int>.from(
+          (controlAttach['userIds'] as List?)?.map((id) => id as int) ?? [],
+        );
+        if (userIds.isEmpty) {
+          return '$senderDisplayName удалил(а) участников из чата';
+        }
+        final userNames = _formatUserList(userIds);
+        if (userNames.isEmpty) {
+          return '$senderDisplayName удалил(а) участников из чата';
+        }
+
+        if (userIds.contains(myId)) {
+          return 'Вы были удалены из чата';
+        }
+        return '$senderDisplayName удалил(а) из чата: $userNames';
+
+      case 'leave':
+        if (isMe) {
+          return 'Вы покинули группу';
+        }
+        return '$senderName покинул(а) группу';
+
+      case 'title':
+        final newTitle = controlAttach['title'] ?? '';
+        if (newTitle.isEmpty) {
+          return '$senderDisplayName изменил(а) название группы';
+        }
+        return '$senderDisplayName изменил(а) название группы на "$newTitle"';
+
+      case 'avatar':
+      case 'photo':
+        return '$senderDisplayName изменил(а) фото группы';
+
+      case 'description':
+        return '$senderDisplayName изменил(а) описание группы';
+
+      case 'admin':
+      case 'promote':
+        final userIds = List<int>.from(
+          (controlAttach['userIds'] as List?)?.map((id) => id as int) ?? [],
+        );
+        if (userIds.isEmpty) {
+          return '$senderDisplayName назначил(а) администраторов';
+        }
+        final userNames = _formatUserList(userIds);
+        if (userNames.isEmpty) {
+          return '$senderDisplayName назначил(а) администраторов';
+        }
+
+        if (userIds.contains(myId) && userIds.length == 1) {
+          return 'Вас назначили администратором';
+        }
+        return '$senderDisplayName назначил(а) администраторов: $userNames';
+
+      case 'demote':
+        final userIds = List<int>.from(
+          (controlAttach['userIds'] as List?)?.map((id) => id as int) ?? [],
+        );
+        if (userIds.isEmpty) {
+          return '$senderDisplayName снял(а) администраторов';
+        }
+        final userNames = _formatUserList(userIds);
+        if (userNames.isEmpty) {
+          return '$senderDisplayName снял(а) администраторов';
+        }
+
+        if (userIds.contains(myId) && userIds.length == 1) {
+          return 'С вас сняли права администратора';
+        }
+        return '$senderDisplayName снял(а) права администратора с: $userNames';
+
+      case 'ban':
+        final userIds = List<int>.from(
+          (controlAttach['userIds'] as List?)?.map((id) => id as int) ?? [],
+        );
+        if (userIds.isEmpty) {
+          return '$senderDisplayName заблокировал(а) участников';
+        }
+        final userNames = _formatUserList(userIds);
+        if (userNames.isEmpty) {
+          return '$senderDisplayName заблокировал(а) участников';
+        }
+
+        if (userIds.contains(myId)) {
+          return 'Вы были заблокированы в чате';
+        }
+        return '$senderDisplayName заблокировал(а): $userNames';
+
+      case 'unban':
+        final userIds = List<int>.from(
+          (controlAttach['userIds'] as List?)?.map((id) => id as int) ?? [],
+        );
+        if (userIds.isEmpty) {
+          return '$senderDisplayName разблокировал(а) участников';
+        }
+        final userNames = _formatUserList(userIds);
+        if (userNames.isEmpty) {
+          return '$senderDisplayName разблокировал(а) участников';
+        }
+        return '$senderDisplayName разблокировал(а): $userNames';
+
+      case 'join':
+        if (isMe) {
+          return 'Вы присоединились к группе';
+        }
+        return '$senderName присоединился(ась) к группе';
+
+      default:
+        final eventTypeStr = eventType?.toString() ?? 'неизвестное';
+        return 'Событие: $eventTypeStr';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: colors.primaryContainer.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          _formatControlMessage(),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13,
+            color: colors.onPrimaryContainer,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class MessagePreviewDialog {
   static String _formatTimestamp(int timestamp) {
     final dt = DateTime.fromMillisecondsSinceEpoch(timestamp);
@@ -323,6 +519,16 @@ class MessagePreviewDialog {
 
                               if (item is MessageItem) {
                                 final message = item.message;
+                                final isControlMessage = message.attaches.any(
+                                  (a) => a['_type'] == 'CONTROL',
+                                );
+                                if (isControlMessage) {
+                                  return ControlMessageChip(
+                                    message: message,
+                                    contacts: contacts,
+                                    myId: myId,
+                                  );
+                                }
                                 final isMe = message.senderId == myId;
                                 final senderContact =
                                     contacts[message.senderId];
