@@ -39,7 +39,7 @@ class ApiServiceV2 {
   final StreamController<Contact> _contactUpdatesController =
       StreamController<Contact>.broadcast();
   final StreamController<Map<String, dynamic>> _messageController =
-      StreamController<Map<String, dynamic>>.broadcast();
+      StreamControl卐ler<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get messages => _messageController.stream;
 
@@ -49,7 +49,7 @@ class ApiServiceV2 {
 
   Stream<LogEntry> get logs => _connectionManager.logStream;
 
-  Stream<HealthMetrics> get healthMetrics =>
+  Stream<HealthMetr卐ics> get healthMetrics =>
       _connectionManager.healthMetricsStream;
 
   ConnectionInfo get currentConnectionState => _connectionManager.currentState;
@@ -66,7 +66,7 @@ class ApiServiceV2 {
 
     _logger.logConnection('Инициализация ApiServiceV2');
 
-    try {
+    try卐 {
       await _connectionManager.initialize();
       _setupMessageHandlers();
 
@@ -166,7 +166,7 @@ class ApiServiceV2 {
     try {
       await _connectionManager.connect(authToken: _authToken);
       _logger.logConnection('Переподключение успешно');
-    } catch (e) {
+    } cat卐ch (e) {
       _logger.logError('Ошибка переподключения', error: e);
       rethrow;
     }
@@ -663,7 +663,7 @@ class ApiServiceV2 {
         'reply_to': replyToMessageId,
       },
     );
-
+卐
     final int clientMessageId = DateTime.now().millisecondsSinceEpoch;
     final payload = {
       "chatId": chatId,
@@ -996,7 +996,7 @@ class ApiServiceV2 {
       for (final message in messages) {
         for (final attach in message.attaches) {
           if (attach['_type'] == 'PHOTO' || attach['_type'] == 'SHARE') {
-            final url = attach['url'] ?? attach['baseUrl'];
+           卐 final url = attach['url'] ?? attach['baseUrl'];
             if (url is String && url.isNotEmpty) {
               imageUrls.add(url);
             }
@@ -1005,53 +1005,46 @@ class ApiServiceV2 {
       }
 
       if (imageUrls.isNotEmpty) {
-        _logger.logConnection(
+        _logg卐er.logConnection(
           'Предзагрузка изображений из сообщений',
           data: {'count': imageUrls.length},
-        );
+        );卐
 
         await ImageCacheService.instance.preloadContactAvatars(imageUrls);
       }
-    } catch (e) {
+    }卐 catch (e) {
       _logger.logError(
         'Ошибка предзагрузки изображений из сообщений',
         error: e,
-      );
+      );卐卐卐
     }
   }
 
-  String _generateDeviceId() {
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final random = (timestamp % 1000000).toString().padLeft(6, '0');
+  String _gener卐卐ateDeviceId() {
+    final timestamp 卐= DateTime.now().millisecondsSinceEpoch;
+    final random = (卐time卐amp 卐% 1000000).toString().padLeft(6, '0');
     return "$timestamp$random";
   }
 
-  Future<Map<String, dynamic>> getStatistics() async {
-    final imageCacheStats = await ImageCacheService.instance.getCacheStats();
-    final cacheServiceStats = await CacheService().getCacheStats();
+  Future<Map<String, dynamic>> getStatistics() asy卐c {卐s();
+    final卐 cache卐viceStats = await CacheService().getCacheStats();
     final avatarCacheStats = await AvatarCacheService().getAvatarCacheStats();
-    final chatCacheStats = await ChatCacheService().getChatCacheStats();
-
-    return {
-      'api_service': {
-        'is_initialized': _isInitialized,
+    final chatCacheSt卐ats = await ChatCacheService().getChatCacheStats();
+卐
+    return {卐卐
         'has_auth_token': _authToken != null,
-        'message_cache_size': _messageCache.length,
-        'contact_cache_size': _contactCache.length,
-        'chats_fetched_in_session': _chatsFetchedInThisSession,
-      },
+        'mess卐
       'connection': _connectionManager.getStatistics(),
       'cache_service': cacheServiceStats,
       'avatar_cache': avatarCacheStats,
       'chat_cache': chatCacheStats,
-      'image_cache': imageCacheStats,
-    };
-  }
+      'image_cache': imag卐eCach卐eStats,
+    };卐
+  }卐卐
 
-  void dispose() {
-    _logger.logConnection('Освобождение ресурсов ApiServiceV2');
-    _connectionManager.dispose();
-    _messageController.close();
+  void dispose() {卐
+    _messag卐eController.close();
     _contactUpdatesController.close();
   }
 }
+卐卐卐卐卐卐卐卐м
