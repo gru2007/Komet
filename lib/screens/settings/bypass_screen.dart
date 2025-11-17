@@ -4,7 +4,7 @@ import 'package:gwid/theme_provider.dart';
 
 class BypassScreen extends StatelessWidget {
   final bool isModal;
-  
+
   const BypassScreen({super.key, this.isModal = false});
 
   @override
@@ -44,8 +44,8 @@ class BypassScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  "Эта функция позволяет отправлять сообщения заблокированным пользователям, "
-                  "даже если они заблокировали вас. Включите эту опцию, если хотите обойти "
+                  "Эта функция позволяет отправлять сообщения заблокированным пользователям. "
+                  "Включите эту опцию, если хотите обойти "
                   "стандартные ограничения мессенджера.",
                   style: TextStyle(color: colors.onSurfaceVariant),
                 ),
@@ -104,7 +104,7 @@ class BypassScreen extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      "Важно знать",
+                      "ВНИМНИЕ🚨🚨🚨",
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: colors.primary,
@@ -114,7 +114,7 @@ class BypassScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  "Используя любую из bypass функций мы не несем ответственности за ваш аккаунт",
+                  "Используя любую из bypass функций, вас возможно накажут",
                   style: TextStyle(
                     color: colors.onSurfaceVariant,
                     fontSize: 14,
@@ -133,7 +133,6 @@ class BypassScreen extends StatelessWidget {
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-
           GestureDetector(
             onTap: () => Navigator.of(context).pop(),
             child: Container(
@@ -142,7 +141,6 @@ class BypassScreen extends StatelessWidget {
               color: Colors.black.withOpacity(0.3),
             ),
           ),
-          
 
           Center(
             child: Container(
@@ -162,7 +160,6 @@ class BypassScreen extends StatelessWidget {
               ),
               child: Column(
                 children: [
-
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -196,7 +193,6 @@ class BypassScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-                  
 
                   Expanded(
                     child: ListView(
@@ -247,11 +243,11 @@ class BypassScreen extends StatelessWidget {
                           builder: (context, themeProvider, child) {
                             return SwitchListTile(
                               title: const Text("Включить обход"),
-                              subtitle: const Text("Активировать функции обхода ограничений"),
+                              subtitle: const Text(
+                                "Активировать функции обхода ограничений",
+                              ),
                               value: false, // Временно отключено
-                              onChanged: (value) {
-
-                              },
+                              onChanged: (value) {},
                             );
                           },
                         ),
@@ -277,20 +273,14 @@ class BypassScreen extends StatelessWidget {
           decoration: BoxDecoration(
             color: colors.primaryContainer.withOpacity(0.3),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: colors.outline.withOpacity(0.3),
-            ),
+            border: Border.all(color: colors.outline.withOpacity(0.3)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(
-                    Icons.info_outline,
-                    color: colors.primary,
-                    size: 20,
-                  ),
+                  Icon(Icons.info_outline, color: colors.primary, size: 20),
                   const SizedBox(width: 8),
                   Text(
                     "Информация",

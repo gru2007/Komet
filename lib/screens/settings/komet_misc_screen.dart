@@ -17,6 +17,7 @@ class _KometMiscScreenState extends State<KometMiscScreen> {
   bool _isAutoUpdateEnabled = true;
   bool _showUpdateNotification = true;
   bool _enableWebVersionCheck = false;
+  bool _showSpoofUpdateDialog = true;
 
   @override
   void initState() {
@@ -28,12 +29,13 @@ class _KometMiscScreenState extends State<KometMiscScreen> {
   Future<void> _loadUpdateSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-
       _isAutoUpdateEnabled = prefs.getBool('auto_update_enabled') ?? true;
       _showUpdateNotification =
           prefs.getBool('show_update_notification') ?? true;
       _enableWebVersionCheck =
           prefs.getBool('enable_web_version_check') ?? false;
+      _showSpoofUpdateDialog =
+          prefs.getBool('show_spoof_update_dialog') ?? true;
     });
   }
 
@@ -64,7 +66,6 @@ class _KometMiscScreenState extends State<KometMiscScreen> {
     String subtitleText;
     Color statusColor;
     final defaultTextColor = Theme.of(context).textTheme.bodyMedium?.color;
-
 
     final isDesktopOrIOS =
         Platform.isWindows ||
@@ -206,6 +207,24 @@ class _KometMiscScreenState extends State<KometMiscScreen> {
                           _updateSettings('show_update_notification', value);
                         },
                 ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  secondary: Icon(
+                    Icons.sync_problem_outlined,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  title: const Text("Диалог обновлений спуфа"),
+                  subtitle: const Text(
+                    "Показывать диалог проверки обновлений спуфа при запуске",
+                  ),
+                  value: _showSpoofUpdateDialog,
+                  onChanged: (bool value) {
+                    setState(() {
+                      _showSpoofUpdateDialog = value;
+                    });
+                    _updateSettings('show_spoof_update_dialog', value);
+                  },
+                ),
               ],
             ),
           ),
@@ -239,7 +258,6 @@ class _KometMiscScreenState extends State<KometMiscScreen> {
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-
           GestureDetector(
             onTap: () => Navigator.of(context).pop(),
             child: Container(
@@ -248,7 +266,6 @@ class _KometMiscScreenState extends State<KometMiscScreen> {
               color: Colors.black.withOpacity(0.3),
             ),
           ),
-
 
           Center(
             child: Container(
@@ -268,7 +285,6 @@ class _KometMiscScreenState extends State<KometMiscScreen> {
               ),
               child: Column(
                 children: [
-
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -302,7 +318,6 @@ class _KometMiscScreenState extends State<KometMiscScreen> {
                       ],
                     ),
                   ),
-
 
                   Expanded(
                     child: ListView(
@@ -368,6 +383,22 @@ class _KometMiscScreenState extends State<KometMiscScreen> {
                                 },
                               ),
                               SwitchListTile(
+                                title: const Text("Диалог обновлений спуфа"),
+                                subtitle: const Text(
+                                  "Показывать диалог проверки обновлений спуфа при запуске",
+                                ),
+                                value: _showSpoofUpdateDialog,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _showSpoofUpdateDialog = value;
+                                  });
+                                  _updateSettings(
+                                    'show_spoof_update_dialog',
+                                    value,
+                                  );
+                                },
+                              ),
+                              SwitchListTile(
                                 title: const Text("Проверка веб-версии"),
                                 subtitle: const Text(
                                   "Проверять обновления через веб-интерфейс",
@@ -402,7 +433,6 @@ class _KometMiscScreenState extends State<KometMiscScreen> {
     String subtitleText;
     Color statusColor;
     final defaultTextColor = Theme.of(context).textTheme.bodyMedium?.color;
-
 
     final isDesktopOrIOS =
         Platform.isWindows ||
@@ -492,6 +522,24 @@ class _KometMiscScreenState extends State<KometMiscScreen> {
                     _showUpdateNotification = value;
                   });
                   _updateSettings('show_update_notification', value);
+                },
+              ),
+              SwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                secondary: Icon(
+                  Icons.sync_problem_rounded,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                title: const Text("Диалог обновлений спуфа"),
+                subtitle: const Text(
+                  "Показывать диалог проверки обновлений спуфа при запуске",
+                ),
+                value: _showSpoofUpdateDialog,
+                onChanged: (value) {
+                  setState(() {
+                    _showSpoofUpdateDialog = value;
+                  });
+                  _updateSettings('show_spoof_update_dialog', value);
                 },
               ),
               SwitchListTile(

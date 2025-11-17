@@ -53,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _checkVersionInBackground();
     _initDeepLinking();
-
+    _showSpoofUpdateDialogIfNeeded();
 
     _connectionSubscription = ApiService.instance.connectionStatus.listen((
       status,
@@ -67,7 +67,6 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     });
-
 
     _messageSubscription = ApiService.instance.messages.listen((message) {
       if (message['type'] == 'session_terminated' && mounted) {
@@ -86,7 +85,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     setState(() => _isProfileLoading = true);
     try {
-
       final cachedProfile = ApiService.instance.lastChatsPayload?['profile'];
       if (cachedProfile != null) {
         if (mounted) {
@@ -96,7 +94,6 @@ class _HomeScreenState extends State<HomeScreen> {
           });
         }
       } else {
-
         final result = await ApiService.instance.getChatsAndContacts(
           force: false,
         );
@@ -124,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
   ) async {
     await showDialog(
       context: context,
-      barrierDismissible: false, // Пользователь должен сделать выбор
+      barrierDismissible: false, // Зачем давать им выбор оло
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('Доступно обновление'),
@@ -135,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
             TextButton(
               child: const Text('Отменить'),
               onPressed: () {
-                Navigator.of(dialogContext).pop(); // Просто закрыть диалог
+                Navigator.of(dialogContext).pop();
               },
             ),
             FilledButton(
@@ -151,11 +148,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   print("Ошибка переподключения: $e");
                 }
 
-
                 if (mounted) {
                   Navigator.of(dialogContext).pop();
                 }
-
 
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -177,10 +172,8 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-
       final isWebVersionCheckEnabled =
           prefs.getBool('enable_web_version_check') ?? false;
-
 
       if (!isWebVersionCheckEnabled) {
         print("Web version checking is disabled, skipping check");
@@ -196,7 +189,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (latestVersion != currentVersion) {
         if (isAutoUpdateEnabled) {
-
           await prefs.setString('spoof_appversion', latestVersion);
           print("Версия сессии автоматически обновлена до $latestVersion");
 
@@ -223,7 +215,6 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }
         } else if (showUpdateNotification) {
-
           if (mounted) {
             _showUpdateDialog(context, latestVersion);
           }
@@ -574,6 +565,148 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _showSpoofUpdateDialogIfNeeded() async {
+    final prefs = await SharedPreferences.getInstance();
+    final shouldShow = prefs.getBool('show_spoof_update_dialog') ?? true;
+
+    if (!shouldShow || !mounted) return;
+
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          bool dontShowAgain = false;
+
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('Проверка обновлений'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Хотите проверить обновления спуфа?'),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: dontShowAgain,
+                          onChanged: (value) {
+                            setState(() {
+                              dontShowAgain = value ?? false;
+                            });
+                          },
+                        ),
+                        const Expanded(child: Text('Больше не показывать')),
+                      ],
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () async {
+                      if (dontShowAgain) {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setBool('show_spoof_update_dialog', false);
+                      }
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('Нет'),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      if (dontShowAgain) {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setBool('show_spoof_update_dialog', false);
+                      }
+                      Navigator.of(context).pop();
+                      await _checkSpoofUpdateManually();
+                    },
+                    child: const Text('Ок!'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    });
+  }
+
+  Future<void> _checkSpoofUpdateManually() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final isAutoUpdateEnabled = prefs.getBool('auto_update_enabled') ?? true;
+      final currentVersion = prefs.getString('spoof_appversion') ?? '0.0.0';
+      final latestVersion = await VersionChecker.getLatestVersion();
+
+      if (latestVersion != currentVersion) {
+        if (isAutoUpdateEnabled) {
+          await prefs.setString('spoof_appversion', latestVersion);
+          print("Версия сессии обновлена до $latestVersion");
+
+          try {
+            await ApiService.instance.performFullReconnection();
+            print("Переподключение выполнено успешно");
+          } catch (e) {
+            print("Ошибка переподключения: $e");
+          }
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Спуф сессии обновлен до версии $latestVersion'),
+                backgroundColor: Colors.green.shade700,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                margin: const EdgeInsets.all(10),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            _showUpdateDialog(context, latestVersion);
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Версия спуфа актуальна'),
+              backgroundColor: Colors.blue.shade700,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.all(10),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print("Проверка версии спуфа не удалась: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка проверки обновлений: $e'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(10),
+          ),
+        );
+      }
+    }
+  }
+
   void _handleGroupJoinError(Map<String, dynamic> message) {
     final errorPayload = message['payload'];
     String errorMessage = 'Неизвестная ошибка';
@@ -730,7 +863,6 @@ class _DesktopLayoutState extends State<_DesktopLayout> {
     _loadMyProfile();
   }
 
-
   Future<void> _loadMyProfile() async {
     if (!mounted) return;
     setState(() => _isProfileLoading = true);
@@ -752,7 +884,6 @@ class _DesktopLayoutState extends State<_DesktopLayout> {
       print("Ошибка загрузки профиля в _DesktopLayout: $e");
     }
   }
-
 
   void _onChatSelected(
     Chat chat,
