@@ -25,6 +25,7 @@ import 'package:gwid/models/channel.dart';
 import 'package:gwid/search_channels_screen.dart';
 import 'package:gwid/downloads_screen.dart';
 import 'package:gwid/user_id_lookup_screen.dart';
+import 'package:gwid/screens/music_library_screen.dart';
 import 'package:gwid/widgets/message_preview_dialog.dart';
 import 'package:gwid/services/chat_read_settings_service.dart';
 import 'package:gwid/services/account_manager.dart';
@@ -2021,6 +2022,18 @@ class _ChatsScreenState extends State<ChatsScreen>
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) => const CallsScreen(),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.music_note),
+                  title: const Text('Музыка'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const MusicLibraryScreen(),
                       ),
                     );
                   },
@@ -4041,8 +4054,7 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
   bool _isLoading = true;
   InAppWebViewController? _webViewController;
 
-  Future<void> _checkCanGoBack() async {
-  }
+  Future<void> _checkCanGoBack() async {}
 
   Future<void> _goBack() async {
     if (_webViewController != null && await _webViewController!.canGoBack()) {
@@ -4070,18 +4082,11 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
         ),
         title: Row(
           children: [
-            Image.asset(
-              'assets/images/spermum.png',
-              width: 28,
-              height: 28,
-            ),
+            Image.asset('assets/images/spermum.png', width: 28, height: 28),
             const SizedBox(width: 12),
             const Text(
               'Сферум',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -4131,12 +4136,14 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
               shouldOverrideUrlLoading: (controller, navigationAction) async {
                 final uri = navigationAction.request.url;
                 final navigationType = navigationAction.navigationType;
-                print('🔗 Попытка перехода по ссылке: $uri (тип: $navigationType)');
-                
+                print(
+                  '🔗 Попытка перехода по ссылке: $uri (тип: $navigationType)',
+                );
+
                 if (navigationType == NavigationType.LINK_ACTIVATED) {
                   return NavigationActionPolicy.ALLOW;
                 }
-                
+
                 return NavigationActionPolicy.ALLOW;
               },
               onLoadStart: (controller, url) async {
@@ -4145,7 +4152,8 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
                   _isLoading = true;
                 });
                 try {
-                  await controller.evaluateJavascript(source: '''
+                  await controller.evaluateJavascript(
+                    source: '''
                     // Переопределяем window.open сразу
                     if (window.open.toString().indexOf('native code') === -1) {
                       var originalOpen = window.open;
@@ -4157,9 +4165,12 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
                         return originalOpen.apply(this, arguments);
                       };
                     }
-                  ''');
+                  ''',
+                  );
                 } catch (e) {
-                  print('⚠️ Ошибка при выполнении JavaScript в onLoadStart: $e');
+                  print(
+                    '⚠️ Ошибка при выполнении JavaScript в onLoadStart: $e',
+                  );
                 }
               },
               onLoadStop: (controller, url) async {
@@ -4169,7 +4180,8 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
                 });
                 _checkCanGoBack();
                 try {
-                  await controller.evaluateJavascript(source: '''
+                  await controller.evaluateJavascript(
+                    source: '''
                     // Включаем прокрутку
                     document.body.style.overflow = 'auto';
                     document.documentElement.style.overflow = 'auto';
@@ -4266,15 +4278,14 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
                         return originalOpen.apply(this, arguments);
                       };
                     })();
-                  ''');
+                  ''',
+                  );
                 } catch (e) {
                   print('⚠️ Ошибка при выполнении JavaScript: $e');
                 }
               },
               onReceivedError: (controller, request, error) {
-                print(
-                  '❌ WebView ошибка: ${error.description} (${error.type})',
-                );
+                print('❌ WebView ошибка: ${error.description} (${error.type})');
               },
               onConsoleMessage: (controller, consoleMessage) {
                 print('📝 Console: ${consoleMessage.message}');
@@ -4287,10 +4298,7 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
                 child: Text(
                   'Сферум временно не доступен на линуксе,\nмы думаем как это исправить.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
               ),
             ),

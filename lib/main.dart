@@ -16,6 +16,7 @@ import 'services/avatar_cache_service.dart';
 import 'services/chat_cache_service.dart';
 import 'services/version_checker.dart';
 import 'services/account_manager.dart';
+import 'services/music_player_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -34,6 +35,10 @@ Future<void> main() async {
   await AccountManager().migrateOldAccount();
   print("AccountManager инициализирован");
 
+  print("Инициализируем MusicPlayerService...");
+  await MusicPlayerService().initialize();
+  print("MusicPlayerService инициализирован");
+
   final hasToken = await ApiService.instance.hasToken();
   print("При запуске приложения токен ${hasToken ? 'найден' : 'не найден'}");
 
@@ -43,8 +48,11 @@ Future<void> main() async {
   }
 
   runApp(
-    ChangeNotifierProvider(
-      create: (context) => ThemeProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (context) => ThemeProvider()),
+        ChangeNotifierProvider(create: (context) => MusicPlayerService()),
+      ],
       child: ConnectionLifecycleManager(child: MyApp(hasToken: hasToken)),
     ),
   );
