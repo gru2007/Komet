@@ -1,5 +1,3 @@
-
-
 import 'package:flutter/material.dart';
 import 'package:gwid/services/cache_service.dart';
 import 'package:gwid/services/avatar_cache_service.dart';
@@ -33,7 +31,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
       final cacheService = CacheService();
       final avatarService = AvatarCacheService();
       final chatService = ChatCacheService();
-
 
       await cacheService.initialize();
       await chatService.initialize();
@@ -98,13 +95,15 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
         final avatarService = AvatarCacheService();
         final chatService = ChatCacheService();
 
-
         await cacheService.initialize();
         await chatService.initialize();
         await avatarService.initialize();
 
         await cacheService.clear();
+        // Небольшая задержка между операциями очистки
+        await Future.delayed(const Duration(milliseconds: 100));
         await avatarService.clearAvatarCache();
+        await Future.delayed(const Duration(milliseconds: 100));
         await chatService.clearAllChatCache();
 
         await _loadCacheStats();
@@ -156,9 +155,10 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
       try {
         final avatarService = AvatarCacheService();
 
-
         await avatarService.initialize();
         await avatarService.clearAvatarCache();
+        // Небольшая задержка перед загрузкой статистики
+        await Future.delayed(const Duration(milliseconds: 50));
         await _loadCacheStats();
 
         if (mounted) {
@@ -273,7 +273,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-
                 Text(
                   "Общая статистика",
                   style: TextStyle(
@@ -320,7 +319,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
 
                 const SizedBox(height: 24),
 
-
                 Text(
                   "Детальная статистика",
                   style: TextStyle(
@@ -343,7 +341,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                 }),
 
                 const SizedBox(height: 32),
-
 
                 Text(
                   "Управление кэшем",
@@ -390,7 +387,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
 
                 const SizedBox(height: 24),
 
-
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -413,12 +409,39 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                         const SizedBox(height: 12),
                         const Text(
                           "Кэширование ускоряет работу приложения, сохраняя часто используемые данные локально. "
+                          "Все файлы сжимаются с помощью LZ4 для экономии места. "
                           "Чаты кэшируются на 1 час, контакты на 6 часов, сообщения на 2 часа, аватарки на 7 дней.",
                         ),
                         const SizedBox(height: 8),
                         const Text(
                           "Очистка кэша может замедлить работу приложения до повторной загрузки данных.",
                           style: TextStyle(fontStyle: FontStyle.italic),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: colors.primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.compress,
+                                color: colors.primary,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "Сжатие LZ4 включено - экономия места до 70%",
+                                style: TextStyle(
+                                  color: colors.primary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),

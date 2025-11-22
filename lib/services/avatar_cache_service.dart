@@ -1,5 +1,3 @@
-
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -10,7 +8,6 @@ import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:gwid/services/cache_service.dart';
-import 'package:path/path.dart' as p;
 
 class AvatarCacheService {
   static final AvatarCacheService _instance = AvatarCacheService._internal();
@@ -19,21 +16,17 @@ class AvatarCacheService {
 
   final CacheService _cacheService = CacheService();
 
-
   final Map<String, Uint8List> _imageMemoryCache = {};
   final Map<String, DateTime> _imageCacheTimestamps = {};
-
 
   static const Duration _imageTTL = Duration(days: 7);
   static const int _maxMemoryImages = 50;
   static const int _maxImageSizeMB = 5;
 
-
   Future<void> initialize() async {
     await _cacheService.initialize();
     print('AvatarCacheService инициализирован');
   }
-
 
   Future<ImageProvider?> getAvatar(String? avatarUrl, {int? userId}) async {
     if (avatarUrl == null || avatarUrl.isEmpty) {
@@ -41,9 +34,7 @@ class AvatarCacheService {
     }
 
     try {
-
       final cacheKey = _generateCacheKey(avatarUrl, userId);
-
 
       if (_imageMemoryCache.containsKey(cacheKey)) {
         final timestamp = _imageCacheTimestamps[cacheKey];
@@ -51,12 +42,10 @@ class AvatarCacheService {
           final imageData = _imageMemoryCache[cacheKey]!;
           return MemoryImage(imageData);
         } else {
-
           _imageMemoryCache.remove(cacheKey);
           _imageCacheTimestamps.remove(cacheKey);
         }
       }
-
 
       final cachedFile = await _cacheService.getCachedFile(
         avatarUrl,
@@ -65,10 +54,8 @@ class AvatarCacheService {
       if (cachedFile != null && await cachedFile.exists()) {
         final imageData = await cachedFile.readAsBytes();
 
-
         _imageMemoryCache[cacheKey] = imageData;
         _imageCacheTimestamps[cacheKey] = DateTime.now();
-
 
         if (_imageMemoryCache.length > _maxMemoryImages) {
           await _evictOldestImages();
@@ -77,12 +64,9 @@ class AvatarCacheService {
         return MemoryImage(imageData);
       }
 
-
       final imageData = await _downloadImage(avatarUrl);
       if (imageData != null) {
-
         await _cacheService.cacheFile(avatarUrl, customKey: cacheKey);
-
 
         _imageMemoryCache[cacheKey] = imageData;
         _imageCacheTimestamps[cacheKey] = DateTime.now();
@@ -95,7 +79,6 @@ class AvatarCacheService {
 
     return null;
   }
-
 
   Future<File?> getAvatarFile(String? avatarUrl, {int? userId}) async {
     if (avatarUrl == null || avatarUrl.isEmpty) {
@@ -111,20 +94,17 @@ class AvatarCacheService {
     }
   }
 
-
   Future<void> preloadAvatars(List<String> avatarUrls) async {
     final futures = avatarUrls.map((url) => getAvatar(url));
     await Future.wait(futures);
     print('Предзагружено ${avatarUrls.length} аватарок');
   }
 
-
   Future<Uint8List?> _downloadImage(String url) async {
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final imageData = response.bodyBytes;
-
 
         if (imageData.length > _maxImageSizeMB * 1024 * 1024) {
           print('Изображение слишком большое: ${imageData.length} байт');
@@ -139,7 +119,6 @@ class AvatarCacheService {
     return null;
   }
 
-
   String _generateCacheKey(String url, int? userId) {
     if (userId != null) {
       return 'avatar_${userId}_${_hashUrl(url)}';
@@ -147,22 +126,18 @@ class AvatarCacheService {
     return 'avatar_${_hashUrl(url)}';
   }
 
-
   String _hashUrl(String url) {
     final bytes = utf8.encode(url);
     final digest = sha256.convert(bytes);
     return digest.toString().substring(0, 16);
   }
 
-
   bool _isExpired(DateTime timestamp, Duration ttl) {
     return DateTime.now().difference(timestamp) > ttl;
   }
 
-
   Future<void> _evictOldestImages() async {
     if (_imageMemoryCache.isEmpty) return;
-
 
     final sortedEntries = _imageCacheTimestamps.entries.toList()
       ..sort((a, b) => a.value.compareTo(b.value));
@@ -175,18 +150,15 @@ class AvatarCacheService {
     }
   }
 
-
   Future<void> clearAvatarCache() async {
     _imageMemoryCache.clear();
     _imageCacheTimestamps.clear();
-
 
     try {
       final cacheDir = await getApplicationCacheDirectory();
       final avatarDir = Directory('${cacheDir.path}/avatars');
       if (await avatarDir.exists()) {
-        await avatarDir.delete(recursive: true);
-        await avatarDir.create(recursive: true);
+        await _clearDirectoryContents(avatarDir);
       }
     } catch (e) {
       print('Ошибка очистки кэша аватарок: $e');
@@ -195,22 +167,53 @@ class AvatarCacheService {
     print('Кэш аватарок очищен');
   }
 
+  Future<void> _clearDirectoryContents(Directory directory) async {
+    try {
+      // Очищаем содержимое директории, удаляя файлы по одному
+      await for (final entity in directory.list(recursive: true)) {
+        if (entity is File) {
+          try {
+            await entity.delete();
+            // Небольшая задержка между удалениями для избежания конфликтов
+            await Future.delayed(const Duration(milliseconds: 5));
+          } catch (fileError) {
+            // Игнорируем ошибки удаления отдельных файлов
+            print('Не удалось удалить файл ${entity.path}: $fileError');
+          }
+        } else if (entity is Directory) {
+          try {
+            // Рекурсивно очищаем поддиректории
+            await _clearDirectoryContents(entity);
+            try {
+              await entity.delete();
+            } catch (dirError) {
+              print(
+                'Не удалось удалить поддиректорию ${entity.path}: $dirError',
+              );
+            }
+          } catch (subDirError) {
+            print('Ошибка очистки поддиректории ${entity.path}: $subDirError');
+          }
+        }
+      }
+      print('Содержимое директории ${directory.path} очищено');
+    } catch (e) {
+      print('Ошибка очистки содержимого директории ${directory.path}: $e');
+    }
+  }
 
   Future<void> removeAvatarFromCache(String avatarUrl, {int? userId}) async {
     try {
       final cacheKey = _generateCacheKey(avatarUrl, userId);
 
-
       _imageMemoryCache.remove(cacheKey);
       _imageCacheTimestamps.remove(cacheKey);
-
 
       await _cacheService.removeCachedFile(avatarUrl, customKey: cacheKey);
     } catch (e) {
       print('Ошибка удаления аватарки из кэша: $e');
     }
   }
-
 
   Future<Map<String, dynamic>> getAvatarCacheStats() async {
     try {
@@ -220,7 +223,6 @@ class AvatarCacheService {
       for (final imageData in _imageMemoryCache.values) {
         totalMemorySize += imageData.length;
       }
-
 
       int diskSize = 0;
       try {
@@ -250,11 +252,9 @@ class AvatarCacheService {
     }
   }
 
-
   Future<bool> hasAvatarInCache(String avatarUrl, {int? userId}) async {
     try {
       final cacheKey = _generateCacheKey(avatarUrl, userId);
-
 
       if (_imageMemoryCache.containsKey(cacheKey)) {
         final timestamp = _imageCacheTimestamps[cacheKey];
@@ -263,14 +263,12 @@ class AvatarCacheService {
         }
       }
 
-
       return await _cacheService.hasCachedFile(avatarUrl, customKey: cacheKey);
     } catch (e) {
       print('Ошибка проверки существования аватарки в кэше: $e');
       return false;
     }
   }
-
 
   Widget getAvatarWidget(
     String? avatarUrl, {
@@ -309,7 +307,6 @@ class AvatarCacheService {
       },
     );
   }
-
 
   Widget _buildFallbackAvatar(
     String? text,

@@ -233,49 +233,8 @@ extension ApiServiceMedia on ApiService {
 
       await waitUntilOnline();
 
-      final int seq87 = _sendMessage(87, {"count": 1});
-      final resp87 = await messages.firstWhere((m) => m['seq'] == seq87);
-
-      if (resp87['payload'] == null ||
-          resp87['payload']['info'] == null ||
-          (resp87['payload']['info'] as List).isEmpty) {
-        throw Exception('Неверный ответ на Opcode 87: отсутствует "info"');
-      }
-
-      final uploadInfo = (resp87['payload']['info'] as List).first;
-      final String uploadUrl = uploadInfo['url'];
-      final int fileId = uploadInfo['fileId'];
-
-      print('Получен fileId: $fileId и URL: $uploadUrl');
-
-      var request = http.MultipartRequest('POST', Uri.parse(uploadUrl));
-      request.files.add(await http.MultipartFile.fromPath('file', filePath));
-      var streamed = await request.send();
-      var httpResp = await http.Response.fromStream(streamed);
-      if (httpResp.statusCode != 200) {
-        throw Exception(
-          'Ошибка загрузки файла: ${httpResp.statusCode} ${httpResp.body}',
-        );
-      }
-
-      print('Файл успешно загружен на сервер.');
-
+      // Показываем локальное сообщение с файлом сразу, как отправляется
       final int cid = DateTime.now().millisecondsSinceEpoch;
-      final payload = {
-        "chatId": chatId,
-        "message": {
-          "text": caption?.trim() ?? "",
-          "cid": cid,
-          "elements": [],
-          "attaches": [
-            {"_type": "FILE", "fileId": fileId},
-          ],
-        },
-        "notify": true,
-      };
-
-      clearChatsCache();
-
       _emitLocal({
         'ver': 11,
         'cmd': 1,
@@ -302,8 +261,80 @@ extension ApiServiceMedia on ApiService {
         },
       });
 
-      _sendMessage(64, payload);
-      print('Сообщение о файле (Opcode 64) отправлено.');
+      // Запрашиваем URL для загрузки файла
+      final int seq87 = _sendMessage(87, {"count": 1});
+      final resp87 = await messages.firstWhere((m) => m['seq'] == seq87);
+
+      if (resp87['payload'] == null ||
+          resp87['payload']['info'] == null ||
+          (resp87['payload']['info'] as List).isEmpty) {
+        throw Exception('Неверный ответ на Opcode 87: отсутствует "info"');
+      }
+
+      final uploadInfo = (resp87['payload']['info'] as List).first;
+      final String uploadUrl = uploadInfo['url'];
+      final int fileId = uploadInfo['fileId'];
+      final String token = uploadInfo['token'];
+
+      print('Получен fileId: $fileId, token: $token и URL: $uploadUrl');
+
+      // Начинаем heartbeat каждые 5 секунд
+      Timer? heartbeatTimer;
+      heartbeatTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+        _sendMessage(65, {"chatId": chatId, "type": "FILE"});
+        print('Heartbeat отправлен для загрузки файла');
+      });
+
+      try {
+        // Загружаем файл
+        var request = http.MultipartRequest('POST', Uri.parse(uploadUrl));
+        request.files.add(await http.MultipartFile.fromPath('file', filePath));
+        var streamed = await request.send();
+        var httpResp = await http.Response.fromStream(streamed);
+        if (httpResp.statusCode != 200) {
+          throw Exception(
+            'Ошибка загрузки файла: ${httpResp.statusCode} ${httpResp.body}',
+          );
+        }
+
+        print('Файл успешно загружен на сервер. Ожидаем подтверждение...');
+
+        // Ждем уведомления о завершении загрузки (opcode 136)
+        final uploadCompleteMsg = await messages
+            .timeout(const Duration(seconds: 30))
+            .firstWhere(
+              (msg) =>
+                  msg['opcode'] == 136 && msg['payload']['fileId'] == fileId,
+            );
+
+        print(
+          'Получено подтверждение загрузки файла: ${uploadCompleteMsg['payload']}',
+        );
+
+        // Останавливаем heartbeat
+        heartbeatTimer.cancel();
+
+        final payload = {
+          "chatId": chatId,
+          "message": {
+            "text": caption?.trim() ?? "",
+            "cid": cid,
+            "elements": [],
+            "attaches": [
+              {"_type": "FILE", "fileId": fileId},
+            ],
+          },
+          "notify": true,
+        };
+
+        clearChatsCache();
+
+        _sendMessage(64, payload);
+        print('Сообщение о файле (Opcode 64) отправлено.');
+      } finally {
+        // Гарантированно останавливаем heartbeat в случае ошибки
+        heartbeatTimer.cancel();
+      }
     } catch (e) {
       print('Ошибка отправки файла: $e');
     }
@@ -368,4 +399,3 @@ extension ApiServiceMedia on ApiService {
     }
   }
 }
-

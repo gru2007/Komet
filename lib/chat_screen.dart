@@ -2544,6 +2544,25 @@ class _ChatScreenState extends State<ChatScreen> {
                               ).colorScheme.onSurface.withOpacity(0.3)
                             : Theme.of(context).colorScheme.primary,
                       ),
+                      IconButton(
+                        icon: const Icon(Icons.attach_file),
+                        tooltip: isBlocked
+                            ? 'Пользователь заблокирован'
+                            : 'Отправить файл',
+                        onPressed: isBlocked
+                            ? null
+                            : () async {
+                                await ApiService.instance.sendFileMessage(
+                                  widget.chatId,
+                                  senderId: _actualMyId,
+                                );
+                              },
+                        color: isBlocked
+                            ? Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withOpacity(0.3)
+                            : Theme.of(context).colorScheme.primary,
+                      ),
                       if (context.watch<ThemeProvider>().messageTransition ==
                           TransitionOption.slide)
                         IconButton(
