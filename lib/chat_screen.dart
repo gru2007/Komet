@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:gwid/models/contact.dart';
 import 'package:gwid/models/message.dart';
 import 'package:gwid/widgets/chat_message_bubble.dart';
+import 'package:gwid/widgets/complaint_dialog.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:gwid/services/chat_cache_service.dart';
 import 'package:gwid/services/avatar_cache_service.dart';
@@ -1163,6 +1164,14 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _showComplaintDialog(String messageId) {
+    showDialog(
+      context: context,
+      builder: (context) =>
+          ComplaintDialog(messageId: messageId, chatId: widget.chatId),
+    );
+  }
+
   void _showBlockDialog() {
     showDialog(
       context: context,
@@ -1750,6 +1759,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     isGrouped: item.isGrouped,
                     avatarVerticalOffset:
                         -8.0, // Смещение аватарки вверх на 8px
+                    onComplain: () => _showComplaintDialog(item.message.id),
                   );
 
                   Widget finalMessageWidget = bubble as Widget;

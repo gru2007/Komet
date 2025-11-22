@@ -9,6 +9,7 @@ import 'package:gwid/connection/connection_logger.dart';
 import 'package:gwid/connection/connection_state.dart' as conn_state;
 import 'package:gwid/connection/health_monitor.dart';
 import 'package:gwid/image_cache_service.dart';
+import 'package:gwid/models/complaint.dart';
 import 'package:gwid/models/contact.dart';
 import 'package:gwid/models/message.dart';
 import 'package:gwid/models/profile.dart';
@@ -31,6 +32,7 @@ part 'api_service_contacts.dart';
 part 'api_service_chats.dart';
 part 'api_service_media.dart';
 part 'api_service_privacy.dart';
+part 'api_service_complaints.dart';
 
 class ApiService {
   ApiService._privateConstructor();
@@ -85,9 +87,7 @@ class ApiService {
 
   final Map<int, Contact> _contactCache = {};
   DateTime? _lastContactsUpdate;
-  static const Duration _contactCacheExpiry = Duration(
-    minutes: 5,
-  );
+  static const Duration _contactCacheExpiry = Duration(minutes: 5);
 
   final CacheService _cacheService = CacheService();
   final AvatarCacheService _avatarCacheService = AvatarCacheService();
@@ -295,4 +295,3 @@ class ApiService {
     _messageController.close();
   }
 }
-

@@ -90,8 +90,8 @@ extension ApiServiceConnection on ApiService {
       print(
         'Используем ${proxySettings.protocol.name.toUpperCase()} прокси ${proxySettings.host}:${proxySettings.port}',
       );
-      final customHttpClient =
-          await ProxyService.instance.getHttpClientWithProxy();
+      final customHttpClient = await ProxyService.instance
+          .getHttpClientWithProxy();
       _channel = IOWebSocketChannel.connect(
         uri,
         headers: headers,
@@ -166,7 +166,8 @@ extension ApiServiceConnection on ApiService {
     final userAgentPayload = await _buildUserAgentPayload();
 
     final prefs = await SharedPreferences.getInstance();
-    final deviceId = prefs.getString('spoof_deviceid') ?? generateRandomDeviceId();
+    final deviceId =
+        prefs.getString('spoof_deviceid') ?? generateRandomDeviceId();
 
     if (prefs.getString('spoof_deviceid') == null) {
       await prefs.setString('spoof_deviceid', deviceId);
@@ -335,8 +336,9 @@ extension ApiServiceConnection on ApiService {
         _log(loggableMessage);
 
         try {
-          final decodedMessage =
-              message is String ? jsonDecode(message) : message;
+          final decodedMessage = message is String
+              ? jsonDecode(message)
+              : message;
 
           if (decodedMessage is Map &&
               decodedMessage['opcode'] == 97 &&
@@ -588,6 +590,23 @@ extension ApiServiceConnection on ApiService {
             });
           }
 
+          if (decodedMessage is Map &&
+              decodedMessage['opcode'] == 162 &&
+              decodedMessage['cmd'] == 1) {
+            final payload = decodedMessage['payload'];
+            print('Получены данные жалоб: $payload');
+
+            try {
+              final complaintData = ComplaintData.fromJson(payload);
+              _messageController.add({
+                'type': 'complaints_data',
+                'complaintData': complaintData,
+              });
+            } catch (e) {
+              print('Ошибка парсинга данных жалоб: $e');
+            }
+          }
+
           if (decodedMessage is Map<String, dynamic>) {
             _messageController.add(decodedMessage);
           }
@@ -783,4 +802,3 @@ extension ApiServiceConnection on ApiService {
     _connectionStatusController.add("disconnected");
   }
 }
-

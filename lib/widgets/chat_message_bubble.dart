@@ -176,6 +176,7 @@ class ChatMessageBubble extends StatelessWidget {
   final VoidCallback? onRemoveReaction;
   final VoidCallback? onReply;
   final VoidCallback? onForward;
+  final VoidCallback? onComplain;
   final int? myUserId;
   final bool? canEditMessage;
   final bool isGroupChat;
@@ -207,6 +208,7 @@ class ChatMessageBubble extends StatelessWidget {
     this.onRemoveReaction,
     this.onReply,
     this.onForward,
+    this.onComplain,
     this.myUserId,
     this.canEditMessage,
     this.isGroupChat = false,
@@ -890,6 +892,7 @@ class ChatMessageBubble extends StatelessWidget {
           onReaction: onReaction,
           onRemoveReaction: onRemoveReaction,
           onForward: onForward,
+          onComplain: onComplain,
           canEditMessage: canEditMessage ?? false,
           hasUserReaction: hasUserReaction,
           isChannel: isChannel,
@@ -1541,7 +1544,9 @@ class ChatMessageBubble extends StatelessWidget {
   }
 
   Widget _buildPhotoOnlyMessage(BuildContext context) {
-    final photos = message.attaches.where((a) => a['_type'] == 'PHOTO').toList();
+    final photos = message.attaches
+        .where((a) => a['_type'] == 'PHOTO')
+        .toList();
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isUltraOptimized = themeProvider.ultraOptimizeChats;
     final messageOpacity = themeProvider.messageBubbleOpacity;
@@ -1586,7 +1591,12 @@ class ChatMessageBubble extends StatelessWidget {
                     ? CrossAxisAlignment.end
                     : CrossAxisAlignment.start,
                 children: [
-                  _buildSmartPhotoGroup(context, photos, textColor, isUltraOptimized),
+                  _buildSmartPhotoGroup(
+                    context,
+                    photos,
+                    textColor,
+                    isUltraOptimized,
+                  ),
                   Padding(
                     padding: const EdgeInsets.only(top: 4, right: 6),
                     child: Row(
@@ -1620,7 +1630,9 @@ class ChatMessageBubble extends StatelessWidget {
   }
 
   Widget _buildVideoOnlyMessage(BuildContext context) {
-    final videos = message.attaches.where((a) => a['_type'] == 'VIDEO').toList();
+    final videos = message.attaches
+        .where((a) => a['_type'] == 'VIDEO')
+        .toList();
 
     final timeColor = Theme.of(context).brightness == Brightness.dark
         ? const Color(0xFF9bb5c7)
@@ -1714,7 +1726,10 @@ class ChatMessageBubble extends StatelessWidget {
                               children: [
                                 Text(
                                   _formatMessageTime(context, message.time),
-                                  style: TextStyle(fontSize: 12, color: timeColor),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: timeColor,
+                                  ),
                                 ),
                               ],
                             ),
@@ -3925,6 +3940,7 @@ class _MessageContextMenu extends StatefulWidget {
   final Function(String)? onReaction;
   final VoidCallback? onRemoveReaction;
   final VoidCallback? onForward;
+  final VoidCallback? onComplain;
   final bool canEditMessage;
   final bool hasUserReaction;
   final bool isChannel;
@@ -3939,6 +3955,7 @@ class _MessageContextMenu extends StatefulWidget {
     this.onReaction,
     this.onRemoveReaction,
     this.onForward,
+    this.onComplain,
     required this.canEditMessage,
     required this.hasUserReaction,
     this.isChannel = false,
@@ -4265,6 +4282,16 @@ class _MessageContextMenuState extends State<_MessageContextMenu>
             onTap: () {
               Navigator.pop(context);
               widget.onDeleteForAll!();
+            },
+          ),
+        if (widget.onComplain != null)
+          _buildActionButton(
+            icon: Icons.report_rounded,
+            text: 'Пожаловаться',
+            color: theme.colorScheme.error,
+            onTap: () {
+              Navigator.pop(context);
+              widget.onComplain!();
             },
           ),
       ],
