@@ -57,15 +57,6 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
 pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
 
-# Check for Wayland support in GTK
-#pkg_check_modules(GTK_WAYLAND REQUIRED IMPORTED_TARGET gtk+-3.0)
-
-#pkg_check_modules(FLUTTER_INAPPWEBVIEW_PLUGIN REQUIRED IMPORTED_TARGET
-#  webkit2gtk-4.0
-#  gtk+-3.0
-#)
-
-
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
@@ -136,12 +127,3 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
-
-
-
-
-# This include() command was automatically added by the flutter_linux_webview
-# plugin when building the app with the plugin. The app executable must be
-# linked to the CEF library for the WebView plugin to work. This command links
-# the app executable to the CEF library.
-include(flutter/ephemeral/.plugin_symlinks/flutter_linux_webview/linux/cmake/link_to_cef_library.cmake)
