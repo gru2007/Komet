@@ -6,6 +6,7 @@ import 'package:gwid/models/contact.dart';
 import 'package:gwid/models/profile.dart';
 import 'package:gwid/api/api_service.dart';
 import 'package:gwid/widgets/chat_message_bubble.dart';
+import 'package:gwid/widgets/contact_name_widget.dart';
 import 'package:gwid/chat_screen.dart';
 
 class ControlMessageChip extends StatelessWidget {
@@ -26,8 +27,15 @@ class ControlMessageChip extends StatelessWidget {
     );
 
     final eventType = controlAttach['event'];
-    final senderName =
-        contacts[message.senderId]?.name ?? 'ID ${message.senderId}';
+    final senderContact = contacts[message.senderId];
+    final senderName = senderContact != null
+        ? getContactDisplayName(
+            contactId: senderContact.id,
+            originalName: senderContact.name,
+            originalFirstName: senderContact.firstName,
+            originalLastName: senderContact.lastName,
+          )
+        : 'ID ${message.senderId}';
     final isMe = message.senderId == myId;
     final senderDisplayName = isMe ? 'Вы' : senderName;
 
@@ -40,7 +48,16 @@ class ControlMessageChip extends StatelessWidget {
             if (id == myId) {
               return 'Вы';
             }
-            return contacts[id]?.name ?? 'участник с ID $id';
+            final contact = contacts[id];
+            if (contact != null) {
+              return getContactDisplayName(
+                contactId: contact.id,
+                originalName: contact.name,
+                originalFirstName: contact.firstName,
+                originalLastName: contact.lastName,
+              );
+            }
+            return 'участник с ID $id';
           })
           .where((name) => name.isNotEmpty)
           .join(', ');

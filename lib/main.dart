@@ -14,6 +14,7 @@ import 'connection_lifecycle_manager.dart';
 import 'services/cache_service.dart';
 import 'services/avatar_cache_service.dart';
 import 'services/chat_cache_service.dart';
+import 'services/contact_local_names_service.dart';
 import 'services/version_checker.dart';
 import 'services/account_manager.dart';
 import 'services/music_player_service.dart';
@@ -28,6 +29,7 @@ Future<void> main() async {
   await CacheService().initialize();
   await AvatarCacheService().initialize();
   await ChatCacheService().initialize();
+  await ContactLocalNamesService().initialize();
   print("Сервисы кеширования инициализированы");
 
   print("Инициализируем AccountManager...");

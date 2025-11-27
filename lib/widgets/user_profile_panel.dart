@@ -1,5 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:gwid/services/avatar_cache_service.dart';
+import 'package:gwid/widgets/contact_name_widget.dart';
+import 'package:gwid/widgets/contact_avatar_widget.dart';
+import 'package:gwid/services/contact_local_names_service.dart';
 
 class UserProfilePanel extends StatefulWidget {
   final int userId;
@@ -33,25 +37,60 @@ class UserProfilePanel extends StatefulWidget {
 
 class _UserProfilePanelState extends State<UserProfilePanel> {
   final ScrollController _nameScrollController = ScrollController();
+  String? _localDescription;
+  StreamSubscription? _changesSubscription;
 
   String get _displayName {
-    if (widget.firstName != null || widget.lastName != null) {
-      final firstName = widget.firstName ?? '';
-      final lastName = widget.lastName ?? '';
-      final fullName = '$firstName $lastName'.trim();
-      return fullName.isNotEmpty
-          ? fullName
-          : (widget.name ?? 'ID ${widget.userId}');
+    final displayName = getContactDisplayName(
+      contactId: widget.userId,
+      originalName: widget.name,
+      originalFirstName: widget.firstName,
+      originalLastName: widget.lastName,
+    );
+    return displayName;
+  }
+
+  String? get _displayDescription {
+    if (_localDescription != null && _localDescription!.isNotEmpty) {
+      return _localDescription;
     }
-    return widget.name ?? 'ID ${widget.userId}';
+    return widget.description;
   }
 
   @override
   void initState() {
     super.initState();
+    _loadLocalDescription();
+
+    _changesSubscription = ContactLocalNamesService().changes.listen((
+      contactId,
+    ) {
+      if (contactId == widget.userId && mounted) {
+        _loadLocalDescription();
+      }
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkNameLength();
     });
+  }
+
+  Future<void> _loadLocalDescription() async {
+    final localData = await ContactLocalNamesService().getContactData(
+      widget.userId,
+    );
+    if (mounted) {
+      setState(() {
+        _localDescription = localData?['notes'] as String?;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _changesSubscription?.cancel();
+    _nameScrollController.dispose();
+    super.dispose();
   }
 
   void _checkNameLength() {
@@ -100,12 +139,6 @@ class _UserProfilePanelState extends State<UserProfilePanel> {
   }
 
   @override
-  void dispose() {
-    _nameScrollController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
@@ -130,11 +163,13 @@ class _UserProfilePanelState extends State<UserProfilePanel> {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                AvatarCacheService().getAvatarWidget(
-                  widget.avatarUrl,
-                  userId: widget.userId,
-                  size: 80,
-                  fallbackText: _displayName,
+                ContactAvatarWidget(
+                  contactId: widget.userId,
+                  originalAvatarUrl: widget.avatarUrl,
+                  radius: 40,
+                  fallbackText: _displayName.isNotEmpty
+                      ? _displayName[0].toUpperCase()
+                      : '?',
                   backgroundColor: colors.primaryContainer,
                   textColor: colors.onPrimaryContainer,
                 ),
@@ -213,11 +248,11 @@ class _UserProfilePanelState extends State<UserProfilePanel> {
                     ),
                   ],
                 ),
-                if (widget.description != null &&
-                    widget.description!.isNotEmpty) ...[
+                if (_displayDescription != null &&
+                    _displayDescription!.isNotEmpty) ...[
                   const SizedBox(height: 24),
                   Text(
-                    widget.description!,
+                    _displayDescription!,
                     style: TextStyle(
                       color: colors.onSurfaceVariant,
                       fontSize: 14,

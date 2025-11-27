@@ -17,8 +17,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:gwid/services/chat_cache_service.dart';
 import 'package:gwid/services/avatar_cache_service.dart';
 import 'package:gwid/services/chat_read_settings_service.dart';
+import 'package:gwid/services/contact_local_names_service.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:gwid/screens/group_settings_screen.dart';
+import 'package:gwid/screens/edit_contact_screen.dart';
+import 'package:gwid/widgets/contact_name_widget.dart';
+import 'package:gwid/widgets/contact_avatar_widget.dart';
 import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
@@ -90,6 +94,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final ItemPositionsListener _itemPositionsListener =
       ItemPositionsListener.create();
   final ValueNotifier<bool> _showScrollToBottomNotifier = ValueNotifier(false);
+
+  bool _isUserAtBottom = true;
 
   late Contact _currentContact;
   Message? _pinnedMessage;
@@ -419,7 +425,9 @@ class _ChatScreenState extends State<ChatScreen> {
     _itemPositionsListener.itemPositions.addListener(() {
       final positions = _itemPositionsListener.itemPositions.value;
       if (positions.isNotEmpty) {
-        _showScrollToBottomNotifier.value = positions.first.index > 0;
+        final isAtBottom = positions.first.index == 0;
+        _isUserAtBottom = isAtBottom;
+        _showScrollToBottomNotifier.value = !isAtBottom;
       }
     });
 
@@ -855,13 +863,17 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _addMessage(Message message) {
+  void _addMessage(Message message, {bool forceScroll = false}) {
     if (_messages.any((m) => m.id == message.id)) {
       print('Сообщение ${message.id} уже существует, пропускаем добавление');
       return;
     }
 
     ApiService.instance.clearCacheForChat(widget.chatId);
+
+    final wasAtBottom = _isUserAtBottom;
+
+    final isMyMessage = message.senderId == _actualMyId;
 
     final lastMessage = _messages.isNotEmpty ? _messages.last : null;
     _messages.add(message);
@@ -887,6 +899,18 @@ class _ChatScreenState extends State<ChatScreen> {
     final isFirstInGroup = lastMessageItem == null || !isGrouped;
     final isLastInGroup = true;
 
+    if (isGrouped && lastMessageItem != null) {
+      _chatItems.removeLast();
+      _chatItems.add(
+        MessageItem(
+          lastMessageItem.message,
+          isFirstInGroup: lastMessageItem.isFirstInGroup,
+          isLastInGroup: false,
+          isGrouped: lastMessageItem.isGrouped,
+        ),
+      );
+    }
+
     final messageItem = MessageItem(
       message,
       isFirstInGroup: isFirstInGroup,
@@ -907,6 +931,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (mounted) {
       setState(() {});
+
+      if ((wasAtBottom || isMyMessage || forceScroll) &&
+          _itemScrollController.isAttached) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_itemScrollController.isAttached) {
+            _itemScrollController.jumpTo(index: 0);
+          }
+        });
+      }
     }
   }
 
@@ -1198,6 +1231,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (context) => _EditMessageDialog(
         initialText: message.text,
         onSave: (newText) async {
@@ -1276,9 +1310,21 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 250),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          child: FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (context, animation, secondaryAnimation) => AlertDialog(
         title: const Text('Переслать сообщение'),
         content: SizedBox(
           width: double.maxFinite,
@@ -1432,17 +1478,41 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showComplaintDialog(String messageId) {
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (context) =>
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 250),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          child: FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (context, animation, secondaryAnimation) =>
           ComplaintDialog(messageId: messageId, chatId: widget.chatId),
     );
   }
 
   void _showBlockDialog() {
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 250),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          child: FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (context, animation, secondaryAnimation) => AlertDialog(
         title: const Text('Заблокировать контакт'),
         content: Text(
           'Вы уверены, что хотите заблокировать ${_currentContact.name}?',
@@ -1502,9 +1572,21 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showUnblockDialog() {
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 250),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          child: FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (context, animation, secondaryAnimation) => AlertDialog(
         title: const Text('Разблокировать контакт'),
         content: Text(
           'Вы уверены, что хотите разблокировать ${_currentContact.name}?',
@@ -1564,26 +1646,51 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showWallpaperDialog() {
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (context) => _WallpaperSelectionDialog(
-        chatId: widget.chatId,
-        onImageSelected: (imagePath) async {
-          Navigator.of(context).pop();
-          await _setChatWallpaper(imagePath);
-        },
-        onRemoveWallpaper: () async {
-          Navigator.of(context).pop();
-          await _removeChatWallpaper();
-        },
-      ),
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 250),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          child: FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (context, animation, secondaryAnimation) =>
+          _WallpaperSelectionDialog(
+            chatId: widget.chatId,
+            onImageSelected: (imagePath) async {
+              Navigator.of(context).pop();
+              await _setChatWallpaper(imagePath);
+            },
+            onRemoveWallpaper: () async {
+              Navigator.of(context).pop();
+              await _removeChatWallpaper();
+            },
+          ),
     );
   }
 
   void _showClearHistoryDialog() {
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 250),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          child: FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (context, animation, secondaryAnimation) => AlertDialog(
         title: const Text('Очистить историю чата'),
         content: Text(
           'Вы уверены, что хотите очистить историю чата с ${_currentContact.name}? Это действие нельзя отменить.',
@@ -1633,9 +1740,21 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showDeleteChatDialog() {
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 250),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          child: FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (context, animation, secondaryAnimation) => AlertDialog(
         title: const Text('Удалить чат'),
         content: Text(
           'Вы уверены, что хотите удалить чат с ${_currentContact.name}? Это действие нельзя отменить.', //1231231233
@@ -1694,9 +1813,21 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showLeaveGroupDialog() {
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 250),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          child: FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (context, animation, secondaryAnimation) => AlertDialog(
         title: const Text('Выйти из группы'),
         content: Text(
           'Вы уверены, что хотите выйти из группы "${widget.contact.name}"?',
@@ -1857,304 +1988,464 @@ class _ChatScreenState extends State<ChatScreen> {
 
     return Scaffold(
       extendBodyBehindAppBar: theme.useGlassPanels,
+      resizeToAvoidBottomInset: false,
       appBar: _buildAppBar(),
       body: Stack(
         children: [
           Positioned.fill(child: _buildChatWallpaper(theme)),
           Column(
             children: [
-              if (_pinnedMessage != null)
-                SafeArea(
-                  child: PinnedMessageWidget(
-                    pinnedMessage: _pinnedMessage!,
-                    contacts: _contactDetailsCache,
-                    myId: _actualMyId ?? 0,
-                    onTap: () {
-                      // TODO: Прокрутить к закрепленному сообщению
-                    },
-                    onClose: () {
-                      setState(() {
-                        _pinnedMessage = null;
-                      });
-                    },
-                  ),
-                ),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                switchInCurve: Curves.easeInOutCubic,
+                switchOutCurve: Curves.easeInOutCubic,
+                transitionBuilder: (child, animation) {
+                  return SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, -0.5),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: FadeTransition(opacity: animation, child: child),
+                  );
+                },
+                child: _pinnedMessage != null
+                    ? SafeArea(
+                        key: ValueKey(_pinnedMessage!.id),
+                        child: PinnedMessageWidget(
+                          pinnedMessage: _pinnedMessage!,
+                          contacts: _contactDetailsCache,
+                          myId: _actualMyId ?? 0,
+                          onTap: () {
+                            // TODO: Прокрутить к закрепленному сообщению
+                          },
+                          onClose: () {
+                            setState(() {
+                              _pinnedMessage = null;
+                            });
+                          },
+                        ),
+                      )
+                    : const SizedBox.shrink(key: ValueKey('empty')),
+              ),
               Expanded(
                 child: Stack(
                   children: [
-                    if (!_isIdReady || _isLoadingHistory)
-                      const Center(child: CircularProgressIndicator())
-                    else
-                      ScrollablePositionedList.builder(
-                        itemScrollController: _itemScrollController,
-                        itemPositionsListener: _itemPositionsListener,
-                        reverse: true,
-                        padding: EdgeInsets.fromLTRB(
-                          8.0,
-                          8.0, // Убираем дополнительный padding сверху, т.к. теперь pinned message в Column
-                          8.0,
-                          widget.isChannel ? 30.0 : 110.0,
-                        ),
-                        itemCount: _chatItems.length,
-                        itemBuilder: (context, index) {
-                          final mappedIndex = _chatItems.length - 1 - index;
-                          final item = _chatItems[mappedIndex];
-                          final isLastVisual = index == _chatItems.length - 1;
-
-                          if (isLastVisual && _hasMore && !_isLoadingMore) {
-                            _loadMore();
-                          }
-
-                          if (item is MessageItem) {
-                            final message = item.message;
-                            final key = _messageKeys.putIfAbsent(
-                              message.id,
-                              () => GlobalKey(),
-                            );
-                            final bool isHighlighted =
-                                _isSearching &&
-                                _searchResults.isNotEmpty &&
-                                _currentResultIndex != -1 &&
-                                message.id ==
-                                    _searchResults[_currentResultIndex].id;
-
-                            final isControlMessage = message.attaches.any(
-                              (a) => a['_type'] == 'CONTROL',
-                            );
-                            if (isControlMessage) {
-                              return _ControlMessageChip(
-                                message: message,
-                                contacts: _contactDetailsCache,
-                                myId: _actualMyId ?? widget.myId,
-                              );
-                            }
-
-                            final bool isMe =
-                                item.message.senderId == _actualMyId;
-
-                            MessageReadStatus? readStatus;
-                            if (isMe) {
-                              final messageId = item.message.id;
-                              if (messageId.startsWith('local_')) {
-                                readStatus = MessageReadStatus.sending;
-                              } else {
-                                readStatus = MessageReadStatus.sent;
-                              }
-                            }
-
-                            String? forwardedFrom;
-                            String? forwardedFromAvatarUrl;
-                            if (message.isForwarded) {
-                              final link = message.link;
-                              if (link is Map<String, dynamic>) {
-                                final chatName = link['chatName'] as String?;
-                                final chatIconUrl =
-                                    link['chatIconUrl'] as String?;
-
-                                if (chatName != null) {
-                                  forwardedFrom = chatName;
-                                  forwardedFromAvatarUrl = chatIconUrl;
-                                } else {
-                                  final forwardedMessage =
-                                      link['message'] as Map<String, dynamic>?;
-                                  final originalSenderId =
-                                      forwardedMessage?['sender'] as int?;
-                                  if (originalSenderId != null) {
-                                    final originalSenderContact =
-                                        _contactDetailsCache[originalSenderId];
-                                    if (originalSenderContact == null) {
-                                      _loadContactIfNeeded(originalSenderId);
-                                      forwardedFrom =
-                                          'Участник $originalSenderId';
-                                      forwardedFromAvatarUrl = null;
-                                    } else {
-                                      forwardedFrom =
-                                          originalSenderContact.name;
-                                      forwardedFromAvatarUrl =
-                                          originalSenderContact.photoBaseUrl;
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                            String? senderName;
-                            if (widget.isGroupChat && !isMe) {
-                              bool shouldShowName = true;
-                              if (mappedIndex > 0) {
-                                final previousItem =
-                                    _chatItems[mappedIndex - 1];
-                                if (previousItem is MessageItem) {
-                                  final previousMessage = previousItem.message;
-                                  if (previousMessage.senderId ==
-                                      message.senderId) {
-                                    final timeDifferenceInMinutes =
-                                        (message.time - previousMessage.time) /
-                                        (1000 * 60);
-                                    if (timeDifferenceInMinutes < 5) {
-                                      shouldShowName = false;
-                                    }
-                                  }
-                                }
-                              }
-                              if (shouldShowName) {
-                                final senderContact =
-                                    _contactDetailsCache[message.senderId];
-                                if (senderContact != null) {
-                                  senderName = senderContact.name;
-                                } else {
-                                  senderName = 'ID ${message.senderId}';
-                                  _loadContactIfNeeded(message.senderId);
-                                }
-                              }
-                            }
-                            final hasPhoto = item.message.attaches.any(
-                              (a) => a['_type'] == 'PHOTO',
-                            );
-                            final isNew = !_animatedMessageIds.contains(
-                              item.message.id,
-                            );
-                            final deferImageLoading =
-                                hasPhoto &&
-                                isNew &&
-                                !_anyOptimize &&
-                                !context
-                                    .read<ThemeProvider>()
-                                    .animatePhotoMessages;
-
-                            final bubble = ChatMessageBubble(
-                              key: key,
-                              message: item.message,
-                              isMe: isMe,
-                              readStatus: readStatus,
-                              deferImageLoading: deferImageLoading,
-                              myUserId: _actualMyId,
-                              chatId: widget.chatId,
-                              onReply: widget.isChannel
-                                  ? null
-                                  : () => _replyToMessage(item.message),
-                              onForward: () => _forwardMessage(item.message),
-                              onEdit: isMe
-                                  ? () => _editMessage(item.message)
-                                  : null,
-                              canEditMessage: isMe
-                                  ? item.message.canEdit(_actualMyId!)
-                                  : null,
-                              onDeleteForMe: isMe
-                                  ? () async {
-                                      await ApiService.instance.deleteMessage(
-                                        widget.chatId,
-                                        item.message.id,
-                                        forMe: true,
-                                      );
-                                      widget.onChatUpdated?.call();
-                                    }
-                                  : null,
-                              onDeleteForAll: isMe
-                                  ? () async {
-                                      await ApiService.instance.deleteMessage(
-                                        widget.chatId,
-                                        item.message.id,
-                                        forMe: false,
-                                      );
-                                      widget.onChatUpdated?.call();
-                                    }
-                                  : null,
-                              onReaction: (emoji) {
-                                _updateReactionOptimistically(
-                                  item.message.id,
-                                  emoji,
-                                );
-                                ApiService.instance.sendReaction(
-                                  widget.chatId,
-                                  item.message.id,
-                                  emoji,
-                                );
-                                widget.onChatUpdated?.call();
-                              },
-                              onRemoveReaction: () {
-                                _removeReactionOptimistically(item.message.id);
-                                ApiService.instance.removeReaction(
-                                  widget.chatId,
-                                  item.message.id,
-                                );
-                                widget.onChatUpdated?.call();
-                              },
-                              isGroupChat: widget.isGroupChat,
-                              isChannel: widget.isChannel,
-                              senderName: senderName,
-                              forwardedFrom: forwardedFrom,
-                              forwardedFromAvatarUrl: forwardedFromAvatarUrl,
-                              contactDetailsCache: _contactDetailsCache,
-                              onReplyTap: _scrollToMessage,
-                              useAutoReplyColor: context
-                                  .read<ThemeProvider>()
-                                  .useAutoReplyColor,
-                              customReplyColor: context
-                                  .read<ThemeProvider>()
-                                  .customReplyColor,
-                              isFirstInGroup: item.isFirstInGroup,
-                              isLastInGroup: item.isLastInGroup,
-                              isGrouped: item.isGrouped,
-                              avatarVerticalOffset:
-                                  -8.0, // Смещение аватарки вверх на 8px
-                              onComplain: () =>
-                                  _showComplaintDialog(item.message.id),
-                            );
-
-                            Widget finalMessageWidget = bubble as Widget;
-
-                            if (isHighlighted) {
-                              return Container(
-                                margin: const EdgeInsets.symmetric(vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primaryContainer
-                                      .withOpacity(0.5),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.primary,
-                                    width: 1.5,
-                                  ),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      switchInCurve: Curves.easeInOutCubic,
+                      switchOutCurve: Curves.easeInOutCubic,
+                      transitionBuilder: (child, animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: ScaleTransition(
+                            scale: Tween<double>(begin: 0.8, end: 1.0).animate(
+                              CurvedAnimation(
+                                parent: animation,
+                                curve: Curves.easeOutCubic,
+                              ),
+                            ),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: (!_isIdReady || _isLoadingHistory)
+                          ? const Center(
+                              key: ValueKey('loading'),
+                              child: CircularProgressIndicator(),
+                            )
+                          : AnimatedPadding(
+                              key: const ValueKey('chat_list'),
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOutCubic,
+                              padding: EdgeInsets.only(
+                                bottom: MediaQuery.of(
+                                  context,
+                                ).viewInsets.bottom,
+                              ),
+                              child: ScrollablePositionedList.builder(
+                                itemScrollController: _itemScrollController,
+                                itemPositionsListener: _itemPositionsListener,
+                                reverse: true,
+                                padding: EdgeInsets.fromLTRB(
+                                  8.0,
+                                  8.0,
+                                  8.0,
+                                  widget.isChannel ? 16.0 : 100.0,
                                 ),
-                                child: finalMessageWidget,
-                              );
-                            }
+                                itemCount: _chatItems.length,
+                                itemBuilder: (context, index) {
+                                  final mappedIndex =
+                                      _chatItems.length - 1 - index;
+                                  final item = _chatItems[mappedIndex];
+                                  final isLastVisual =
+                                      index == _chatItems.length - 1;
 
-                            return finalMessageWidget;
-                          } else if (item is DateSeparatorItem) {
-                            return _DateSeparatorChip(date: item.date);
-                          }
-                          if (isLastVisual && _isLoadingMore) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 12),
-                              child: Center(child: CircularProgressIndicator()),
-                            );
-                          }
-                          return const SizedBox.shrink();
-                        },
-                      ),
-                    if (_showScrollToBottomNotifier.value)
-                      Positioned(
-                        right: 16,
-                        bottom: 120,
-                        child: Opacity(
-                          opacity: 0.85,
+                                  if (isLastVisual &&
+                                      _hasMore &&
+                                      !_isLoadingMore) {
+                                    _loadMore();
+                                  }
+
+                                  if (item is MessageItem) {
+                                    final message = item.message;
+                                    final key = _messageKeys.putIfAbsent(
+                                      message.id,
+                                      () => GlobalKey(),
+                                    );
+                                    final bool isHighlighted =
+                                        _isSearching &&
+                                        _searchResults.isNotEmpty &&
+                                        _currentResultIndex != -1 &&
+                                        message.id ==
+                                            _searchResults[_currentResultIndex]
+                                                .id;
+
+                                    final isControlMessage = message.attaches
+                                        .any((a) => a['_type'] == 'CONTROL');
+                                    if (isControlMessage) {
+                                      return _ControlMessageChip(
+                                        message: message,
+                                        contacts: _contactDetailsCache,
+                                        myId: _actualMyId ?? widget.myId,
+                                      );
+                                    }
+
+                                    final bool isMe =
+                                        item.message.senderId == _actualMyId;
+
+                                    MessageReadStatus? readStatus;
+                                    if (isMe) {
+                                      final messageId = item.message.id;
+                                      if (messageId.startsWith('local_')) {
+                                        readStatus = MessageReadStatus.sending;
+                                      } else {
+                                        readStatus = MessageReadStatus.sent;
+                                      }
+                                    }
+
+                                    String? forwardedFrom;
+                                    String? forwardedFromAvatarUrl;
+                                    if (message.isForwarded) {
+                                      final link = message.link;
+                                      if (link is Map<String, dynamic>) {
+                                        final chatName =
+                                            link['chatName'] as String?;
+                                        final chatIconUrl =
+                                            link['chatIconUrl'] as String?;
+
+                                        if (chatName != null) {
+                                          forwardedFrom = chatName;
+                                          forwardedFromAvatarUrl = chatIconUrl;
+                                        } else {
+                                          final forwardedMessage =
+                                              link['message']
+                                                  as Map<String, dynamic>?;
+                                          final originalSenderId =
+                                              forwardedMessage?['sender']
+                                                  as int?;
+                                          if (originalSenderId != null) {
+                                            final originalSenderContact =
+                                                _contactDetailsCache[originalSenderId];
+                                            if (originalSenderContact == null) {
+                                              _loadContactIfNeeded(
+                                                originalSenderId,
+                                              );
+                                              forwardedFrom =
+                                                  'Участник $originalSenderId';
+                                              forwardedFromAvatarUrl = null;
+                                            } else {
+                                              forwardedFrom =
+                                                  originalSenderContact.name;
+                                              forwardedFromAvatarUrl =
+                                                  originalSenderContact
+                                                      .photoBaseUrl;
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                    String? senderName;
+                                    if (widget.isGroupChat && !isMe) {
+                                      bool shouldShowName = true;
+                                      if (mappedIndex > 0) {
+                                        final previousItem =
+                                            _chatItems[mappedIndex - 1];
+                                        if (previousItem is MessageItem) {
+                                          final previousMessage =
+                                              previousItem.message;
+                                          if (previousMessage.senderId ==
+                                              message.senderId) {
+                                            final timeDifferenceInMinutes =
+                                                (message.time -
+                                                    previousMessage.time) /
+                                                (1000 * 60);
+                                            if (timeDifferenceInMinutes < 5) {
+                                              shouldShowName = false;
+                                            }
+                                          }
+                                        }
+                                      }
+                                      if (shouldShowName) {
+                                        final senderContact =
+                                            _contactDetailsCache[message
+                                                .senderId];
+                                        if (senderContact != null) {
+                                          senderName = getContactDisplayName(
+                                            contactId: senderContact.id,
+                                            originalName: senderContact.name,
+                                            originalFirstName:
+                                                senderContact.firstName,
+                                            originalLastName:
+                                                senderContact.lastName,
+                                          );
+                                        } else {
+                                          senderName = 'ID ${message.senderId}';
+                                          _loadContactIfNeeded(
+                                            message.senderId,
+                                          );
+                                        }
+                                      }
+                                    }
+                                    final hasPhoto = item.message.attaches.any(
+                                      (a) => a['_type'] == 'PHOTO',
+                                    );
+                                    final isNew = !_animatedMessageIds.contains(
+                                      item.message.id,
+                                    );
+                                    final deferImageLoading =
+                                        hasPhoto &&
+                                        isNew &&
+                                        !_anyOptimize &&
+                                        !context
+                                            .read<ThemeProvider>()
+                                            .animatePhotoMessages;
+
+                                    final bubble = ChatMessageBubble(
+                                      key: key,
+                                      message: item.message,
+                                      isMe: isMe,
+                                      readStatus: readStatus,
+                                      deferImageLoading: deferImageLoading,
+                                      myUserId: _actualMyId,
+                                      chatId: widget.chatId,
+                                      onReply: widget.isChannel
+                                          ? null
+                                          : () => _replyToMessage(item.message),
+                                      onForward: () =>
+                                          _forwardMessage(item.message),
+                                      onEdit: isMe
+                                          ? () => _editMessage(item.message)
+                                          : null,
+                                      canEditMessage: isMe
+                                          ? item.message.canEdit(_actualMyId!)
+                                          : null,
+                                      onDeleteForMe: isMe
+                                          ? () async {
+                                              await ApiService.instance
+                                                  .deleteMessage(
+                                                    widget.chatId,
+                                                    item.message.id,
+                                                    forMe: true,
+                                                  );
+                                              widget.onChatUpdated?.call();
+                                            }
+                                          : null,
+                                      onDeleteForAll: isMe
+                                          ? () async {
+                                              await ApiService.instance
+                                                  .deleteMessage(
+                                                    widget.chatId,
+                                                    item.message.id,
+                                                    forMe: false,
+                                                  );
+                                              widget.onChatUpdated?.call();
+                                            }
+                                          : null,
+                                      onReaction: (emoji) {
+                                        _updateReactionOptimistically(
+                                          item.message.id,
+                                          emoji,
+                                        );
+                                        ApiService.instance.sendReaction(
+                                          widget.chatId,
+                                          item.message.id,
+                                          emoji,
+                                        );
+                                        widget.onChatUpdated?.call();
+                                      },
+                                      onRemoveReaction: () {
+                                        _removeReactionOptimistically(
+                                          item.message.id,
+                                        );
+                                        ApiService.instance.removeReaction(
+                                          widget.chatId,
+                                          item.message.id,
+                                        );
+                                        widget.onChatUpdated?.call();
+                                      },
+                                      isGroupChat: widget.isGroupChat,
+                                      isChannel: widget.isChannel,
+                                      senderName: senderName,
+                                      forwardedFrom: forwardedFrom,
+                                      forwardedFromAvatarUrl:
+                                          forwardedFromAvatarUrl,
+                                      contactDetailsCache: _contactDetailsCache,
+                                      onReplyTap: _scrollToMessage,
+                                      useAutoReplyColor: context
+                                          .read<ThemeProvider>()
+                                          .useAutoReplyColor,
+                                      customReplyColor: context
+                                          .read<ThemeProvider>()
+                                          .customReplyColor,
+                                      isFirstInGroup: item.isFirstInGroup,
+                                      isLastInGroup: item.isLastInGroup,
+                                      isGrouped: item.isGrouped,
+                                      avatarVerticalOffset:
+                                          -8.0, // Смещение аватарки вверх на 8px
+                                      onComplain: () =>
+                                          _showComplaintDialog(item.message.id),
+                                    );
+
+                                    Widget finalMessageWidget =
+                                        bubble as Widget;
+
+                                    if (isHighlighted) {
+                                      return TweenAnimationBuilder<double>(
+                                        duration: const Duration(
+                                          milliseconds: 600,
+                                        ),
+                                        tween: Tween<double>(
+                                          begin: 0.3,
+                                          end: 0.6,
+                                        ),
+                                        curve: Curves.easeInOut,
+                                        builder: (context, value, child) {
+                                          return Container(
+                                            margin: const EdgeInsets.symmetric(
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primaryContainer
+                                                  .withOpacity(value),
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                              border: Border.all(
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.primary,
+                                                width: 1.5,
+                                              ),
+                                            ),
+                                            child: child,
+                                          );
+                                        },
+                                        child: finalMessageWidget,
+                                      );
+                                    }
+
+                                    // Плавное появление новых сообщений
+                                    if (isNew && !_anyOptimize) {
+                                      return TweenAnimationBuilder<double>(
+                                        duration: const Duration(
+                                          milliseconds: 400,
+                                        ),
+                                        tween: Tween<double>(
+                                          begin: 0.0,
+                                          end: 1.0,
+                                        ),
+                                        curve: Curves.easeOutCubic,
+                                        builder: (context, value, child) {
+                                          return Opacity(
+                                            opacity: value,
+                                            child: Transform.translate(
+                                              offset: Offset(
+                                                0,
+                                                20 * (1 - value),
+                                              ),
+                                              child: child,
+                                            ),
+                                          );
+                                        },
+                                        child: finalMessageWidget,
+                                      );
+                                    }
+
+                                    return finalMessageWidget;
+                                  } else if (item is DateSeparatorItem) {
+                                    return _DateSeparatorChip(date: item.date);
+                                  }
+                                  if (isLastVisual && _isLoadingMore) {
+                                    return TweenAnimationBuilder<double>(
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
+                                      tween: Tween<double>(
+                                        begin: 0.0,
+                                        end: 1.0,
+                                      ),
+                                      curve: Curves.easeOut,
+                                      builder: (context, value, child) {
+                                        return Opacity(
+                                          opacity: value,
+                                          child: Transform.scale(
+                                            scale: 0.7 + (0.3 * value),
+                                            child: child,
+                                          ),
+                                        );
+                                      },
+                                      child: const Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: 12,
+                                        ),
+                                        child: Center(
+                                          child: CircularProgressIndicator(),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  return const SizedBox.shrink();
+                                },
+                              ),
+                            ),
+                    ),
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 100),
+                      curve: Curves.easeOutQuad,
+                      right: 16,
+                      bottom: MediaQuery.of(context).viewInsets.bottom + 100,
+                      child: AnimatedScale(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutBack,
+                        scale: _showScrollToBottomNotifier.value ? 1.0 : 0.0,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 150),
+                          opacity: _showScrollToBottomNotifier.value
+                              ? 1.0
+                              : 0.0,
                           child: FloatingActionButton(
                             mini: true,
                             onPressed: _scrollToBottom,
+                            elevation: 4,
                             child: const Icon(Icons.arrow_downward_rounded),
                           ),
                         ),
                       ),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
-          Positioned(left: 0, right: 0, bottom: 0, child: _buildTextInput()),
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 100),
+            curve: Curves.easeOutQuad,
+            left: 8,
+            right: 8,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 12,
+            child: _buildTextInput(),
+          ),
         ],
       ),
     );
@@ -2172,9 +2463,20 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         },
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(opacity: animation, child: child);
+          return FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeInOutCubic,
+            ),
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.95, end: 1.0).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+              ),
+              child: child,
+            ),
+          );
         },
-        transitionDuration: const Duration(milliseconds: 300),
+        transitionDuration: const Duration(milliseconds: 350),
       ),
     );
   }
@@ -2256,13 +2558,37 @@ class _ChatScreenState extends State<ChatScreen> {
             onPressed: () {
               if (_actualMyId == null) return;
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => GroupSettingsScreen(
-                    chatId: widget.chatId,
-                    initialContact: _currentContact,
-                    myId: _actualMyId!,
-                    onChatUpdated: widget.onChatUpdated,
-                  ),
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      GroupSettingsScreen(
+                        chatId: widget.chatId,
+                        initialContact: _currentContact,
+                        myId: _actualMyId!,
+                        onChatUpdated: widget.onChatUpdated,
+                      ),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                        return SlideTransition(
+                          position:
+                              Tween<Offset>(
+                                begin: const Offset(1.0, 0.0),
+                                end: Offset.zero,
+                              ).animate(
+                                CurvedAnimation(
+                                  parent: animation,
+                                  curve: Curves.easeOutCubic,
+                                ),
+                              ),
+                          child: FadeTransition(
+                            opacity: CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeOut,
+                            ),
+                            child: child,
+                          ),
+                        );
+                      },
+                  transitionDuration: const Duration(milliseconds: 350),
                 ),
               );
             },
@@ -2430,18 +2756,13 @@ class _ChatScreenState extends State<ChatScreen> {
                         color: Theme.of(context).colorScheme.onPrimaryContainer,
                       ),
                     )
-                  : CircleAvatar(
+                  : ContactAvatarWidget(
+                      contactId: widget.contact.id,
+                      originalAvatarUrl: widget.contact.photoBaseUrl,
                       radius: 18,
-                      backgroundImage: widget.contact.photoBaseUrl != null
-                          ? NetworkImage(widget.contact.photoBaseUrl!)
-                          : null,
-                      child: widget.contact.photoBaseUrl == null
-                          ? Text(
-                              widget.contact.name.isNotEmpty
-                                  ? widget.contact.name[0].toUpperCase()
-                                  : '?',
-                            )
-                          : null,
+                      fallbackText: widget.contact.name.isNotEmpty
+                          ? widget.contact.name[0].toUpperCase()
+                          : '?',
                     ),
             ),
           ),
@@ -2457,8 +2778,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          widget.contact.name,
+                        child: ContactNameWidget(
+                          contactId: widget.contact.id,
+                          originalName: widget.contact.name,
+                          originalFirstName: widget.contact.firstName,
+                          originalLastName: widget.contact.lastName,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -2635,7 +2959,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     if (theme.useGlassPanels) {
-      return ClipRect(
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
         child: BackdropFilter(
           filter: ImageFilter.blur(
             sigmaX: theme.bottomBarBlur,
@@ -2643,49 +2968,51 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           child: Container(
             padding: const EdgeInsets.symmetric(
-              horizontal: 8.0,
-              vertical: 12.0,
+              horizontal: 12.0,
+              vertical: 8.0,
             ),
             decoration: BoxDecoration(
-              color: Theme.of(
-                context,
-              ).colorScheme.surface.withOpacity(theme.bottomBarOpacity),
-              border: Border(
-                top: BorderSide(
-                  color: Theme.of(context).dividerColor,
-                  width: 0.5,
+              color: Theme.of(context).colorScheme.surface.withOpacity(0.7),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
                 ),
-              ),
+              ],
             ),
             child: SafeArea(
               top: false,
+              bottom: false,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (_replyingToMessage != null) ...[
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(10),
                       margin: const EdgeInsets.only(bottom: 8),
                       decoration: BoxDecoration(
                         color: Theme.of(
                           context,
-                        ).colorScheme.primaryContainer.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.primary.withOpacity(0.3),
+                        ).colorScheme.primaryContainer.withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border(
+                          left: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 3,
+                          ),
                         ),
                       ),
                       child: Row(
                         children: [
                           Icon(
-                            Icons.reply,
-                            size: 16,
+                            Icons.reply_rounded,
+                            size: 18,
                             color: Theme.of(context).colorScheme.primary,
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2700,7 +3027,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ).colorScheme.primary,
                                   ),
                                 ),
-                                const SizedBox(height: 2),
+                                const SizedBox(height: 3),
                                 Text(
                                   _replyingToMessage!.text.isNotEmpty
                                       ? _replyingToMessage!.text
@@ -2709,7 +3036,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                     fontSize: 13,
                                     color: Theme.of(
                                       context,
-                                    ).colorScheme.onSurface.withOpacity(0.8),
+                                    ).colorScheme.onSurface.withOpacity(0.7),
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -2717,11 +3044,20 @@ class _ChatScreenState extends State<ChatScreen> {
                               ],
                             ),
                           ),
-                          IconButton(
-                            onPressed: _cancelReply,
-                            icon: const Icon(Icons.close),
-                            iconSize: 18,
-                            color: Theme.of(context).colorScheme.primary,
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(20),
+                              onTap: _cancelReply,
+                              child: Padding(
+                                padding: const EdgeInsets.all(6.0),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  size: 18,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -2735,12 +3071,13 @@ class _ChatScreenState extends State<ChatScreen> {
                       decoration: BoxDecoration(
                         color: Theme.of(
                           context,
-                        ).colorScheme.errorContainer.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.error.withOpacity(0.5),
+                        ).colorScheme.errorContainer.withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border(
+                          left: BorderSide(
+                            color: Theme.of(context).colorScheme.error,
+                            width: 3,
+                          ),
                         ),
                       ),
                       child: Column(
@@ -2749,38 +3086,39 @@ class _ChatScreenState extends State<ChatScreen> {
                           Row(
                             children: [
                               Icon(
-                                Icons.block,
+                                Icons.block_rounded,
                                 color: Theme.of(context).colorScheme.error,
                                 size: 20,
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 10),
                               Text(
                                 'Пользователь заблокирован',
                                 style: TextStyle(
                                   color: Theme.of(context).colorScheme.error,
                                   fontWeight: FontWeight.w600,
+                                  fontSize: 13,
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 6),
                           Text(
                             'Разблокируйте пользователя для отправки сообщений',
                             style: TextStyle(
                               color: Theme.of(
                                 context,
                               ).colorScheme.onErrorContainer,
-                              fontSize: 14,
+                              fontSize: 13,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 3),
                           Text(
                             'или включите block_bypass',
                             style: TextStyle(
                               color: Theme.of(
                                 context,
-                              ).colorScheme.onErrorContainer,
-                              fontSize: 12,
+                              ).colorScheme.onErrorContainer.withOpacity(0.7),
+                              fontSize: 11,
                               fontStyle: FontStyle.italic,
                             ),
                           ),
@@ -2789,7 +3127,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ],
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
                         child: Focus(
@@ -2831,22 +3169,31 @@ class _ChatScreenState extends State<ChatScreen> {
                                   ? 'Пользователь заблокирован'
                                   : 'Сообщение...',
                               filled: true,
+                              isDense: true,
                               fillColor: isBlocked
                                   ? Theme.of(context)
                                         .colorScheme
                                         .surfaceContainerHighest
-                                        .withOpacity(0.3)
+                                        .withOpacity(0.25)
                                   : Theme.of(context)
                                         .colorScheme
                                         .surfaceContainerHighest
-                                        .withOpacity(0.5),
+                                        .withOpacity(0.4),
                               border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(30),
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
                                 borderSide: BorderSide.none,
                               ),
                               contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16.0,
-                                vertical: 10.0,
+                                horizontal: 18.0,
+                                vertical: 12.0,
                               ),
                             ),
 
@@ -2860,72 +3207,115 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: const Icon(Icons.photo_library_outlined),
-                        tooltip: isBlocked
-                            ? 'Пользователь заблокирован'
-                            : 'Отправить фото',
-                        onPressed: isBlocked
-                            ? null
-                            : () async {
-                                final result = await _pickPhotosFlow(context);
-                                if (result != null && result.paths.isNotEmpty) {
-                                  await ApiService.instance.sendPhotoMessages(
+                      const SizedBox(width: 4),
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(24),
+                          onTap: isBlocked
+                              ? null
+                              : () async {
+                                  final result = await _pickPhotosFlow(context);
+                                  if (result != null &&
+                                      result.paths.isNotEmpty) {
+                                    await ApiService.instance.sendPhotoMessages(
+                                      widget.chatId,
+                                      localPaths: result.paths,
+                                      caption: result.caption,
+                                      senderId: _actualMyId,
+                                    );
+                                  }
+                                },
+                          child: Padding(
+                            padding: const EdgeInsets.all(6.0),
+                            child: Icon(
+                              Icons.photo_library_outlined,
+                              color: isBlocked
+                                  ? Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface.withOpacity(0.3)
+                                  : Theme.of(context).colorScheme.primary,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(24),
+                          onTap: isBlocked
+                              ? null
+                              : () async {
+                                  await ApiService.instance.sendFileMessage(
                                     widget.chatId,
-                                    localPaths: result.paths,
-                                    caption: result.caption,
                                     senderId: _actualMyId,
                                   );
-                                }
-                              },
-                        color: isBlocked
-                            ? Theme.of(
-                                context,
-                              ).colorScheme.onSurface.withOpacity(0.3)
-                            : Theme.of(context).colorScheme.primary,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.attach_file),
-                        tooltip: isBlocked
-                            ? 'Пользователь заблокирован'
-                            : 'Отправить файл',
-                        onPressed: isBlocked
-                            ? null
-                            : () async {
-                                await ApiService.instance.sendFileMessage(
-                                  widget.chatId,
-                                  senderId: _actualMyId,
-                                );
-                              },
-                        color: isBlocked
-                            ? Theme.of(
-                                context,
-                              ).colorScheme.onSurface.withOpacity(0.3)
-                            : Theme.of(context).colorScheme.primary,
+                                },
+                          child: Padding(
+                            padding: const EdgeInsets.all(6.0),
+                            child: Icon(
+                              Icons.attach_file,
+                              color: isBlocked
+                                  ? Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface.withOpacity(0.3)
+                                  : Theme.of(context).colorScheme.primary,
+                              size: 24,
+                            ),
+                          ),
+                        ),
                       ),
                       if (context.watch<ThemeProvider>().messageTransition ==
                           TransitionOption.slide)
-                        IconButton(
-                          icon: const Icon(Icons.animation),
-                          onPressed: isBlocked ? null : _testSlideAnimation,
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(24),
+                            onTap: isBlocked ? null : _testSlideAnimation,
+                            child: Padding(
+                              padding: const EdgeInsets.all(6.0),
+                              child: Icon(
+                                Icons.animation,
+                                color: isBlocked
+                                    ? Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface.withOpacity(0.3)
+                                    : Colors.orange,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(width: 4),
+                      Container(
+                        decoration: BoxDecoration(
                           color: isBlocked
                               ? Theme.of(
                                   context,
-                                ).colorScheme.onSurface.withOpacity(0.3)
-                              : Colors.orange,
-                          tooltip: isBlocked
-                              ? 'Пользователь заблокирован'
-                              : 'Тест Slide+ анимации',
+                                ).colorScheme.onSurface.withOpacity(0.2)
+                              : Theme.of(context).colorScheme.primary,
+                          shape: BoxShape.circle,
                         ),
-                      IconButton(
-                        icon: const Icon(Icons.send),
-                        onPressed: isBlocked ? null : _sendMessage,
-                        color: isBlocked
-                            ? Theme.of(
-                                context,
-                              ).colorScheme.onSurface.withOpacity(0.3)
-                            : Theme.of(context).colorScheme.primary,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(24),
+                            onTap: isBlocked ? null : _sendMessage,
+                            child: Padding(
+                              padding: const EdgeInsets.all(6.0),
+                              child: Icon(
+                                Icons.send_rounded,
+                                color: isBlocked
+                                    ? Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface.withOpacity(0.5)
+                                    : Theme.of(context).colorScheme.onPrimary,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -2936,233 +3326,313 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       );
     } else {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface, // Обычный цвет фона
-          border: Border(
-            top: BorderSide(color: Theme.of(context).dividerColor, width: 0.5),
-          ),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_replyingToMessage != null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primaryContainer.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primary.withOpacity(0.3),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.reply,
-                        size: 16,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Ответ на сообщение',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _replyingToMessage!.text.isNotEmpty
-                                  ? _replyingToMessage!.text
-                                  : 'Фото',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurface.withOpacity(0.8),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _cancelReply,
-                        icon: const Icon(Icons.close),
-                        iconSize: 18,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ],
-                  ),
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12.0,
+              vertical: 8.0,
+            ),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface.withOpacity(
+                0.85,
+              ), // Прозрачный фон для эффекта стекла
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
                 ),
               ],
-              if (isBlocked) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.errorContainer.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.error.withOpacity(0.5),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+            ),
+            child: SafeArea(
+              top: false,
+              bottom: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_replyingToMessage != null) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.primaryContainer.withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border(
+                          left: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 3,
+                          ),
+                        ),
+                      ),
+                      child: Row(
                         children: [
                           Icon(
-                            Icons.block,
-                            color: Theme.of(context).colorScheme.error,
-                            size: 20,
+                            Icons.reply_rounded,
+                            size: 18,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Пользователь заблокирован',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
-                              fontWeight: FontWeight.w600,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Ответ на сообщение',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  _replyingToMessage!.text.isNotEmpty
+                                      ? _replyingToMessage!.text
+                                      : 'Фото',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface.withOpacity(0.7),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(20),
+                              onTap: _cancelReply,
+                              child: Padding(
+                                padding: const EdgeInsets.all(6.0),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  size: 18,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Разблокируйте пользователя для отправки сообщений',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onErrorContainer,
-                          fontSize: 14,
+                    ),
+                  ],
+                  if (isBlocked) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.errorContainer.withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border(
+                          left: BorderSide(
+                            color: Theme.of(context).colorScheme.error,
+                            width: 3,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'или включите block_bypass',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onErrorContainer,
-                          fontSize: 12,
-                          fontStyle: FontStyle.italic,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.block_rounded,
+                                color: Theme.of(context).colorScheme.error,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Пользователь заблокирован',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Разблокируйте пользователя для отправки сообщений',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onErrorContainer,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'или включите block_bypass',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onErrorContainer.withOpacity(0.7),
+                              fontSize: 11,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _textController,
+                          enabled: !isBlocked,
+                          keyboardType: TextInputType.multiline,
+                          textInputAction: TextInputAction.newline,
+                          minLines: 1,
+                          maxLines: 5,
+                          decoration: InputDecoration(
+                            hintText: isBlocked
+                                ? 'Пользователь заблокирован'
+                                : 'Сообщение...',
+                            filled: true,
+                            isDense: true,
+                            fillColor: isBlocked
+                                ? Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest
+                                      .withOpacity(0.25)
+                                : Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest
+                                      .withOpacity(0.4),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 18.0,
+                              vertical: 12.0,
+                            ),
+                          ),
+                          onChanged: isBlocked
+                              ? null
+                              : (v) {
+                                  if (v.isNotEmpty) {
+                                    _scheduleTypingPing();
+                                  }
+                                },
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(24),
+                          onTap: isBlocked
+                              ? null
+                              : () async {
+                                  final result = await _pickPhotosFlow(context);
+                                  if (result != null &&
+                                      result.paths.isNotEmpty) {
+                                    await ApiService.instance.sendPhotoMessages(
+                                      widget.chatId,
+                                      localPaths: result.paths,
+                                      caption: result.caption,
+                                      senderId: _actualMyId,
+                                    );
+                                  }
+                                },
+                          child: Padding(
+                            padding: const EdgeInsets.all(6.0),
+                            child: Icon(
+                              Icons.photo_library_outlined,
+                              color: isBlocked
+                                  ? Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface.withOpacity(0.3)
+                                  : Theme.of(context).colorScheme.primary,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (context.watch<ThemeProvider>().messageTransition ==
+                          TransitionOption.slide)
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(24),
+                            onTap: isBlocked ? null : _testSlideAnimation,
+                            child: Padding(
+                              padding: const EdgeInsets.all(6.0),
+                              child: Icon(
+                                Icons.animation,
+                                color: isBlocked
+                                    ? Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface.withOpacity(0.3)
+                                    : Colors.orange,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(width: 4),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: isBlocked
+                              ? Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withOpacity(0.2)
+                              : Theme.of(context).colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(24),
+                            onTap: isBlocked ? null : _sendMessage,
+                            child: Padding(
+                              padding: const EdgeInsets.all(6.0),
+                              child: Icon(
+                                Icons.send_rounded,
+                                color: isBlocked
+                                    ? Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface.withOpacity(0.5)
+                                    : Theme.of(context).colorScheme.onPrimary,
+                                size: 24,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      enabled: !isBlocked,
-                      keyboardType: TextInputType.multiline,
-                      textInputAction: TextInputAction.newline,
-                      minLines: 1,
-                      maxLines: 5,
-                      decoration: InputDecoration(
-                        hintText: isBlocked
-                            ? 'Пользователь заблокирован'
-                            : 'Сообщение...',
-                        filled: true,
-                        fillColor: isBlocked
-                            ? Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest
-                                  .withOpacity(0.3)
-                            : Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest
-                                  .withOpacity(0.5),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16.0,
-                          vertical: 10.0,
-                        ),
-                      ),
-                      onChanged: isBlocked
-                          ? null
-                          : (v) {
-                              if (v.isNotEmpty) {
-                                _scheduleTypingPing();
-                              }
-                            },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.photo_library_outlined),
-                    tooltip: isBlocked
-                        ? 'Пользователь заблокирован'
-                        : 'Отправить фото',
-                    onPressed: isBlocked
-                        ? null
-                        : () async {
-                            final result = await _pickPhotosFlow(context);
-                            if (result != null && result.paths.isNotEmpty) {
-                              await ApiService.instance.sendPhotoMessages(
-                                widget.chatId,
-                                localPaths: result.paths,
-                                caption: result.caption,
-                                senderId: _actualMyId,
-                              );
-                            }
-                          },
-                    color: isBlocked
-                        ? Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withOpacity(0.3)
-                        : Theme.of(context).colorScheme.primary,
-                  ),
-                  if (context.watch<ThemeProvider>().messageTransition ==
-                      TransitionOption.slide)
-                    IconButton(
-                      icon: const Icon(Icons.animation),
-                      onPressed: isBlocked ? null : _testSlideAnimation,
-                      color: isBlocked
-                          ? Theme.of(
-                              context,
-                            ).colorScheme.onSurface.withOpacity(0.3)
-                          : Colors.orange,
-                      tooltip: isBlocked
-                          ? 'Пользователь заблокирован'
-                          : 'Тест Slide+ анимации',
-                    ),
-                  IconButton(
-                    icon: const Icon(Icons.send),
-                    onPressed: isBlocked ? null : _sendMessage,
-                    color: isBlocked
-                        ? Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withOpacity(0.3)
-                        : Theme.of(context).colorScheme.primary,
-                  ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       );
@@ -3857,21 +4327,32 @@ class _DateSeparatorChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: Theme.of(
-            context,
-          ).colorScheme.primaryContainer.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          _formatDate(date),
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onPrimaryContainer,
-            fontWeight: FontWeight.w500,
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 400),
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.scale(scale: 0.8 + (0.2 * value), child: child),
+        );
+      },
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(
+              context,
+            ).colorScheme.primaryContainer.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            _formatDate(date),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ),
@@ -3918,19 +4399,13 @@ class GroupProfileDraggableDialog extends StatelessWidget {
                 padding: const EdgeInsets.all(20),
                 child: Hero(
                   tag: 'contact_avatar_${contact.id}',
-                  child: CircleAvatar(
+                  child: ContactAvatarWidget(
+                    contactId: contact.id,
+                    originalAvatarUrl: contact.photoBaseUrl,
                     radius: 60,
-                    backgroundImage: contact.photoBaseUrl != null
-                        ? NetworkImage(contact.photoBaseUrl!)
-                        : null,
-                    child: contact.photoBaseUrl == null
-                        ? Text(
-                            contact.name.isNotEmpty
-                                ? contact.name[0].toUpperCase()
-                                : '?',
-                            style: const TextStyle(fontSize: 32),
-                          )
-                        : null,
+                    fallbackText: contact.name.isNotEmpty
+                        ? contact.name[0].toUpperCase()
+                        : '?',
                   ),
                 ),
               ),
@@ -3999,16 +4474,68 @@ class GroupProfileDraggableDialog extends StatelessWidget {
   }
 }
 
-class ContactProfileDialog extends StatelessWidget {
+class ContactProfileDialog extends StatefulWidget {
   final Contact contact;
   final bool isChannel;
-  const ContactProfileDialog({required this.contact, this.isChannel = false});
+  const ContactProfileDialog({
+    super.key,
+    required this.contact,
+    this.isChannel = false,
+  });
+
+  @override
+  State<ContactProfileDialog> createState() => _ContactProfileDialogState();
+}
+
+class _ContactProfileDialogState extends State<ContactProfileDialog> {
+  String? _localDescription;
+  StreamSubscription? _changesSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocalDescription();
+
+    // Подписываемся на изменения
+    _changesSubscription = ContactLocalNamesService().changes.listen((
+      contactId,
+    ) {
+      if (contactId == widget.contact.id && mounted) {
+        _loadLocalDescription();
+      }
+    });
+  }
+
+  Future<void> _loadLocalDescription() async {
+    final localData = await ContactLocalNamesService().getContactData(
+      widget.contact.id,
+    );
+    if (mounted) {
+      setState(() {
+        _localDescription = localData?['notes'] as String?;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _changesSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final String nickname = contact.name;
-    final String description = contact.description ?? '';
+    final String nickname = getContactDisplayName(
+      contactId: widget.contact.id,
+      originalName: widget.contact.name,
+      originalFirstName: widget.contact.firstName,
+      originalLastName: widget.contact.lastName,
+    );
+    final String description =
+        (_localDescription != null && _localDescription!.isNotEmpty)
+        ? _localDescription!
+        : (widget.contact.description ?? '');
 
     final theme = context.watch<ThemeProvider>();
 
@@ -4056,20 +4583,14 @@ class ContactProfileDialog extends StatelessWidget {
                       );
                     },
                     child: Hero(
-                      tag: 'contact_avatar_${contact.id}',
-                      child: CircleAvatar(
+                      tag: 'contact_avatar_${widget.contact.id}',
+                      child: ContactAvatarWidget(
+                        contactId: widget.contact.id,
+                        originalAvatarUrl: widget.contact.photoBaseUrl,
                         radius: 96,
-                        backgroundImage: contact.photoBaseUrl != null
-                            ? NetworkImage(contact.photoBaseUrl!)
-                            : null,
-                        child: contact.photoBaseUrl == null
-                            ? Text(
-                                contact.name.isNotEmpty
-                                    ? contact.name[0].toUpperCase()
-                                    : '?',
-                                style: const TextStyle(fontSize: 48),
-                              )
-                            : null,
+                        fallbackText: widget.contact.name.isNotEmpty
+                            ? widget.contact.name[0].toUpperCase()
+                            : '?',
                       ),
                     ),
                   ),
@@ -4152,16 +4673,30 @@ class ContactProfileDialog extends StatelessWidget {
                         else
                           const SizedBox(height: 16),
 
-                        if (!isChannel)
+                        if (!widget.isChannel)
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
-                              onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Редактирование контакта'),
+                              onPressed: () async {
+                                final result = await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => EditContactScreen(
+                                      contactId: widget.contact.id,
+                                      originalFirstName:
+                                          widget.contact.firstName,
+                                      originalLastName: widget.contact.lastName,
+                                      originalDescription:
+                                          widget.contact.description,
+                                      originalAvatarUrl:
+                                          widget.contact.photoBaseUrl,
+                                    ),
                                   ),
                                 );
+
+                                if (result == true && context.mounted) {
+                                  Navigator.of(context).pop();
+                                  setState(() {});
+                                }
                               },
                               icon: const Icon(Icons.edit),
                               label: const Text('Редактировать'),
@@ -4573,8 +5108,15 @@ class _ControlMessageChip extends StatelessWidget {
     );
 
     final eventType = controlAttach['event'];
-    final senderName =
-        contacts[message.senderId]?.name ?? 'ID ${message.senderId}';
+    final senderContact = contacts[message.senderId];
+    final senderName = senderContact != null
+        ? getContactDisplayName(
+            contactId: senderContact.id,
+            originalName: senderContact.name,
+            originalFirstName: senderContact.firstName,
+            originalLastName: senderContact.lastName,
+          )
+        : 'ID ${message.senderId}';
     final isMe = message.senderId == myId;
     final senderDisplayName = isMe ? 'Вы' : senderName;
 
@@ -4587,7 +5129,16 @@ class _ControlMessageChip extends StatelessWidget {
             if (id == myId) {
               return 'Вы';
             }
-            return contacts[id]?.name ?? 'участник с ID $id';
+            final contact = contacts[id];
+            if (contact != null) {
+              return getContactDisplayName(
+                contactId: contact.id,
+                originalName: contact.name,
+                originalFirstName: contact.firstName,
+                originalLastName: contact.lastName,
+              );
+            }
+            return 'участник с ID $id';
           })
           .where((name) => name.isNotEmpty)
           .join(', ');
@@ -4740,23 +5291,34 @@ class _ControlMessageChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: Theme.of(
-            context,
-          ).colorScheme.primaryContainer.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          _formatControlMessage(),
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 13,
-            color: Theme.of(context).colorScheme.onPrimaryContainer,
-            fontWeight: FontWeight.w500,
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 400),
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.scale(scale: 0.8 + (0.2 * value), child: child),
+        );
+      },
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(
+              context,
+            ).colorScheme.primaryContainer.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            _formatControlMessage(),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ),
@@ -4798,6 +5360,10 @@ Future<void> openUserProfileById(BuildContext context, int userId) async {
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
+        transitionAnimationController: AnimationController(
+          vsync: Navigator.of(context),
+          duration: const Duration(milliseconds: 400),
+        )..forward(),
         builder: (context) => GroupProfileDraggableDialog(contact: contactData),
       );
     } else {
@@ -4809,9 +5375,23 @@ Future<void> openUserProfileById(BuildContext context, int userId) async {
             return ContactProfileDialog(contact: contactData);
           },
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return FadeTransition(opacity: animation, child: child);
+            return FadeTransition(
+              opacity: CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeInOutCubic,
+              ),
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.95, end: 1.0).animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
+                ),
+                child: child,
+              ),
+            );
           },
-          transitionDuration: const Duration(milliseconds: 300),
+          transitionDuration: const Duration(milliseconds: 350),
         ),
       );
     }

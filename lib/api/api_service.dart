@@ -18,6 +18,7 @@ import 'package:gwid/services/account_manager.dart';
 import 'package:gwid/services/avatar_cache_service.dart';
 import 'package:gwid/services/cache_service.dart';
 import 'package:gwid/services/chat_cache_service.dart';
+import 'package:gwid/services/profile_cache_service.dart';
 import 'package:gwid/spoofing_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';

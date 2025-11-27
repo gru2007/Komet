@@ -679,6 +679,7 @@ extension ApiServiceConnection on ApiService {
     _reconnectTimer?.cancel();
     _isSessionOnline = false;
     _isSessionReady = false;
+    _handshakeSent = false;
     _onlineCompleter = Completer<void>();
     _chatsFetchedInThisSession = false;
 

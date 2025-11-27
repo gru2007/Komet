@@ -1,9 +1,10 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gwid/api/api_service.dart';
 import 'package:gwid/models/profile.dart';
 import 'package:gwid/phone_entry_screen.dart';
+import 'package:gwid/services/profile_cache_service.dart';
+import 'package:gwid/services/local_profile_manager.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
@@ -20,39 +21,97 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
   late final TextEditingController _lastNameController;
   late final TextEditingController _descriptionController;
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final ProfileCacheService _profileCache = ProfileCacheService();
+  final LocalProfileManager _profileManager = LocalProfileManager();
+
+  Profile? _actualProfile;
+  String? _localAvatarPath;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _firstNameController = TextEditingController(
-      text: widget.myProfile?.firstName ?? '',
-    );
-    _lastNameController = TextEditingController(
-      text: widget.myProfile?.lastName ?? '',
-    );
-    _descriptionController = TextEditingController(
-      text: widget.myProfile?.description ?? '',
-    );
+    _initializeProfileData();
   }
 
-  void _saveProfile() {
+  Future<void> _initializeProfileData() async {
+    await _profileManager.initialize();
+
+    _actualProfile = await _profileManager.getActualProfile(widget.myProfile);
+
+    _firstNameController = TextEditingController(
+      text: _actualProfile?.firstName ?? '',
+    );
+    _lastNameController = TextEditingController(
+      text: _actualProfile?.lastName ?? '',
+    );
+    _descriptionController = TextEditingController(
+      text: _actualProfile?.description ?? '',
+    );
+    final localPath = await _profileManager.getLocalAvatarPath();
+    if (mounted) {
+      setState(() {
+        _localAvatarPath = localPath;
+      });
+    }
+  }
+
+  Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    ApiService.instance.updateProfileText(
-      _firstNameController.text.trim(),
-      _lastNameController.text.trim(),
-      _descriptionController.text.trim(),
-    );
+    setState(() {
+      _isLoading = true;
+    });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Профиль успешно сохранен"),
-        behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 2),
-      ),
-    );
+    try {
+      final firstName = _firstNameController.text.trim();
+      final lastName = _lastNameController.text.trim();
+      final description = _descriptionController.text.trim();
+
+      final userId = _actualProfile?.id ?? widget.myProfile?.id ?? 0;
+      final photoBaseUrl =
+          _actualProfile?.photoBaseUrl ?? widget.myProfile?.photoBaseUrl;
+      final photoId = _actualProfile?.photoId ?? widget.myProfile?.photoId ?? 0;
+
+      await _profileCache.saveProfileData(
+        userId: userId,
+        firstName: firstName,
+        lastName: lastName,
+        description: description.isEmpty ? null : description,
+        photoBaseUrl: photoBaseUrl,
+        photoId: photoId,
+      );
+
+      _actualProfile = await _profileManager.getActualProfile(widget.myProfile);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Профиль сохранен локально"),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Ошибка сохранения: $e"),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   void _logout() async {
@@ -102,27 +161,62 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
     }
   }
 
-  void _pickAndUpdateProfilePhoto() async {
-    final ImagePicker picker = ImagePicker();
+  Future<void> _pickAndUpdateProfilePhoto() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
 
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      if (image == null) return;
 
-
-    if (image != null) {
+      setState(() {
+        _isLoading = true;
+      });
 
       File imageFile = File(image.path);
 
+      final userId = _actualProfile?.id ?? widget.myProfile?.id ?? 0;
+      if (userId != 0) {
+        final localPath = await _profileCache.saveAvatar(imageFile, userId);
 
+        if (localPath != null && mounted) {
+          setState(() {
+            _localAvatarPath = localPath;
+          });
+          _actualProfile = await _profileManager.getActualProfile(
+            widget.myProfile,
+          );
+        }
+      }
 
-
-
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Фотография профиля обновляется..."),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Фотография профиля сохранена"),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Ошибка загрузки фото: $e"),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -154,7 +248,6 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
             children: [
               _buildAvatarSection(theme),
               const SizedBox(height: 32),
-
 
               Card(
                 elevation: 2,
@@ -199,7 +292,6 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
               ),
               const SizedBox(height: 24),
 
-
               Card(
                 elevation: 2,
                 shape: RoundedRectangleBorder(
@@ -233,7 +325,6 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-
 
               if (widget.myProfile != null)
                 Card(
@@ -281,22 +372,32 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
     );
   }
 
-
-
   Widget _buildAvatarSection(ThemeData theme) {
+    ImageProvider? avatarImage;
+
+    if (_localAvatarPath != null) {
+      avatarImage = FileImage(File(_localAvatarPath!));
+    } else if (_actualProfile?.photoBaseUrl != null) {
+      if (_actualProfile!.photoBaseUrl!.startsWith('file://')) {
+        final path = _actualProfile!.photoBaseUrl!.replaceFirst('file://', '');
+        avatarImage = FileImage(File(path));
+      } else {
+        avatarImage = NetworkImage(_actualProfile!.photoBaseUrl!);
+      }
+    } else if (widget.myProfile?.photoBaseUrl != null) {
+      avatarImage = NetworkImage(widget.myProfile!.photoBaseUrl!);
+    }
+
     return Center(
       child: GestureDetector(
-
-        onTap: _pickAndUpdateProfilePhoto, // 2. Вызываем метод при нажатии
+        onTap: _pickAndUpdateProfilePhoto,
         child: Stack(
           children: [
             CircleAvatar(
               radius: 60,
               backgroundColor: theme.colorScheme.secondaryContainer,
-              backgroundImage: widget.myProfile?.photoBaseUrl != null
-                  ? NetworkImage(widget.myProfile!.photoBaseUrl!)
-                  : null,
-              child: widget.myProfile?.photoBaseUrl == null
+              backgroundImage: avatarImage,
+              child: avatarImage == null
                   ? Icon(
                       Icons.person,
                       size: 60,
@@ -304,6 +405,21 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
                     )
                   : null,
             ),
+            if (_isLoading)
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 3,
+                    ),
+                  ),
+                ),
+              ),
             Positioned(
               bottom: 4,
               right: 4,
@@ -329,7 +445,6 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
     IconData icon, {
     bool alignLabel = false,
   }) {
-
     final prefixIcon = (label == "О себе")
         ? Padding(
             padding: const EdgeInsets.only(bottom: 60), // Смещаем иконку вверх

@@ -69,6 +69,37 @@ extension ApiServiceChats on ApiService {
           _sendInitialSetupRequests();
         }
 
+        if (profile != null && authToken != null) {
+          try {
+            final accountManager = AccountManager();
+            await accountManager.initialize();
+            final currentAccount = accountManager.currentAccount;
+            if (currentAccount != null && currentAccount.token == authToken) {
+              final profileObj = Profile.fromJson(profile);
+              await accountManager.updateAccountProfile(
+                currentAccount.id,
+                profileObj,
+              );
+
+              try {
+                final profileCache = ProfileCacheService();
+                await profileCache.initialize();
+                await profileCache.syncWithServerProfile(profileObj);
+              } catch (e) {
+                print('[ProfileCache] Ошибка синхронизации профиля: $e');
+              }
+
+              print(
+                '[_sendAuthRequestAfterHandshake] ✅ Профиль сохранен в AccountManager',
+              );
+            }
+          } catch (e) {
+            print(
+              '[_sendAuthRequestAfterHandshake] Ошибка сохранения профиля в AccountManager: $e',
+            );
+          }
+        }
+
         if (_onlineCompleter != null && !_onlineCompleter!.isCompleted) {
           _onlineCompleter!.complete();
         }
@@ -95,9 +126,10 @@ extension ApiServiceChats on ApiService {
         };
         _lastChatsPayload = result;
 
-        final contacts = contactListJson
-            .map((json) => Contact.fromJson(json))
-            .toList();
+        final contacts = (contactListJson as List)
+            .map((json) => Contact.fromJson(json as Map<String, dynamic>))
+            .toList()
+            .cast<Contact>();
         updateContactCache(contacts);
         _lastChatsAt = DateTime.now();
         _preloadContactAvatars(contacts);
@@ -241,7 +273,11 @@ extension ApiServiceChats on ApiService {
     }
 
     try {
-      final payload = {"chatsCount": 100};
+      // Используем opcode 48 для запроса конкретных чатов
+      // chatIds:[0] - это "Избранное" (Saved Messages)
+      final payload = {
+        "chatIds": [0],
+      };
 
       final int chatSeq = _sendMessage(48, payload);
       final chatResponse = await messages.firstWhere(
@@ -265,15 +301,16 @@ extension ApiServiceChats on ApiService {
         contactIds.addAll(participants.keys.map((id) => int.parse(id)));
       }
 
-      final int contactSeq = _sendMessage(32, {
-        "contactIds": contactIds.toList(),
-      });
-      final contactResponse = await messages.firstWhere(
-        (msg) => msg['seq'] == contactSeq,
-      );
-
-      final List<dynamic> contactListJson =
-          contactResponse['payload']?['contacts'] ?? [];
+      List<dynamic> contactListJson = [];
+      if (contactIds.isNotEmpty) {
+        final int contactSeq = _sendMessage(32, {
+          "contactIds": contactIds.toList(),
+        });
+        final contactResponse = await messages.firstWhere(
+          (msg) => msg['seq'] == contactSeq,
+        );
+        contactListJson = contactResponse['payload']?['contacts'] ?? [];
+      }
 
       final result = {
         'chats': chatListJson,
@@ -283,8 +320,8 @@ extension ApiServiceChats on ApiService {
       };
       _lastChatsPayload = result;
 
-      final contacts = contactListJson
-          .map((json) => Contact.fromJson(json))
+      final List<Contact> contacts = contactListJson
+          .map((json) => Contact.fromJson(json as Map<String, dynamic>))
           .toList();
       updateContactCache(contacts);
       _lastChatsAt = DateTime.now();
@@ -295,7 +332,7 @@ extension ApiServiceChats on ApiService {
       unawaited(_chatCacheService.cacheContacts(contacts));
       return result;
     } catch (e) {
-      print('Ошибка получения чатов: $e');
+      print('Ошибка получения чатов через opcode 48: $e');
       rethrow;
     }
   }
@@ -445,6 +482,14 @@ extension ApiServiceChats on ApiService {
               currentAccount.id,
               profileObj,
             );
+
+            try {
+              final profileCache = ProfileCacheService();
+              await profileCache.initialize();
+              await profileCache.syncWithServerProfile(profileObj);
+            } catch (e) {
+              print('[ProfileCache] Ошибка синхронизации профиля: $e');
+            }
           }
         } catch (e) {
           print('Ошибка сохранения профиля в AccountManager: $e');
@@ -510,8 +555,8 @@ extension ApiServiceChats on ApiService {
       };
       _lastChatsPayload = result;
 
-      final contacts = contactListJson
-          .map((json) => Contact.fromJson(json))
+      final List<Contact> contacts = contactListJson
+          .map((json) => Contact.fromJson(json as Map<String, dynamic>))
           .toList();
       updateContactCache(contacts);
       _lastChatsAt = DateTime.now();

@@ -28,6 +28,10 @@ import 'package:gwid/user_id_lookup_screen.dart';
 import 'package:gwid/screens/music_library_screen.dart';
 import 'package:gwid/widgets/message_preview_dialog.dart';
 import 'package:gwid/services/chat_read_settings_service.dart';
+import 'package:gwid/services/local_profile_manager.dart';
+import 'package:gwid/widgets/contact_name_widget.dart';
+import 'package:gwid/widgets/contact_avatar_widget.dart';
+import 'package:gwid/services/contact_local_names_service.dart';
 import 'package:gwid/services/account_manager.dart';
 import 'package:gwid/models/account.dart';
 
@@ -163,25 +167,48 @@ class _ChatsScreenState extends State<ChatsScreen>
       _isProfileLoading = true;
     });
 
+    Profile? serverProfile;
+
     try {
       final accountManager = AccountManager();
       await accountManager.initialize();
       final currentAccount = accountManager.currentAccount;
-      if (currentAccount?.profile != null && mounted) {
-        setState(() {
-          _myProfile = currentAccount!.profile;
-          _isProfileLoading = false;
-        });
-        return;
+      if (currentAccount?.profile != null) {
+        serverProfile = currentAccount!.profile;
       }
     } catch (e) {
       print('Ошибка загрузки профиля из AccountManager: $e');
     }
 
-    final cachedProfileData = ApiService.instance.lastChatsPayload?['profile'];
-    if (cachedProfileData != null && mounted) {
+    if (serverProfile == null) {
+      final cachedProfileData =
+          ApiService.instance.lastChatsPayload?['profile'];
+      if (cachedProfileData != null) {
+        serverProfile = Profile.fromJson(cachedProfileData);
+      }
+    }
+
+    try {
+      final profileManager = LocalProfileManager();
+      await profileManager.initialize();
+      final actualProfile = await profileManager.getActualProfile(
+        serverProfile,
+      );
+
+      if (mounted && actualProfile != null) {
+        setState(() {
+          _myProfile = actualProfile;
+          _isProfileLoading = false;
+        });
+        return;
+      }
+    } catch (e) {
+      print('Ошибка загрузки локального профиля: $e');
+    }
+
+    if (mounted && serverProfile != null) {
       setState(() {
-        _myProfile = Profile.fromJson(cachedProfileData);
+        _myProfile = serverProfile;
         _isProfileLoading = false;
       });
       return;
@@ -277,6 +304,20 @@ class _ChatsScreenState extends State<ChatsScreen>
       final opcode = message['opcode'];
       final cmd = message['cmd'];
       final payload = message['payload'];
+
+      if (opcode == 19 && cmd == 1 && payload != null) {
+        final profileData = payload['profile'];
+        if (profileData != null) {
+          print('🔄 ChatsScreen: Получен профиль из opcode 19, обновляем UI');
+          if (mounted) {
+            setState(() {
+              _myProfile = Profile.fromJson(profileData);
+              _isProfileLoading = false;
+            });
+          }
+        }
+      }
+
       if (payload == null) return;
       final chatIdValue = payload['chatId'];
       final int? chatId = chatIdValue != null ? chatIdValue as int? : null;
@@ -640,6 +681,7 @@ class _ChatsScreenState extends State<ChatsScreen>
       if (mounted) {
         final chats = data['chats'] as List<dynamic>;
         final contacts = data['contacts'] as List<dynamic>;
+        final profileData = data['profile'];
 
         _allChats = chats
             .where((json) => json != null)
@@ -650,6 +692,14 @@ class _ChatsScreenState extends State<ChatsScreen>
           final contact = Contact.fromJson(contactJson);
           _contacts[contact.id] = contact;
         }
+
+        setState(() {
+          if (profileData != null) {
+            _myProfile = Profile.fromJson(profileData);
+            _isProfileLoading = false;
+          }
+        });
+
         _filterChats();
       }
     });
@@ -1061,7 +1111,14 @@ class _ChatsScreenState extends State<ChatsScreen>
                     final isSelected = selectedContacts.contains(contact.id);
 
                     return CheckboxListTile(
-                      title: Text(contact.name),
+                      title: Text(
+                        getContactDisplayName(
+                          contactId: contact.id,
+                          originalName: contact.name,
+                          originalFirstName: contact.firstName,
+                          originalLastName: contact.lastName,
+                        ),
+                      ),
                       subtitle: Text(
                         contact.firstName.isNotEmpty &&
                                 contact.lastName.isNotEmpty
@@ -1387,12 +1444,20 @@ class _ChatsScreenState extends State<ChatsScreen>
 
       if (contact == null) continue;
 
-      if (contact.name.toLowerCase().contains(query)) {
+      final displayName = getContactDisplayName(
+        contactId: contact.id,
+        originalName: contact.name,
+        originalFirstName: contact.firstName,
+        originalLastName: contact.lastName,
+      );
+
+      if (displayName.toLowerCase().contains(query) ||
+          contact.name.toLowerCase().contains(query)) {
         results.add(
           SearchResult(
             chat: chat,
             contact: contact,
-            matchedText: contact.name,
+            matchedText: displayName,
             matchType: 'name',
           ),
         );
@@ -1465,6 +1530,7 @@ class _ChatsScreenState extends State<ChatsScreen>
       if (mounted) {
         final chats = data['chats'] as List;
         final contacts = data['contacts'] as List;
+        final profileData = data['profile'];
 
         _allChats = chats
             .where((json) => json != null)
@@ -1475,6 +1541,13 @@ class _ChatsScreenState extends State<ChatsScreen>
         for (final contactJson in contacts) {
           final contact = Contact.fromJson(contactJson);
           _contacts[contact.id] = contact;
+        }
+
+        if (profileData != null) {
+          setState(() {
+            _myProfile = Profile.fromJson(profileData);
+            _isProfileLoading = false;
+          });
         }
 
         _filterChats();
@@ -1710,7 +1783,9 @@ class _ChatsScreenState extends State<ChatsScreen>
                   ApiService.instance.getBlockedContacts();
                 }
 
-                _loadFolders(snapshot.data!);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _loadFolders(snapshot.data!);
+                });
 
                 _loadChatOrder().then((_) {
                   setState(() {
@@ -2285,7 +2360,15 @@ class _ChatsScreenState extends State<ChatsScreen>
               )
             : null,
       ),
-      title: _buildHighlightedText(contact.name, result.matchedText),
+      title: _buildHighlightedText(
+        getContactDisplayName(
+          contactId: contact.id,
+          originalName: contact.name,
+          originalFirstName: contact.firstName,
+          originalLastName: contact.lastName,
+        ),
+        result.matchedText,
+      ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2394,7 +2477,12 @@ class _ChatsScreenState extends State<ChatsScreen>
                 } else if (isSavedMessages) {
                   title = "Избранное";
                 } else if (contact != null) {
-                  title = contact.name;
+                  title = getContactDisplayName(
+                    contactId: contact.id,
+                    originalName: contact.name,
+                    originalFirstName: contact.firstName,
+                    originalLastName: contact.lastName,
+                  );
                 } else if (chat.title?.isNotEmpty == true) {
                   title = chat.title!;
                 } else {
@@ -2453,39 +2541,41 @@ class _ChatsScreenState extends State<ChatsScreen>
                 children: [
                   Stack(
                     children: [
-                      CircleAvatar(
-                        radius: 28,
-                        backgroundColor: colors.primaryContainer,
-                        backgroundImage:
-                            !isSavedMessages &&
-                                !isGroupChat &&
-                                contact?.photoBaseUrl != null
-                            ? NetworkImage(contact?.photoBaseUrl ?? '')
-                            : (isGroupChat && chat.baseIconUrl != null)
-                            ? NetworkImage(chat.baseIconUrl ?? '')
-                            : null,
-                        child:
-                            isSavedMessages ||
-                                (isGroupChat && chat.baseIconUrl == null)
-                            ? Icon(
-                                isSavedMessages ? Icons.bookmark : Icons.group,
-                                color: colors.onPrimaryContainer,
-                                size: 20,
-                              )
-                            : (contact?.photoBaseUrl == null
-                                  ? Text(
-                                      (contact != null &&
-                                              contact.name.isNotEmpty)
-                                          ? contact.name[0].toUpperCase()
-                                          : '?',
-                                      style: TextStyle(
-                                        color: colors.onSurface,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 16,
-                                      ),
+                      isSavedMessages || isGroupChat
+                          ? CircleAvatar(
+                              radius: 28,
+                              backgroundColor: colors.primaryContainer,
+                              backgroundImage:
+                                  isGroupChat && chat.baseIconUrl != null
+                                  ? NetworkImage(chat.baseIconUrl ?? '')
+                                  : null,
+                              child:
+                                  isSavedMessages ||
+                                      (isGroupChat && chat.baseIconUrl == null)
+                                  ? Icon(
+                                      isSavedMessages
+                                          ? Icons.bookmark
+                                          : Icons.group,
+                                      color: colors.onPrimaryContainer,
+                                      size: 20,
                                     )
-                                  : null),
-                      ),
+                                  : null,
+                            )
+                          : contact != null
+                          ? ContactAvatarWidget(
+                              contactId: contact.id,
+                              originalAvatarUrl: contact.photoBaseUrl,
+                              radius: 28,
+                              fallbackText: contact.name.isNotEmpty
+                                  ? contact.name[0].toUpperCase()
+                                  : '?',
+                              backgroundColor: colors.primaryContainer,
+                            )
+                          : CircleAvatar(
+                              radius: 28,
+                              backgroundColor: colors.primaryContainer,
+                              child: const Text('?'),
+                            ),
 
                       if (chat.newMessages > 0)
                         Positioned(
@@ -3823,7 +3913,12 @@ class _ChatsScreenState extends State<ChatsScreen>
       contact = _contacts[otherParticipantId];
 
       if (contact != null) {
-        title = contact.name;
+        title = getContactDisplayName(
+          contactId: contact.id,
+          originalName: contact.name,
+          originalFirstName: contact.firstName,
+          originalLastName: contact.lastName,
+        );
       } else if (chat.title?.isNotEmpty == true) {
         title = chat.title!;
       } else {
@@ -4531,7 +4626,12 @@ class _AddChatsToFolderDialogState extends State<_AddChatsToFolderDialog> {
                       contact = widget.contacts[otherParticipantId];
 
                       if (contact != null) {
-                        title = contact.name;
+                        title = getContactDisplayName(
+                          contactId: contact.id,
+                          originalName: contact.name,
+                          originalFirstName: contact.firstName,
+                          originalLastName: contact.lastName,
+                        );
                       } else if (chat.title?.isNotEmpty == true) {
                         title = chat.title!;
                       } else {
