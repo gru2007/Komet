@@ -172,12 +172,6 @@ class AboutScreen extends StatelessWidget {
           ),
           _buildTeamMember(
             context,
-            name: "Mixott Orego",
-            role: "PR-менеджер",
-            description: "Коммуникация с сообществом и продвижение проекта",
-          ),
-          _buildTeamMember(
-            context,
             name: "Raspberry",
             role: "PR-менеджер",
             description: "Коммуникация с сообществом и продвижение проекта",
@@ -342,12 +336,6 @@ class AboutScreen extends StatelessWidget {
                 _buildTeamMember(
                   context,
                   name: "WhiteMax",
-                  role: "PR-менеджер",
-                  description: "Коммуникация с сообществом и продвижение проекта",
-                ),
-                _buildTeamMember(
-                  context,
-                  name: "Mixott Orego",
                   role: "PR-менеджер",
                   description: "Коммуникация с сообществом и продвижение проекта",
                 ),
