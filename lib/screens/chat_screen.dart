@@ -1693,52 +1693,80 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         );
       },
-      pageBuilder: (context, animation, secondaryAnimation) => AlertDialog(
-        title: const Text('Очистить историю чата'),
-        content: Text(
-          'Вы уверены, что хотите очистить историю чата с ${_currentContact.name}? Это действие нельзя отменить.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              try {
-                await ApiService.instance.clearChatHistory(widget.chatId);
-                if (mounted) {
-                  setState(() {
-                    _messages.clear();
-                    _chatItems.clear();
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('История чата очищена'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Ошибка очистки истории: $e'),
-                      backgroundColor: Theme.of(context).colorScheme.error,
-                    ),
-                  );
-                }
-              }
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Очистить'),
-          ),
-        ],
-      ),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        bool forAll = false;
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Очистить историю чата'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Вы уверены, что хотите очистить историю чата с ${_currentContact.name}? Это действие нельзя отменить.',
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: forAll,
+                    onChanged: (value) {
+                      setStateDialog(() {
+                        forAll = value ?? false;
+                      });
+                    },
+                    title: const Text('Удалить сообщения для всех'),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Отмена'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    Navigator.of(context).pop();
+                    try {
+                      await ApiService.instance.clearChatHistory(
+                        widget.chatId,
+                        forAll: forAll,
+                      );
+                      if (mounted) {
+                        setState(() {
+                          _messages.clear();
+                          _chatItems.clear();
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('История чата очищена'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Ошибка очистки истории: $e'),
+                            backgroundColor:
+                                Theme.of(context).colorScheme.error,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Очистить'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1757,54 +1785,88 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         );
       },
-      pageBuilder: (context, animation, secondaryAnimation) => AlertDialog(
-        title: const Text('Удалить чат'),
-        content: Text(
-          'Вы уверены, что хотите удалить чат с ${_currentContact.name}? Это действие нельзя отменить.', //1231231233
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              try {
-                print('Имитация удаления чата ID: ${widget.chatId}');
-                await Future.delayed(const Duration(milliseconds: 500));
+      pageBuilder: (context, animation, secondaryAnimation) {
+        bool forAll = false;
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Удалить чат'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Вы уверены, что хотите удалить чат с ${_currentContact.name}? Это действие нельзя отменить.',
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: forAll,
+                    onChanged: (value) {
+                      setStateDialog(() {
+                        forAll = value ?? false;
+                      });
+                    },
+                    title: const Text('Удалить сообщения для всех'),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Отмена'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    Navigator.of(context).pop();
+                    try {
+                      // Удаляем историю чата (opcode 54)
+                      await ApiService.instance.clearChatHistory(
+                        widget.chatId,
+                        forAll: forAll,
+                      );
 
-                if (mounted) {
-                  Navigator.of(context).pop();
+                      // Отписываемся от чата (opcode 75)
+                      await ApiService.instance.subscribeToChat(
+                        widget.chatId,
+                        false,
+                      );
 
-                  widget.onChatUpdated?.call();
+                      if (mounted) {
+                        Navigator.of(context).pop();
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Чат удален'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Ошибка удаления чата: $e'),
-                      backgroundColor: Theme.of(context).colorScheme.error,
-                    ),
-                  );
-                }
-              }
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
+                        widget.onChatUpdated?.call();
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Чат удален'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Ошибка удаления чата: $e'),
+                            backgroundColor:
+                                Theme.of(context).colorScheme.error,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Удалить'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -3036,7 +3098,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                 Text(
                                   _replyingToMessage!.text.isNotEmpty
                                       ? _replyingToMessage!.text
-                                      : 'Фото',
+                                      : (_replyingToMessage!.hasFileAttach
+                                          ? 'Файл'
+                                          : 'Фото'),
                                   style: TextStyle(
                                     fontSize: 13,
                                     color: Theme.of(
@@ -3402,7 +3466,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                 Text(
                                   _replyingToMessage!.text.isNotEmpty
                                       ? _replyingToMessage!.text
-                                      : 'Фото',
+                                      : (_replyingToMessage!.hasFileAttach
+                                          ? 'Файл'
+                                          : 'Фото'),
                                   style: TextStyle(
                                     fontSize: 13,
                                     color: Theme.of(

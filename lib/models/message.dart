@@ -88,6 +88,8 @@ class Message {
   bool get isDeleted => status == 'DELETED';
   bool get isReply => link != null && link!['type'] == 'REPLY';
   bool get isForwarded => link != null && link!['type'] == 'FORWARD';
+  bool get hasFileAttach =>
+      attaches.any((a) => (a['_type'] ?? a['type']) == 'FILE');
 
   bool canEdit(int currentUserId) {
     if (isDeleted) return false;

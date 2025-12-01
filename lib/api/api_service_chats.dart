@@ -190,6 +190,42 @@ extension ApiServiceChats on ApiService {
     print('Переименовываем группу $chatId в: $newName');
   }
 
+  /// Обновляет/добавляет чат в локный кэш `_lastChatsPayload['chats']`,
+  /// чтобы остальные экраны (настройки группы, экран чата и т.п.) сразу
+  /// видели новые поля (admins, options, participants и т.д.).
+  void updateChatInCacheFromJson(Map<String, dynamic> chatJson) {
+    try {
+      // Если кэш ещё не инициализирован (например, сразу после запуска),
+      // создаём минимальную структуру, чтобы новый чат тоже оказался в ней.
+      if (_lastChatsPayload == null) {
+        _lastChatsPayload = {
+          'chats': <dynamic>[],
+          'contacts': <dynamic>[],
+          'profile': null,
+          'presence': null,
+          'config': null,
+        };
+      }
+
+      final chats = _lastChatsPayload!['chats'] as List<dynamic>;
+
+      final chatId = chatJson['id'];
+      if (chatId == null) return;
+
+      final existingIndex = chats.indexWhere(
+        (c) => c is Map && c['id'] == chatId,
+      );
+
+      if (existingIndex != -1) {
+        chats[existingIndex] = chatJson;
+      } else {
+        chats.insert(0, chatJson);
+      }
+    } catch (e) {
+      print('Не удалось обновить кэш чатов из chatJson: $e');
+    }
+  }
+
   /// Создает/перегенерирует пригласительную ссылку для группы.
   /// Сервер ожидает payload вида:
   /// {"chatId": -69330645868731, "revokePrivateLink": true}
@@ -198,10 +234,7 @@ extension ApiServiceChats on ApiService {
     int chatId, {
     bool revokePrivateLink = true,
   }) async {
-    final payload = {
-      "chatId": chatId,
-      "revokePrivateLink": revokePrivateLink,
-    };
+    final payload = {"chatId": chatId, "revokePrivateLink": revokePrivateLink};
 
     print('Создаем пригласительную ссылку для группы $chatId: $payload');
 
@@ -216,7 +249,9 @@ extension ApiServiceChats on ApiService {
         final error = response['payload'];
         print('Ошибка создания пригласительной ссылки: $error');
         final message =
-            error?['localizedMessage'] ?? error?['message'] ?? 'Неизвестная ошибка';
+            error?['localizedMessage'] ??
+            error?['message'] ??
+            'Неизвестная ошибка';
         throw Exception(message);
       }
 
@@ -230,20 +265,8 @@ extension ApiServiceChats on ApiService {
       }
 
       // Обновим кэш чатов, если сервер вернул полный объект чата
-      try {
-        if (chat != null) {
-          final chats = _lastChatsPayload?['chats'] as List<dynamic>?;
-          if (chats != null) {
-            final index = chats.indexWhere(
-              (c) => c is Map && c['id'] == chat['id'],
-            );
-            if (index >= 0) {
-              chats[index] = chat;
-            }
-          }
-        }
-      } catch (e) {
-        print('Не удалось обновить кэш чатов после создания ссылки: $e');
+      if (chat != null) {
+        updateChatInCacheFromJson(chat);
       }
 
       return link;

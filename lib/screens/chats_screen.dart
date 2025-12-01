@@ -332,7 +332,10 @@ class _ChatsScreenState extends State<ChatsScreen>
       final chatIdValue = payload['chatId'];
       final int? chatId = chatIdValue != null ? chatIdValue as int? : null;
 
-      if (opcode == 272 || opcode == 274) {
+      // Для части опкодов (48, 55, 135, 272, 274) нам не нужен явный chatId в корне
+      // payload, поэтому не отбрасываем их, даже если chatId == null.
+      if (opcode == 272 || opcode == 274 || opcode == 48 || opcode == 55 || opcode == 135) {
+        // продолжаем обработку ниже
       } else if (chatId == null) {
         return;
       }
@@ -341,11 +344,44 @@ class _ChatsScreenState extends State<ChatsScreen>
         _setTypingForChat(chatId);
       }
 
+      // Ответ на отправку сообщения (opcode 64).
+      // Если сервер прислал в payload полный объект chat (как при создании группы
+      // через CONTROL new), добавляем/обновляем чат локально.
+      if (opcode == 64 && cmd == 1 && payload['chat'] is Map<String, dynamic>) {
+        final chatJson = payload['chat'] as Map<String, dynamic>;
+        final newChat = Chat.fromJson(chatJson);
+
+        // Обновляем также глобальный кэш ApiService, чтобы настройки группы и
+        // другие экраны сразу видели корректные права/админов/опции.
+        ApiService.instance.updateChatInCacheFromJson(chatJson);
+
+        if (mounted) {
+          setState(() {
+            final existingIndex =
+                _allChats.indexWhere((chat) => chat.id == newChat.id);
+
+            if (existingIndex != -1) {
+              _allChats[existingIndex] = newChat;
+            } else {
+              final savedIndex = _allChats.indexWhere(_isSavedMessages);
+              final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
+              _allChats.insert(insertIndex, newChat);
+            }
+
+            _filterChats();
+          });
+        }
+      }
+
+      // Новый входящий месседж (opcode 128) — обновляем последний месседж и
+      // двигаем чат вверх БЕЗ полного рефреша с сервера. Если такого чата ещё нет
+      // (нам написал новый пользователь), создаём его на основе payload.chat.
       if (opcode == 128 && chatId != null) {
         final newMessage = Message.fromJson(payload['message']);
         ApiService.instance.clearCacheForChat(chatId);
 
         final int chatIndex = _allChats.indexWhere((chat) => chat.id == chatId);
+
         if (chatIndex != -1) {
           final oldChat = _allChats[chatIndex];
           final updatedChat = oldChat.copyWith(
@@ -375,6 +411,21 @@ class _ChatsScreenState extends State<ChatsScreen>
               final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
               _allChats.insert(insertIndex, updatedChat);
             }
+            _filterChats();
+          });
+        } else if (payload['chat'] is Map<String, dynamic>) {
+          // Чат ещё не известен клиенту — создаём его на основе payload.chat.
+          final chatJson = payload['chat'] as Map<String, dynamic>;
+          final newChat = Chat.fromJson(chatJson);
+
+          // Обновляем глобальный кэш ApiService, чтобы дальше во всех экранах
+          // был один и тот же объект чата.
+          ApiService.instance.updateChatInCacheFromJson(chatJson);
+
+          setState(() {
+            final savedIndex = _allChats.indexWhere(_isSavedMessages);
+            final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
+            _allChats.insert(insertIndex, newChat);
             _filterChats();
           });
         }
@@ -444,10 +495,6 @@ class _ChatsScreenState extends State<ChatsScreen>
             });
           }
         }
-      }
-
-      if (opcode == 129 && chatId != null) {
-        _setTypingForChat(chatId);
       }
 
       if (opcode == 132) {
@@ -536,10 +583,96 @@ class _ChatsScreenState extends State<ChatsScreen>
         if (mounted) setState(() {});
       }
 
+      // Создание/обновление группы (opcode 48) — стараемся обновить список чатов
+      // локально по объекту chat из payload, без повторного getChatsAndContacts.
       if (opcode == 48) {
-        print('Получен ответ на создание группы: $payload');
+        print('Получен ответ на создание/обновление группы: $payload');
 
-        _refreshChats();
+        final chatJson = payload['chat'] as Map<String, dynamic>?;
+        final chatsJson = payload['chats'] as List<dynamic>?;
+
+        // Приоритет: одиночный chat, дальше — первый из списка chats.
+        Map<String, dynamic>? effectiveChatJson = chatJson;
+        if (effectiveChatJson == null && chatsJson != null && chatsJson.isNotEmpty) {
+          final first = chatsJson.first;
+          if (first is Map<String, dynamic>) {
+            effectiveChatJson = first;
+          }
+        }
+
+        if (effectiveChatJson != null) {
+          final newChat = Chat.fromJson(effectiveChatJson);
+
+          // Синхронизируем объект чата и в глобальном кэше ApiService.
+          ApiService.instance.updateChatInCacheFromJson(effectiveChatJson);
+          if (mounted) {
+            setState(() {
+              final existingIndex =
+                  _allChats.indexWhere((chat) => chat.id == newChat.id);
+
+              if (existingIndex != -1) {
+                _allChats[existingIndex] = newChat;
+              } else {
+                // Вставляем новый чат сразу после "Избранного", если оно есть.
+                final savedIndex = _allChats.indexWhere(_isSavedMessages);
+                final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
+                _allChats.insert(insertIndex, newChat);
+              }
+
+              _filterChats();
+            });
+          }
+        } else {
+          // Fallback: если сервер не прислал chat, обновляемся старым способом.
+          _refreshChats();
+        }
+      }
+
+      // Изменение параметров чата (rename, invite‑link и т.п.) приходит с opcode 55.
+      // В payload обычно лежит обновленный объект chat.
+      if (opcode == 55 && cmd == 1) {
+        final chatJson = payload['chat'] as Map<String, dynamic>?;
+        if (chatJson != null) {
+          final updatedChat = Chat.fromJson(chatJson);
+
+          // Обновляем глобальный кэш ApiService, чтобы настройки группы и др.
+          // сразу видели новые права/линки/название.
+          ApiService.instance.updateChatInCacheFromJson(chatJson);
+          if (mounted) {
+            setState(() {
+              final existingIndex =
+                  _allChats.indexWhere((chat) => chat.id == updatedChat.id);
+
+              if (existingIndex != -1) {
+                _allChats[existingIndex] = updatedChat;
+              } else {
+                final savedIndex = _allChats.indexWhere(_isSavedMessages);
+                final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
+                _allChats.insert(insertIndex, updatedChat);
+              }
+
+              _filterChats();
+            });
+          }
+        }
+      }
+
+      // Выход из группы: сервер сначала шлёт opcode 135 с chat.status = REMOVED,
+      // а уже потом opcode 58 с CONTROL-сообщением "leave". Для обновления списка
+      // чатов нам важен именно 135.
+      if (opcode == 135 && payload['chat'] is Map<String, dynamic>) {
+        final removedChat = payload['chat'] as Map<String, dynamic>;
+        final int? removedChatId = removedChat['id'] as int?;
+        final String? status = removedChat['status'] as String?;
+
+        if (removedChatId != null && status == 'REMOVED') {
+          if (mounted) {
+            setState(() {
+              _allChats.removeWhere((chat) => chat.id == removedChatId);
+              _filteredChats.removeWhere((chat) => chat.id == removedChatId);
+            });
+          }
+        }
       }
 
       if (opcode == 272) {
@@ -669,6 +802,14 @@ class _ChatsScreenState extends State<ChatsScreen>
           });
         }
       }
+    });
+  }
+
+  void _removeChatLocally(int chatId) {
+    if (!mounted) return;
+    setState(() {
+      _allChats.removeWhere((c) => c.id == chatId);
+      _filteredChats.removeWhere((c) => c.id == chatId);
     });
   }
 
@@ -2367,7 +2508,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                 isChannel: isChannel,
                 participantCount: participantCount,
                 onChatUpdated: () {
-                  print('Chat updated, но не обновляем список чатов...');
+                  _removeChatLocally(chat.id);
                 },
               ),
             ),
@@ -2513,7 +2654,9 @@ class _ChatsScreenState extends State<ChatsScreen>
                 } else if (chat.title?.isNotEmpty == true) {
                   title = chat.title!;
                 } else {
-                  title = "ID ${otherParticipantId ?? 0}";
+                  // Контакт ещё не загружен — показываем плейсхолдер и
+                  // параллельно запускаем загрузку.
+                  title = "Данные загружаются...";
                   if (otherParticipantId != null && otherParticipantId != 0) {
                     _loadMissingContact(otherParticipantId);
                   }
@@ -4001,7 +4144,8 @@ class _ChatsScreenState extends State<ChatsScreen>
       } else if (chat.title?.isNotEmpty == true) {
         title = chat.title!;
       } else {
-        title = "ID $otherParticipantId";
+        // Контакт ещё не загружен — плейсхолдер и асинхронная подзагрузка.
+        title = "Данные загружаются...";
         _loadMissingContact(otherParticipantId);
       }
       avatarUrl = contact?.photoBaseUrl;
@@ -4075,7 +4219,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                 isChannel: isChannel,
                 participantCount: participantCount,
                 onChatUpdated: () {
-                  print('Chat updated, но не обновляем список чатов...');
+                  _removeChatLocally(chat.id);
                 },
               ),
             ),
@@ -4751,7 +4895,15 @@ class _AddChatsToFolderDialogState extends State<_AddChatsToFolderDialog> {
                           ),
                         ],
                       ),
-                      title: Text(title, style: const TextStyle(fontSize: 16)),
+                      title: Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontStyle: title == 'Данные загружаются...'
+                              ? FontStyle.italic
+                              : FontStyle.normal,
+                        ),
+                      ),
                       subtitle: isGroupChat && chat.participantIds.length > 2
                           ? Text(
                               '${chat.participantIds.length} участников',
