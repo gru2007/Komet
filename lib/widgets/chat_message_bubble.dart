@@ -176,12 +176,7 @@ class _KometColoredSegment {
   _KometColoredSegment(this.text, this.color);
 }
 
-enum _KometSegmentType {
-  normal,
-  colored,
-  galaxy,
-  pulse,
-}
+enum _KometSegmentType { normal, colored, galaxy, pulse }
 
 class _KometSegment {
   final String text;
@@ -232,19 +227,13 @@ class _GalaxyAnimatedTextState extends State<_GalaxyAnimatedText>
             return LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                color,
-                Color.lerp(Colors.white, Colors.black, t)!,
-              ],
+              colors: [color, Color.lerp(Colors.white, Colors.black, t)!],
             ).createShader(bounds);
           },
           blendMode: BlendMode.srcIn,
           child: Text(
             widget.text,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
         );
       },
@@ -323,14 +312,17 @@ class _PulseAnimatedTextState extends State<_PulseAnimatedText>
     if (!text.startsWith(prefix) || !text.endsWith("'")) {
       return Text(text);
     }
-    
+
     final afterHash = text.substring(prefix.length);
     final quoteIndex = afterHash.indexOf("'");
     if (quoteIndex == -1 || quoteIndex + 1 >= afterHash.length) {
       return Text(text);
     }
 
-    final messageText = afterHash.substring(quoteIndex + 1, afterHash.length - 1);
+    final messageText = afterHash.substring(
+      quoteIndex + 1,
+      afterHash.length - 1,
+    );
     final baseColor = _pulseColor ?? Colors.red;
 
     return AnimatedBuilder(
@@ -1754,13 +1746,14 @@ class ChatMessageBubble extends StatelessWidget {
 
     if (onReaction != null || (isMe && (onEdit != null || onDelete != null))) {
       if (isMobile) {
-        videoContent = GestureDetector(
-          onTapDown: (TapDownDetails details) {
-            _showMessageContextMenu(context, details.globalPosition);
-          },
+        // На мобильных: короткий тап по видео запускает видео,
+        // а панель появляется только при длинном удержании (~0.7 c).
+        videoContent = _LongPressContextMenuWrapper(
           child: videoContent,
+          onShowMenu: (offset) => _showMessageContextMenu(context, offset),
         );
       } else {
+        // На десктопе оставляем контекстное меню по правому клику
         videoContent = GestureDetector(
           onSecondaryTapDown: (TapDownDetails details) {
             _showMessageContextMenu(context, details.globalPosition);
@@ -1849,15 +1842,14 @@ class ChatMessageBubble extends StatelessWidget {
 
     if (onReaction != null || (isMe && (onEdit != null || onDelete != null))) {
       if (isMobile) {
-        photoContent = GestureDetector(
-          onTapDown: (TapDownDetails details) {
-            _showMessageContextMenu(context, details.globalPosition);
-          },
+        // На мобильных: короткий тап открывает фото, панель только по долгому тапу.
+        photoContent = _LongPressContextMenuWrapper(
           child: photoContent,
+          onShowMenu: (offset) => _showMessageContextMenu(context, offset),
         );
       } else {
         photoContent = GestureDetector(
-          onTapDown: (TapDownDetails details) {
+          onSecondaryTapDown: (TapDownDetails details) {
             _showMessageContextMenu(context, details.globalPosition);
           },
           child: photoContent,
@@ -1986,11 +1978,11 @@ class ChatMessageBubble extends StatelessWidget {
 
     if (onReaction != null || (isMe && (onEdit != null || onDelete != null))) {
       if (isMobile) {
-        videoContent = GestureDetector(
-          onTapDown: (TapDownDetails details) {
-            _showMessageContextMenu(context, details.globalPosition);
-          },
+        // На мобильных: короткий тап по видео — воспроизведение,
+        // панель реакций/действий — только по долгому тапу.
+        videoContent = _LongPressContextMenuWrapper(
           child: videoContent,
+          onShowMenu: (offset) => _showMessageContextMenu(context, offset),
         );
       } else {
         videoContent = GestureDetector(
@@ -4048,7 +4040,12 @@ class ChatMessageBubble extends StatelessWidget {
               ),
             )
           else if (decryptedText != null)
-            _buildMixedMessageContent(decryptedText!, defaultTextStyle, linkStyle, onOpenLink)
+            _buildMixedMessageContent(
+              decryptedText!,
+              defaultTextStyle,
+              linkStyle,
+              onOpenLink,
+            )
           else if (message.text.contains("welcome.saved.dialog.message"))
             Linkify(
               text:
@@ -4061,7 +4058,12 @@ class ChatMessageBubble extends StatelessWidget {
             )
           else if (message.text.contains("komet.cosmetic.") ||
               message.text.contains("komet.color_"))
-            _buildMixedMessageContent(message.text, defaultTextStyle, linkStyle, onOpenLink)
+            _buildMixedMessageContent(
+              message.text,
+              defaultTextStyle,
+              linkStyle,
+              onOpenLink,
+            )
           else
             Linkify(
               text: message.text,
@@ -4219,14 +4221,21 @@ class ChatMessageBubble extends StatelessWidget {
       // Если маркер не найден, добавляем оставшийся текст как обычный
       if (markerType == null) {
         if (index < text.length) {
-          segments.add(_KometSegment(text.substring(index), _KometSegmentType.normal));
+          segments.add(
+            _KometSegment(text.substring(index), _KometSegmentType.normal),
+          );
         }
         break;
       }
 
       // Добавляем текст до маркера как обычный
       if (nextMarker > index) {
-        segments.add(_KometSegment(text.substring(index, nextMarker), _KometSegmentType.normal));
+        segments.add(
+          _KometSegment(
+            text.substring(index, nextMarker),
+            _KometSegmentType.normal,
+          ),
+        );
       }
 
       // Обрабатываем найденный маркер
@@ -4241,13 +4250,24 @@ class ChatMessageBubble extends StatelessWidget {
           if (secondQuote != -1) {
             final segmentText = afterHash.substring(textStart, secondQuote);
             final color = _parseKometHexColor(hexStr, null);
-            segments.add(_KometSegment(segmentText, _KometSegmentType.pulse, color: color));
-            index = nextMarker + prefix.length + secondQuote + 2; // +2 для двух кавычек
+            segments.add(
+              _KometSegment(segmentText, _KometSegmentType.pulse, color: color),
+            );
+            index =
+                nextMarker +
+                prefix.length +
+                secondQuote +
+                2; // +2 для двух кавычек
             continue;
           }
         }
         // Если парсинг не удался, добавляем как обычный текст
-        segments.add(_KometSegment(text.substring(nextMarker, nextMarker + prefix.length + 10), _KometSegmentType.normal));
+        segments.add(
+          _KometSegment(
+            text.substring(nextMarker, nextMarker + prefix.length + 10),
+            _KometSegmentType.normal,
+          ),
+        );
         index = nextMarker + prefix.length + 10;
       } else if (markerType == "galaxy") {
         const prefix = "komet.cosmetic.galaxy'";
@@ -4260,7 +4280,12 @@ class ChatMessageBubble extends StatelessWidget {
           continue;
         }
         // Если парсинг не удался, добавляем как обычный текст
-        segments.add(_KometSegment(text.substring(nextMarker, textStart + 10), _KometSegmentType.normal));
+        segments.add(
+          _KometSegment(
+            text.substring(nextMarker, textStart + 10),
+            _KometSegmentType.normal,
+          ),
+        );
         index = textStart + 10;
       } else if (markerType == "color") {
         const marker = 'komet.color_';
@@ -4273,13 +4298,24 @@ class ChatMessageBubble extends StatelessWidget {
           if (secondQuote != -1) {
             final segmentText = text.substring(textStart, secondQuote);
             final color = _parseKometHexColor(colorStr, null);
-            segments.add(_KometSegment(segmentText, _KometSegmentType.colored, color: color));
+            segments.add(
+              _KometSegment(
+                segmentText,
+                _KometSegmentType.colored,
+                color: color,
+              ),
+            );
             index = secondQuote + 1;
             continue;
           }
         }
         // Если парсинг не удался, добавляем как обычный текст
-        segments.add(_KometSegment(text.substring(nextMarker, colorStart + 10), _KometSegmentType.normal));
+        segments.add(
+          _KometSegment(
+            text.substring(nextMarker, colorStart + 10),
+            _KometSegmentType.normal,
+          ),
+        );
         index = colorStart + 10;
       }
     }
@@ -4320,8 +4356,14 @@ class ChatMessageBubble extends StatelessWidget {
             return _GalaxyAnimatedText(text: seg.text);
           case _KometSegmentType.pulse:
             // Создаем строку в правильном формате для _PulseAnimatedText
-            final hexStr = seg.color!.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase();
-            return _PulseAnimatedText(text: "komet.cosmetic.pulse#$hexStr'${seg.text}'");
+            final hexStr = seg.color!.value
+                .toRadixString(16)
+                .padLeft(8, '0')
+                .substring(2)
+                .toUpperCase();
+            return _PulseAnimatedText(
+              text: "komet.cosmetic.pulse#$hexStr'${seg.text}'",
+            );
         }
       }).toList(),
     );
@@ -4489,6 +4531,61 @@ class ChatMessageBubble extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Обёртка, которая показывает контекстное меню только при долгом удержании.
+///
+/// - Короткий тап пропускается к дочерним жестам (открытие фото/видео и т.п.).
+/// - Долгое удержание (~0.7 секунды) открывает панель реакций/действий.
+class _LongPressContextMenuWrapper extends StatefulWidget {
+  final Widget child;
+  final void Function(Offset globalPosition) onShowMenu;
+
+  const _LongPressContextMenuWrapper({
+    required this.child,
+    required this.onShowMenu,
+  });
+
+  @override
+  State<_LongPressContextMenuWrapper> createState() =>
+      _LongPressContextMenuWrapperState();
+}
+
+class _LongPressContextMenuWrapperState
+    extends State<_LongPressContextMenuWrapper> {
+  static const Duration _longPressDuration = Duration(milliseconds: 700);
+
+  Timer? _timer;
+  bool _isLongPressTriggered = false;
+
+  void _onPointerDown(PointerDownEvent event) {
+    _isLongPressTriggered = false;
+    _timer?.cancel();
+    _timer = Timer(_longPressDuration, () {
+      _isLongPressTriggered = true;
+      widget.onShowMenu(event.position);
+    });
+  }
+
+  void _onPointerUpOrCancel(PointerEvent event) {
+    _timer?.cancel();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: _onPointerDown,
+      onPointerUp: _onPointerUpOrCancel,
+      onPointerCancel: _onPointerUpOrCancel,
+      child: widget.child,
     );
   }
 }
