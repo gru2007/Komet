@@ -4382,6 +4382,22 @@ class _ChatScreenState extends State<ChatScreen> {
                                               ),
                                         tooltip: 'Зачеркнуть',
                                       ),
+                                      IconButton(
+                                        iconSize: 18,
+                                        padding: EdgeInsets.zero,
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(Icons.close),
+                                        onPressed: isBlocked
+                                            ? null
+                                            : () {
+                                                setState(() {
+                                                  _textController.elements
+                                                      .clear();
+                                                  _formatWarningVisible = false;
+                                                });
+                                              },
+                                        tooltip: 'Сбросить формат',
+                                      ),
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: AnimatedOpacity(
