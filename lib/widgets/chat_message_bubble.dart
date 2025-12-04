@@ -379,6 +379,8 @@ class ChatMessageBubble extends StatelessWidget {
   final int? chatId;
   final bool isEncryptionPasswordSet;
   final String? decryptedText;
+  // Идёт ли сейчас отправка/удаление реакции для этого сообщения
+  final bool isReactionSending;
 
   const ChatMessageBubble({
     super.key,
@@ -414,6 +416,7 @@ class ChatMessageBubble extends StatelessWidget {
     this.chatId,
     this.isEncryptionPasswordSet = false,
     this.decryptedText,
+    this.isReactionSending = false,
   });
 
   String _formatMessageTime(BuildContext context, int timestamp) {
@@ -1166,17 +1169,32 @@ class ChatMessageBubble extends StatelessWidget {
                     : textColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Text(
-                '$emoji $count',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: isUserReaction
-                      ? FontWeight.w600
-                      : FontWeight.w500,
-                  color: isUserReaction
-                      ? Theme.of(context).colorScheme.primary
-                      : textColor.withOpacity(0.9),
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$emoji $count',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isUserReaction
+                          ? FontWeight.w600
+                          : FontWeight.w500,
+                      color: isUserReaction
+                          ? Theme.of(context).colorScheme.primary
+                          : textColor.withOpacity(0.9),
+                    ),
+                  ),
+                  if (isUserReaction && isReactionSending) ...[
+                    const SizedBox(width: 4),
+                    _RotatingIcon(
+                      icon: Icons.watch_later_outlined,
+                      size: 12,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF9bb5c7)
+                          : const Color(0xFF6b7280),
+                    ),
+                  ],
+                ],
               ),
             ),
           );
@@ -3340,10 +3358,10 @@ class ChatMessageBubble extends StatelessWidget {
     String? token,
     int? chatId,
   }) async {
-    // Initialize progress
-    FileDownloadProgressService().updateProgress(fileId, 0.0);
-
     try {
+      // Initialize progress
+      FileDownloadProgressService().updateProgress(fileId, 0.0);
+
       // Get Downloads directory using helper
       final downloadDir = await DownloadPathHelper.getDownloadDirectory();
 
@@ -5634,10 +5652,22 @@ class _FullScreenPhotoViewerState extends State<FullScreenPhotoViewer> {
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                   if (widget.attach != null)
-                    IconButton(
-                      icon: const Icon(Icons.download, color: Colors.white),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                        foregroundColor: Colors.white,
+                        shape: const StadiumBorder(),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                      ),
+                      icon: const Icon(Icons.download),
+                      label: const Text(
+                        'Скачать',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
                       onPressed: _downloadPhoto,
-                      tooltip: 'Скачать фото',
                     ),
                 ],
               ),

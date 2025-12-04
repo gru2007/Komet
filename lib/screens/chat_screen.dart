@@ -19,6 +19,7 @@ import 'package:gwid/services/avatar_cache_service.dart';
 import 'package:gwid/services/chat_read_settings_service.dart';
 import 'package:gwid/services/contact_local_names_service.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:gwid/screens/group_settings_screen.dart';
 import 'package:gwid/screens/edit_contact_screen.dart';
 import 'package:gwid/widgets/contact_name_widget.dart';
@@ -30,6 +31,7 @@ import 'package:video_player/video_player.dart';
 import 'package:gwid/screens/chat_encryption_settings_screen.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:gwid/services/chat_encryption_service.dart';
+import 'package:lottie/lottie.dart';
 
 bool _debugShowExactDate = false;
 
@@ -59,43 +61,8 @@ class DateSeparatorItem extends ChatItem {
   DateSeparatorItem(this.date);
 }
 
-class UnreadSeparatorItem extends ChatItem {}
-
-class _UnreadSeparatorChip extends StatelessWidget {
-  const _UnreadSeparatorChip();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          const Expanded(child: Divider(thickness: 1)),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: colors.primary.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              'НЕПРОЧИТАННЫЕ СООБЩЕНИЯ',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.6,
-                color: colors.primary,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          const Expanded(child: Divider(thickness: 1)),
-        ],
-      ),
-    );
-  }
-}
+// Раньше здесь были классы для разделителя "НЕПРОЧИТАННЫЕ СООБЩЕНИЯ".
+// Функция отключена по требованию, поэтому доп. элементы не используем.
 
 class _EmptyChatWidget extends StatelessWidget {
   final Map<String, dynamic>? sticker;
@@ -157,12 +124,32 @@ class _EmptyChatWidget extends StatelessWidget {
       '🎨 _buildSticker: url=$url, lottieUrl=$lottieUrl, width=$width, height=$height',
     );
 
-    // Для отображения используем обычный url (статичное изображение)
-    // lottieUrl - это для анимации, но пока используем статичное изображение
-    // Если есть url, используем его, иначе пробуем lottieUrl
-    final imageUrl = url ?? lottieUrl;
+    // Если есть Lottie-анимация — пытаемся показать её (особенно актуально на телефоне)
+    if (lottieUrl != null && lottieUrl.isNotEmpty) {
+      print('🎨 Пытаемся показать Lottie-анимацию: $lottieUrl');
+      return SizedBox(
+        width: width,
+        height: height,
+        child: Lottie.network(
+          lottieUrl,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            print('❌ Ошибка загрузки Lottie: $error');
+            print('❌ StackTrace Lottie: $stackTrace');
+            // Фоллбек: пробуем статичное изображение по url
+            if (url != null && url.isNotEmpty) {
+              return Image.network(url, fit: BoxFit.contain);
+            }
+            return Icon(Icons.emoji_emotions, size: width, color: Colors.grey);
+          },
+        ),
+      );
+    }
 
-    print('🎨 Используемый URL для стикера: $imageUrl');
+    // Иначе показываем статичную картинку по обычному url
+    final imageUrl = url;
+
+    print('🎨 Используемый URL для статичного стикера: $imageUrl');
 
     if (imageUrl != null && imageUrl.isNotEmpty) {
       return SizedBox(
@@ -261,10 +248,180 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<int, Contact> _contactDetailsCache = {};
   final Set<int> _loadingContactIds = {};
 
-  String?
-  _lastReadMessageId; // последнее прочитанное нами сообщение в этом чате
+  // Локальный счётчик непрочитанных (используется только для первичной инициализации).
   int _initialUnreadCount = 0;
-  bool _hasUnreadSeparator = false;
+
+  // Сообщения, для которых сейчас "отправляется" реакция (показываем часы на реакции).
+  final Set<String> _sendingReactions = {};
+
+  // ======================= Attachments helpers =======================
+
+  Future<void> _onAttachPressed() async {
+    // Мобильные платформы — плашка снизу
+    if (Platform.isAndroid || Platform.isIOS) {
+      if (!mounted) return;
+      final colors = Theme.of(context).colorScheme;
+
+      await showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: colors.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (ctx) {
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: colors.outlineVariant,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const Text(
+                    'Отправить вложение',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            elevation: 0,
+                            backgroundColor: colors.primary.withOpacity(0.10),
+                            foregroundColor: colors.primary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 12,
+                            ),
+                          ),
+                          icon: const Icon(Icons.photo_library_outlined),
+                          label: const Text('Фото / видео'),
+                          onPressed: () async {
+                            Navigator.of(ctx).pop();
+                            final result = await _pickPhotosFlow(context);
+                            if (!mounted) return;
+                            if (result != null && result.paths.isNotEmpty) {
+                              await ApiService.instance.sendPhotoMessages(
+                                widget.chatId,
+                                localPaths: result.paths,
+                                caption: result.caption,
+                                senderId: _actualMyId,
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: colors.outlineVariant),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 12,
+                            ),
+                          ),
+                          icon: const Icon(Icons.insert_drive_file_outlined),
+                          label: const Text('Файл с устройства'),
+                          onPressed: () async {
+                            Navigator.of(ctx).pop();
+                            await ApiService.instance.sendFileMessage(
+                              widget.chatId,
+                              senderId: _actualMyId,
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4.0),
+                    child: Text(
+                      'Скоро здесь появятся последние отправленные файлы.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    } else {
+      // Десктоп: простое меню вместо плашки
+      if (!mounted) return;
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: const Text('Отправить вложение'),
+          children: [
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop('media'),
+              child: Row(
+                children: const [
+                  Icon(Icons.photo_library_outlined),
+                  SizedBox(width: 8),
+                  Text('Фото / видео'),
+                ],
+              ),
+            ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop('file'),
+              child: Row(
+                children: const [
+                  Icon(Icons.insert_drive_file_outlined),
+                  SizedBox(width: 8),
+                  Text('Файл с устройства'),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+
+      if (choice == 'media') {
+        final result = await _pickPhotosFlow(context);
+        if (result != null && result.paths.isNotEmpty) {
+          await ApiService.instance.sendPhotoMessages(
+            widget.chatId,
+            localPaths: result.paths,
+            caption: result.caption,
+            senderId: _actualMyId,
+          );
+        }
+      } else if (choice == 'file') {
+        await ApiService.instance.sendFileMessage(
+          widget.chatId,
+          senderId: _actualMyId,
+        );
+      }
+    }
+  }
 
   int? _actualMyId;
 
@@ -301,11 +458,23 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _scrollToBottom() {
+    // Плавный скролл — используем только по явному действию (кнопка "вниз" и т.п.)
+    if (!_itemScrollController.isAttached) return;
     _itemScrollController.scrollTo(
       index: 0,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutCubic,
     );
+  }
+
+  void _jumpToBottom() {
+    // Мгновенный прыжок в самый низ — используем при входе в чат,
+    // чтобы не было "подпрыгивания" списка из-за анимации.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_itemScrollController.isAttached) {
+        _itemScrollController.jumpTo(index: 0);
+      }
+    });
   }
 
   void _loadContactDetails() {
@@ -821,16 +990,6 @@ class _ChatScreenState extends State<ChatScreen> {
         _isUserAtBottom = isAtBottom;
         _showScrollToBottomNotifier.value = !isAtBottom;
 
-        // Если мы внизу и была плашка непрочитанных — считаем, что всё прочитано:
-        // сбрасываем lastRead и просто скрываем саму плашку (без изменения списка).
-        if (isAtBottom && _hasUnreadSeparator) {
-          _lastReadMessageId = null;
-          _hasUnreadSeparator = false;
-          if (mounted) {
-            setState(() {});
-          }
-        }
-
         // Проверяем, доскроллил ли пользователь до самого старого сообщения (вверх)
         // При reverse: true, последний визуальный элемент (самый большой index) = самое старое сообщение
         if (positions.isNotEmpty && _chatItems.isNotEmpty) {
@@ -981,7 +1140,17 @@ class _ChatScreenState extends State<ChatScreen> {
           _removeMessages(deletedMessageIds);
         }
       } else if (opcode == 178) {
-        if (chatIdNormalized == widget.chatId) {
+        // cmd == 1: это ACK на отправку реакции, без messageId — просто снимаем флаг "отправляется"
+        if (cmd == 1) {
+          if (_sendingReactions.isNotEmpty) {
+            _sendingReactions.clear();
+            if (mounted) {
+              setState(() {});
+            }
+          }
+        }
+        // cmd == 0: широковещательное обновление реакций с messageId и reactionInfo
+        if (cmd == 0 && chatIdNormalized == widget.chatId) {
           final messageId = payload['messageId'] as String?;
           final reactionInfo = payload['reactionInfo'] as Map<String, dynamic>?;
           if (messageId != null && reactionInfo != null) {
@@ -1134,30 +1303,13 @@ class _ChatScreenState extends State<ChatScreen> {
           '📜 Первая загрузка: загружено ${allMessages.length} сообщений, показано ${_messages.length}, _hasMore=$_hasMore, _oldestLoadedTime=$_oldestLoadedTime',
         );
 
-        // Если есть непрочитанные, пытаемся вычислить последнее прочитанное сообщение
-        // очень грубо: берём N сообщений перед концом списка (N = initialUnreadCount),
-        // и считаем последним прочитанным то, что стоит ровно перед ними.
-        if (widget.initialUnreadCount > 0 &&
-            allMessages.length > widget.initialUnreadCount) {
-          final lastReadGlobalIndex =
-              allMessages.length - widget.initialUnreadCount - 1;
-          final lastReadMessage = allMessages[lastReadGlobalIndex];
-          _lastReadMessageId = lastReadMessage.id;
-        } else {
-          _lastReadMessageId = null;
-        }
-
         _buildChatItems();
         _isLoadingHistory = false;
       });
 
-      // После первой загрузки истории скроллим к последнему прочитанному
-      if (_lastReadMessageId != null) {
-        _scrollToLastReadMessage();
-      } else {
-        // Если нечего читать (нет lastRead), просто остаёмся внизу
-        _scrollToBottom();
-      }
+      // Функция "перейти к последнему непрочитанному" отключена.
+      // Всегда стартуем с низа истории без анимации, чтобы не было подпрыгиваний.
+      _jumpToBottom();
       _updatePinnedMessage();
 
       // Если чат пустой, загружаем стикер для пустого состояния
@@ -1170,9 +1322,7 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _isLoadingHistory = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось обновить историю чата')),
-        );
+        // Не показываем всплывающее сообщение "Не удалось обновить историю чата".
       }
     }
 
@@ -1307,16 +1457,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final List<ChatItem> items = [];
     final source = _messages;
 
-    // Находим индекс последнего прочитанного сообщения (если оно есть)
-    int? lastReadIndex;
-    if (_lastReadMessageId != null) {
-      lastReadIndex = source.indexWhere((m) => m.id == _lastReadMessageId);
-      if (lastReadIndex == -1) {
-        lastReadIndex = null;
-      }
-    }
-    _hasUnreadSeparator = false;
-
     for (int i = 0; i < source.length; i++) {
       final currentMessage = source[i];
       final previousMessage = (i > 0) ? source[i - 1] : null;
@@ -1334,16 +1474,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final isGrouped = _isMessageGrouped(currentMessage, previousMessage);
 
-      print(
-        'DEBUG GROUPING: Message ${i}: sender=${currentMessage.senderId}, time=${currentMessage.time}',
-      );
-      if (previousMessage != null) {
-        print(
-          'DEBUG GROUPING: Previous: sender=${previousMessage.senderId}, time=${previousMessage.time}',
-        );
-        print('DEBUG GROUPING: isGrouped=$isGrouped');
-      }
-
       final isFirstInGroup =
           previousMessage == null ||
           !_isMessageGrouped(currentMessage, previousMessage);
@@ -1351,10 +1481,6 @@ class _ChatScreenState extends State<ChatScreen> {
       final isLastInGroup =
           i == source.length - 1 ||
           !_isMessageGrouped(source[i + 1], currentMessage);
-
-      print(
-        'DEBUG GROUPING: isFirstInGroup=$isFirstInGroup, isLastInGroup=$isLastInGroup',
-      );
 
       items.add(
         MessageItem(
@@ -1364,12 +1490,6 @@ class _ChatScreenState extends State<ChatScreen> {
           isGrouped: isGrouped,
         ),
       );
-
-      // Если это последнее прочитанное сообщение, сразу после него вставляем разделитель
-      if (lastReadIndex != null && i == lastReadIndex) {
-        items.add(UnreadSeparatorItem());
-        _hasUnreadSeparator = true;
-      }
     }
     _chatItems = items;
 
@@ -1525,35 +1645,6 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _scrollToLastReadMessage() {
-    final lastReadId = _lastReadMessageId;
-    if (lastReadId == null) return;
-
-    int? targetChatItemIndex;
-    for (int i = 0; i < _chatItems.length; i++) {
-      final item = _chatItems[i];
-      if (item is MessageItem && item.message.id == lastReadId) {
-        targetChatItemIndex = i;
-        break;
-      }
-    }
-
-    if (targetChatItemIndex == null) return;
-    if (!_itemScrollController.isAttached) return;
-
-    final visualIndex = _chatItems.length - 1 - targetChatItemIndex;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_itemScrollController.isAttached) {
-        _itemScrollController.scrollTo(
-          index: visualIndex,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOutCubic,
-        );
-      }
-    });
-  }
-
   void _addMessage(Message message, {bool forceScroll = false}) {
     if (_messages.any((m) => m.id == message.id)) {
       print('Сообщение ${message.id} уже существует, пропускаем добавление');
@@ -1644,6 +1735,13 @@ class _ChatScreenState extends State<ChatScreen> {
       final updatedMessage = message.copyWith(reactionInfo: reactionInfo);
       _messages[messageIndex] = updatedMessage;
 
+      // Снимаем флаг "отправляется" для этой реакции (если был)
+      if (_sendingReactions.remove(messageId)) {
+        print(
+          '✅ Реакция для сообщения $messageId успешно подтверждена сервером',
+        );
+      }
+
       _buildChatItems();
 
       print('Обновлена реакция для сообщения $messageId: $reactionInfo');
@@ -1688,6 +1786,9 @@ class _ChatScreenState extends State<ChatScreen> {
         reactionInfo: updatedReactionInfo,
       );
       _messages[messageIndex] = updatedMessage;
+
+      // Помечаем, что реакция для этого сообщения сейчас отправляется
+      _sendingReactions.add(messageId);
 
       _buildChatItems();
 
@@ -1738,6 +1839,9 @@ class _ChatScreenState extends State<ChatScreen> {
           reactionInfo: updatedReactionInfo,
         );
         _messages[messageIndex] = updatedMessage;
+
+        // Помечаем, что удаление реакции сейчас отправляется
+        _sendingReactions.add(messageId);
 
         _buildChatItems();
 
@@ -3084,6 +3188,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                       message: item.message,
                                       isMe: isMe,
                                       readStatus: readStatus,
+                                      isReactionSending: _sendingReactions
+                                          .contains(item.message.id),
                                       deferImageLoading: deferImageLoading,
                                       myUserId: _actualMyId,
                                       chatId: widget.chatId,
@@ -3237,10 +3343,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                     return finalMessageWidget;
                                   } else if (item is DateSeparatorItem) {
                                     return _DateSeparatorChip(date: item.date);
-                                  } else if (item is UnreadSeparatorItem) {
-                                    return _hasUnreadSeparator
-                                        ? const _UnreadSeparatorChip()
-                                        : const SizedBox.shrink();
                                   }
                                   if (isLastVisual && _isLoadingMore) {
                                     return TweenAnimationBuilder<double>(
@@ -4187,46 +4289,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(24),
-                          onTap: isBlocked
-                              ? null
-                              : () async {
-                                  final result = await _pickPhotosFlow(context);
-                                  if (result != null &&
-                                      result.paths.isNotEmpty) {
-                                    await ApiService.instance.sendPhotoMessages(
-                                      widget.chatId,
-                                      localPaths: result.paths,
-                                      caption: result.caption,
-                                      senderId: _actualMyId,
-                                    );
-                                  }
-                                },
-                          child: Padding(
-                            padding: const EdgeInsets.all(6.0),
-                            child: Icon(
-                              Icons.photo_library_outlined,
-                              color: isBlocked
-                                  ? Theme.of(
-                                      context,
-                                    ).colorScheme.onSurface.withOpacity(0.3)
-                                  : Theme.of(context).colorScheme.primary,
-                              size: 24,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(24),
-                          onTap: isBlocked
-                              ? null
-                              : () async {
-                                  await ApiService.instance.sendFileMessage(
-                                    widget.chatId,
-                                    senderId: _actualMyId,
-                                  );
-                                },
+                          onTap: isBlocked ? null : _onAttachPressed,
                           child: Padding(
                             padding: const EdgeInsets.all(6.0),
                             child: Icon(
@@ -5186,6 +5249,28 @@ class _SendPhotosDialogState extends State<_SendPhotosDialog> {
     super.dispose();
   }
 
+  Future<void> _pickMoreDesktop() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.image,
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      _pickedPaths
+        ..clear()
+        ..addAll(result.files.where((f) => f.path != null).map((f) => f.path!));
+      _previews
+        ..clear()
+        ..addAll(_pickedPaths.map((p) => FileImage(File(p)) as ImageProvider));
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      debugPrint('Ошибка выбора фото на десктопе: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -5204,22 +5289,7 @@ class _SendPhotosDialogState extends State<_SendPhotosDialog> {
           ),
           const SizedBox(height: 12),
           FilledButton.icon(
-            onPressed: () async {
-              try {
-                final imgs = await ImagePicker().pickMultiImage(
-                  imageQuality: 100,
-                );
-                if (imgs.isNotEmpty) {
-                  _pickedPaths
-                    ..clear()
-                    ..addAll(imgs.map((e) => e.path));
-                  _previews
-                    ..clear()
-                    ..addAll(imgs.map((e) => FileImage(File(e.path))));
-                  setState(() {});
-                }
-              } catch (_) {}
-            },
+            onPressed: _pickMoreDesktop,
             icon: const Icon(Icons.photo_library),
             label: Text(
               _pickedPaths.isEmpty
@@ -5837,7 +5907,7 @@ class _ContactProfileDialogState extends State<ContactProfileDialog> {
                         else
                           const SizedBox(height: 16),
 
-                        if (!widget.isChannel)
+                        if (!widget.isChannel) ...[
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
@@ -5874,6 +5944,94 @@ class _ContactProfileDialogState extends State<ContactProfileDialog> {
                               ),
                             ),
                           ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                final isInContacts =
+                                    ApiService.instance.getCachedContact(
+                                      widget.contact.id,
+                                    ) !=
+                                    null;
+                                if (isInContacts) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Уже в контактах'),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                  return;
+                                }
+
+                                try {
+                                  await ApiService.instance.addContact(
+                                    widget.contact.id,
+                                  );
+                                  await ApiService.instance
+                                      .requestContactsByIds([
+                                        widget.contact.id,
+                                      ]);
+
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Запрос на добавление в контакты отправлен',
+                                        ),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Ошибка при добавлении в контакты: $e',
+                                        ),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                              icon: const Icon(Icons.person_add),
+                              label: const Text('В контакты'),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: () {
+                                // Уже в этом чате — просто закрываем панель,
+                                // чтобы пользователь мог сразу написать.
+                                Navigator.of(context).pop();
+                              },
+                              icon: const Icon(Icons.message),
+                              label: const Text('Написать сообщение'),
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   );

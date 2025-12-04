@@ -129,11 +129,29 @@ extension ApiServiceAuth on ApiService {
       await prefs.setString('userId', userId);
     }
 
+    // Полный сброс сессии как при переключении аккаунта
+    _messageQueue.clear();
+    _lastChatsPayload = null;
+    _chatsFetchedInThisSession = false;
+    _isSessionOnline = false;
+    _isSessionReady = false;
+    _handshakeSent = false;
+
     disconnect();
 
     await connect();
+    await waitUntilOnline();
+
     await getChatsAndContacts(force: true);
-    print("Токен и UserID успешно сохранены");
+
+    // Обновляем профиль аккаунта из свежих данных
+    final profileJson = _lastChatsPayload?['profile'];
+    if (profileJson != null) {
+      final profileObj = Profile.fromJson(profileJson);
+      await accountManager.updateAccountProfile(account.id, profileObj);
+    }
+
+    print("Токен и UserID успешно сохранены, сессия перезапущена");
   }
 
   Future<bool> hasToken() async {
@@ -286,7 +304,9 @@ extension ApiServiceAuth on ApiService {
     _sendMessage(17, payload);
 
     try {
-      final response = await completer.future.timeout(const Duration(seconds: 30));
+      final response = await completer.future.timeout(
+        const Duration(seconds: 30),
+      );
       subscription.cancel();
 
       final payload = response['payload'];
@@ -318,7 +338,9 @@ extension ApiServiceAuth on ApiService {
     _sendMessage(18, payload);
 
     try {
-      final response = await completer.future.timeout(const Duration(seconds: 30));
+      final response = await completer.future.timeout(
+        const Duration(seconds: 30),
+      );
       subscription.cancel();
 
       final payload = response['payload'];

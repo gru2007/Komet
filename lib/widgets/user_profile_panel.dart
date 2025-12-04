@@ -41,7 +41,10 @@ class _UserProfilePanelState extends State<UserProfilePanel> {
   final ScrollController _nameScrollController = ScrollController();
   String? _localDescription;
   StreamSubscription? _changesSubscription;
+  StreamSubscription? _wsSubscription;
   bool _isOpeningChat = false;
+  bool _isInContacts = false;
+  bool _isAddingToContacts = false;
 
   String get _displayName {
     final displayName = getContactDisplayName(
@@ -64,18 +67,48 @@ class _UserProfilePanelState extends State<UserProfilePanel> {
   void initState() {
     super.initState();
     _loadLocalDescription();
+    _checkIfInContacts();
 
     _changesSubscription = ContactLocalNamesService().changes.listen((
       contactId,
     ) {
       if (contactId == widget.userId && mounted) {
         _loadLocalDescription();
+        _checkIfInContacts();
       }
+    });
+
+    _wsSubscription = ApiService.instance.messages.listen((msg) {
+      try {
+        if (msg['opcode'] == 34 &&
+            msg['cmd'] == 1 &&
+            msg['payload'] != null &&
+            msg['payload']['contact'] != null) {
+          final contactJson = msg['payload']['contact'] as Map<String, dynamic>;
+          final id = contactJson['id'] as int?;
+          if (id == widget.userId && mounted) {
+            final contact = Contact.fromJson(contactJson);
+            ApiService.instance.updateContactCache([contact]);
+            setState(() {
+              _isInContacts = true;
+            });
+          }
+        }
+      } catch (_) {}
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkNameLength();
     });
+  }
+
+  Future<void> _checkIfInContacts() async {
+    final cached = ApiService.instance.getCachedContact(widget.userId);
+    if (mounted) {
+      setState(() {
+        _isInContacts = cached != null;
+      });
+    }
   }
 
   Future<void> _loadLocalDescription() async {
@@ -92,6 +125,7 @@ class _UserProfilePanelState extends State<UserProfilePanel> {
   @override
   void dispose() {
     _changesSubscription?.cancel();
+    _wsSubscription?.cancel();
     _nameScrollController.dispose();
     super.dispose();
   }
@@ -234,14 +268,24 @@ class _UserProfilePanelState extends State<UserProfilePanel> {
                     _buildActionButton(
                       icon: Icons.phone,
                       label: 'Позвонить',
-                      onPressed: null,
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Звонков пока нету'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      },
                       colors: colors,
                     ),
                     _buildActionButton(
                       icon: Icons.person_add,
-                      label: 'В контакты',
-                      onPressed: null,
+                      label: _isInContacts ? 'В контактах' : 'В контакты',
+                      onPressed: _isInContacts || _isAddingToContacts
+                          ? null
+                          : _handleAddToContacts,
                       colors: colors,
+                      isLoading: _isAddingToContacts,
                     ),
                     _buildActionButton(
                       icon: Icons.message,
@@ -382,6 +426,48 @@ class _UserProfilePanelState extends State<UserProfilePanel> {
       if (mounted) {
         setState(() {
           _isOpeningChat = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleAddToContacts() async {
+    if (_isAddingToContacts || _isInContacts) return;
+
+    setState(() {
+      _isAddingToContacts = true;
+    });
+
+    try {
+      // Отправляем opcode=34 с action="ADD"
+      await ApiService.instance.addContact(widget.userId);
+
+      // Пытаемся сразу подтянуть обновлённые данные контакта
+      await ApiService.instance.requestContactsByIds([widget.userId]);
+
+      await _checkIfInContacts();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Запрос на добавление в контакты отправлен'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка при добавлении в контакты: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAddingToContacts = false;
         });
       }
     }

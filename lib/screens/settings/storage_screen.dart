@@ -669,23 +669,10 @@ class _StorageScreenState extends State<StorageScreen>
   Future<void> _selectDownloadFolder() async {
     try {
       String? selectedDirectory;
-      
-      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        // На десктопе используем getDirectoryPath
-        selectedDirectory = await FilePicker.platform.getDirectoryPath();
-      } else {
-        // На мобильных платформах file_picker может не поддерживать выбор папки
-        // Используем диалог с текстовым вводом или просто показываем сообщение
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Выбор папки доступен только на десктопных платформах'),
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-        return;
-      }
+
+      // На всех платформах, где поддерживается, пробуем открыть диалог выбора папки.
+      // На Android/iOS FilePicker сам использует системный проводник/документы.
+      selectedDirectory = await FilePicker.platform.getDirectoryPath();
 
       if (selectedDirectory != null && selectedDirectory.isNotEmpty) {
         await DownloadPathHelper.setDownloadDirectory(selectedDirectory);
@@ -717,9 +704,7 @@ class _StorageScreenState extends State<StorageScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Сбросить папку загрузки'),
-        content: const Text(
-          'Вернуть папку загрузки к значению по умолчанию?',
-        ),
+        content: const Text('Вернуть папку загрузки к значению по умолчанию?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -752,7 +737,8 @@ class _StorageScreenState extends State<StorageScreen>
       future: DownloadPathHelper.getDisplayPath(),
       builder: (context, snapshot) {
         final currentPath = snapshot.data ?? 'Загрузка...';
-        final isCustom = snapshot.hasData && 
+        final isCustom =
+            snapshot.hasData &&
             currentPath != 'Не указано' &&
             !currentPath.contains('Downloads') &&
             !currentPath.contains('Download');
@@ -770,10 +756,7 @@ class _StorageScreenState extends State<StorageScreen>
             children: [
               Row(
                 children: [
-                  Icon(
-                    Icons.folder_outlined,
-                    color: colors.primary,
-                  ),
+                  Icon(Icons.folder_outlined, color: colors.primary),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -822,11 +805,7 @@ class _StorageScreenState extends State<StorageScreen>
                       ),
                     ),
                     if (isCustom)
-                      Icon(
-                        Icons.check_circle,
-                        color: colors.primary,
-                        size: 20,
-                      ),
+                      Icon(Icons.check_circle, color: colors.primary, size: 20),
                   ],
                 ),
               ),
@@ -848,7 +827,10 @@ class _StorageScreenState extends State<StorageScreen>
                     OutlinedButton(
                       onPressed: _resetDownloadFolder,
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 16,
+                        ),
                       ),
                       child: const Icon(Icons.refresh),
                     ),
