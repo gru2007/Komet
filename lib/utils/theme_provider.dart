@@ -104,25 +104,6 @@ class CustomThemePreset {
   bool useDesktopLayout;
   bool useAutoReplyColor;
   Color? customReplyColor;
-  double mobileChatBottomPadding;
-  bool ignoreMobileBottomPaddingWhenKeyboard;
-
-  // Экспериментальные настройки фона
-  bool useExperimentalChatsListBackground;
-  ChatWallpaperType experimentalChatsListBackgroundType;
-  Color experimentalChatsListBackgroundColor1;
-  Color experimentalChatsListBackgroundColor2;
-  String? experimentalChatsListBackgroundImagePath;
-
-  ChatWallpaperType drawerTopBackgroundType;
-  Color drawerTopBackgroundColor1;
-  Color drawerTopBackgroundColor2;
-  String? drawerTopBackgroundImagePath;
-
-  ChatWallpaperType drawerBottomBackgroundType;
-  Color drawerBottomBackgroundColor1;
-  Color drawerBottomBackgroundColor2;
-  String? drawerBottomBackgroundImagePath;
 
   CustomThemePreset({
     required this.id,
@@ -174,21 +155,6 @@ class CustomThemePreset {
     this.useDesktopLayout = true,
     this.useAutoReplyColor = true,
     this.customReplyColor,
-    this.mobileChatBottomPadding = 140.0,
-    this.ignoreMobileBottomPaddingWhenKeyboard = true,
-    this.useExperimentalChatsListBackground = false,
-    this.experimentalChatsListBackgroundType = ChatWallpaperType.solid,
-    this.experimentalChatsListBackgroundColor1 = const Color(0xFF101010),
-    this.experimentalChatsListBackgroundColor2 = const Color(0xFF202020),
-    this.experimentalChatsListBackgroundImagePath,
-    this.drawerTopBackgroundType = ChatWallpaperType.solid,
-    this.drawerTopBackgroundColor1 = const Color(0xFF1E1E1E),
-    this.drawerTopBackgroundColor2 = const Color(0xFF2E2E2E),
-    this.drawerTopBackgroundImagePath,
-    this.drawerBottomBackgroundType = ChatWallpaperType.solid,
-    this.drawerBottomBackgroundColor1 = const Color(0xFF1E1E1E),
-    this.drawerBottomBackgroundColor2 = const Color(0xFF2E2E2E),
-    this.drawerBottomBackgroundImagePath,
   });
 
   factory CustomThemePreset.createDefault() {
@@ -245,21 +211,6 @@ class CustomThemePreset {
     bool? useDesktopLayout,
     bool? useAutoReplyColor,
     Color? customReplyColor,
-    double? mobileChatBottomPadding,
-    bool? ignoreMobileBottomPaddingWhenKeyboard,
-    bool? useExperimentalChatsListBackground,
-    ChatWallpaperType? experimentalChatsListBackgroundType,
-    Color? experimentalChatsListBackgroundColor1,
-    Color? experimentalChatsListBackgroundColor2,
-    String? experimentalChatsListBackgroundImagePath,
-    ChatWallpaperType? drawerTopBackgroundType,
-    Color? drawerTopBackgroundColor1,
-    Color? drawerTopBackgroundColor2,
-    String? drawerTopBackgroundImagePath,
-    ChatWallpaperType? drawerBottomBackgroundType,
-    Color? drawerBottomBackgroundColor1,
-    Color? drawerBottomBackgroundColor2,
-    String? drawerBottomBackgroundImagePath,
   }) {
     return CustomThemePreset(
       id: id ?? this.id,
@@ -320,35 +271,6 @@ class CustomThemePreset {
       useDesktopLayout: useDesktopLayout ?? this.useDesktopLayout,
       useAutoReplyColor: useAutoReplyColor ?? this.useAutoReplyColor,
       customReplyColor: customReplyColor ?? this.customReplyColor,
-      mobileChatBottomPadding:
-          mobileChatBottomPadding ?? this.mobileChatBottomPadding,
-      ignoreMobileBottomPaddingWhenKeyboard:
-          ignoreMobileBottomPaddingWhenKeyboard ??
-              this.ignoreMobileBottomPaddingWhenKeyboard,
-      useExperimentalChatsListBackground: useExperimentalChatsListBackground ??
-          this.useExperimentalChatsListBackground,
-      experimentalChatsListBackgroundType: experimentalChatsListBackgroundType ??
-          this.experimentalChatsListBackgroundType,
-      experimentalChatsListBackgroundColor1: experimentalChatsListBackgroundColor1 ??
-          this.experimentalChatsListBackgroundColor1,
-      experimentalChatsListBackgroundColor2: experimentalChatsListBackgroundColor2 ??
-          this.experimentalChatsListBackgroundColor2,
-      experimentalChatsListBackgroundImagePath: experimentalChatsListBackgroundImagePath ??
-          this.experimentalChatsListBackgroundImagePath,
-      drawerTopBackgroundType: drawerTopBackgroundType ?? this.drawerTopBackgroundType,
-      drawerTopBackgroundColor1:
-          drawerTopBackgroundColor1 ?? this.drawerTopBackgroundColor1,
-      drawerTopBackgroundColor2:
-          drawerTopBackgroundColor2 ?? this.drawerTopBackgroundColor2,
-      drawerTopBackgroundImagePath:
-          drawerTopBackgroundImagePath ?? this.drawerTopBackgroundImagePath,
-      drawerBottomBackgroundType: drawerBottomBackgroundType ?? this.drawerBottomBackgroundType,
-      drawerBottomBackgroundColor1:
-          drawerBottomBackgroundColor1 ?? this.drawerBottomBackgroundColor1,
-      drawerBottomBackgroundColor2:
-          drawerBottomBackgroundColor2 ?? this.drawerBottomBackgroundColor2,
-      drawerBottomBackgroundImagePath:
-          drawerBottomBackgroundImagePath ?? this.drawerBottomBackgroundImagePath,
     );
   }
 
@@ -403,22 +325,6 @@ class CustomThemePreset {
       'useDesktopLayout': useDesktopLayout,
       'useAutoReplyColor': useAutoReplyColor,
       'customReplyColor': customReplyColor?.value,
-      'mobileChatBottomPadding': mobileChatBottomPadding,
-      'ignoreMobileBottomPaddingWhenKeyboard':
-          ignoreMobileBottomPaddingWhenKeyboard,
-      'useExperimentalChatsListBackground': useExperimentalChatsListBackground,
-      'experimentalChatsListBackgroundType': experimentalChatsListBackgroundType.index,
-      'experimentalChatsListBackgroundColor1': experimentalChatsListBackgroundColor1.value,
-      'experimentalChatsListBackgroundColor2': experimentalChatsListBackgroundColor2.value,
-      'experimentalChatsListBackgroundImagePath': experimentalChatsListBackgroundImagePath,
-      'drawerTopBackgroundType': drawerTopBackgroundType.index,
-      'drawerTopBackgroundColor1': drawerTopBackgroundColor1.value,
-      'drawerTopBackgroundColor2': drawerTopBackgroundColor2.value,
-      'drawerTopBackgroundImagePath': drawerTopBackgroundImagePath,
-      'drawerBottomBackgroundType': drawerBottomBackgroundType.index,
-      'drawerBottomBackgroundColor1': drawerBottomBackgroundColor1.value,
-      'drawerBottomBackgroundColor2': drawerBottomBackgroundColor2.value,
-      'drawerBottomBackgroundImagePath': drawerBottomBackgroundImagePath,
     };
   }
 
@@ -516,44 +422,6 @@ class CustomThemePreset {
       customReplyColor: json['customReplyColor'] != null
           ? Color(json['customReplyColor'] as int)
           : null,
-      mobileChatBottomPadding:
-          (json['mobileChatBottomPadding'] as double? ?? 140.0).clamp(
-        60.0,
-        240.0,
-      ),
-      ignoreMobileBottomPaddingWhenKeyboard:
-          json['ignoreMobileBottomPaddingWhenKeyboard'] as bool? ?? true,
-      useExperimentalChatsListBackground: json['useExperimentalChatsListBackground'] as bool? ?? false,
-      experimentalChatsListBackgroundType: () {
-        final index = json['experimentalChatsListBackgroundType'] as int?;
-        if (index == null || index < 0 || index >= ChatWallpaperType.values.length) {
-          return ChatWallpaperType.solid;
-        }
-        return ChatWallpaperType.values[index];
-      }(),
-      experimentalChatsListBackgroundColor1: Color(json['experimentalChatsListBackgroundColor1'] as int? ?? const Color(0xFF101010).value),
-      experimentalChatsListBackgroundColor2: Color(json['experimentalChatsListBackgroundColor2'] as int? ?? const Color(0xFF202020).value),
-      experimentalChatsListBackgroundImagePath: json['experimentalChatsListBackgroundImagePath'] as String?,
-      drawerTopBackgroundType: () {
-        final index = json['drawerTopBackgroundType'] as int?;
-        if (index == null || index < 0 || index >= ChatWallpaperType.values.length) {
-          return ChatWallpaperType.solid;
-        }
-        return ChatWallpaperType.values[index];
-      }(),
-      drawerTopBackgroundColor1: Color(json['drawerTopBackgroundColor1'] as int? ?? const Color(0xFF1E1E1E).value),
-      drawerTopBackgroundColor2: Color(json['drawerTopBackgroundColor2'] as int? ?? const Color(0xFF2E2E2E).value),
-      drawerTopBackgroundImagePath: json['drawerTopBackgroundImagePath'] as String?,
-      drawerBottomBackgroundType: () {
-        final index = json['drawerBottomBackgroundType'] as int?;
-        if (index == null || index < 0 || index >= ChatWallpaperType.values.length) {
-          return ChatWallpaperType.solid;
-        }
-        return ChatWallpaperType.values[index];
-      }(),
-      drawerBottomBackgroundColor1: Color(json['drawerBottomBackgroundColor1'] as int? ?? const Color(0xFF1E1E1E).value),
-      drawerBottomBackgroundColor2: Color(json['drawerBottomBackgroundColor2'] as int? ?? const Color(0xFF2E2E2E).value),
-      drawerBottomBackgroundImagePath: json['drawerBottomBackgroundImagePath'] as String?,
     );
   }
 }
@@ -661,26 +529,6 @@ class ThemeProvider with ChangeNotifier {
   bool get debugShowMessageCount => _debugShowMessageCount;
   bool get debugReadOnEnter => _debugReadOnEnter;
   bool get debugReadOnAction => _debugReadOnAction;
-  double get mobileChatBottomPadding => _activeTheme.mobileChatBottomPadding;
-  bool get ignoreMobileBottomPaddingWhenKeyboard =>
-      _activeTheme.ignoreMobileBottomPaddingWhenKeyboard;
-
-  // Экспериментальные настройки фона
-  bool get useExperimentalChatsListBackground => _activeTheme.useExperimentalChatsListBackground;
-  ChatWallpaperType get experimentalChatsListBackgroundType => _activeTheme.experimentalChatsListBackgroundType;
-  Color get experimentalChatsListBackgroundColor1 => _activeTheme.experimentalChatsListBackgroundColor1;
-  Color get experimentalChatsListBackgroundColor2 => _activeTheme.experimentalChatsListBackgroundColor2;
-  String? get experimentalChatsListBackgroundImagePath => _activeTheme.experimentalChatsListBackgroundImagePath;
-
-  ChatWallpaperType get drawerTopBackgroundType => _activeTheme.drawerTopBackgroundType;
-  Color get drawerTopBackgroundColor1 => _activeTheme.drawerTopBackgroundColor1;
-  Color get drawerTopBackgroundColor2 => _activeTheme.drawerTopBackgroundColor2;
-  String? get drawerTopBackgroundImagePath => _activeTheme.drawerTopBackgroundImagePath;
-
-  ChatWallpaperType get drawerBottomBackgroundType => _activeTheme.drawerBottomBackgroundType;
-  Color get drawerBottomBackgroundColor1 => _activeTheme.drawerBottomBackgroundColor1;
-  Color get drawerBottomBackgroundColor2 => _activeTheme.drawerBottomBackgroundColor2;
-  String? get drawerBottomBackgroundImagePath => _activeTheme.drawerBottomBackgroundImagePath;
 
   TransitionOption get chatTransition => _activeTheme.ultraOptimizeChats
       ? TransitionOption.systemDefault
@@ -1360,101 +1208,6 @@ class ThemeProvider with ChangeNotifier {
 
   Future<void> setUseAutoReplyColor(bool value) async {
     _activeTheme = _activeTheme.copyWith(useAutoReplyColor: value);
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setMobileChatBottomPadding(double value) async {
-    final clamped = value.clamp(60.0, 240.0);
-    _activeTheme = _activeTheme.copyWith(
-      mobileChatBottomPadding: clamped,
-    );
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setIgnoreMobileBottomPaddingWhenKeyboard(bool value) async {
-    _activeTheme = _activeTheme.copyWith(
-      ignoreMobileBottomPaddingWhenKeyboard: value,
-    );
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setUseExperimentalChatsListBackground(bool value) async {
-    _activeTheme = _activeTheme.copyWith(useExperimentalChatsListBackground: value);
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setExperimentalChatsListBackgroundType(ChatWallpaperType value) async {
-    _activeTheme = _activeTheme.copyWith(experimentalChatsListBackgroundType: value);
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setExperimentalChatsListBackgroundColor1(Color value) async {
-    _activeTheme = _activeTheme.copyWith(experimentalChatsListBackgroundColor1: value);
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setExperimentalChatsListBackgroundColor2(Color value) async {
-    _activeTheme = _activeTheme.copyWith(experimentalChatsListBackgroundColor2: value);
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setExperimentalChatsListBackgroundImagePath(String? path) async {
-    _activeTheme = _activeTheme.copyWith(experimentalChatsListBackgroundImagePath: path);
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setDrawerTopBackgroundType(ChatWallpaperType value) async {
-    _activeTheme = _activeTheme.copyWith(drawerTopBackgroundType: value);
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setDrawerTopBackgroundColor1(Color value) async {
-    _activeTheme = _activeTheme.copyWith(drawerTopBackgroundColor1: value);
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setDrawerTopBackgroundColor2(Color value) async {
-    _activeTheme = _activeTheme.copyWith(drawerTopBackgroundColor2: value);
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setDrawerTopBackgroundImagePath(String? path) async {
-    _activeTheme = _activeTheme.copyWith(drawerTopBackgroundImagePath: path);
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setDrawerBottomBackgroundType(ChatWallpaperType value) async {
-    _activeTheme = _activeTheme.copyWith(drawerBottomBackgroundType: value);
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setDrawerBottomBackgroundColor1(Color value) async {
-    _activeTheme = _activeTheme.copyWith(drawerBottomBackgroundColor1: value);
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setDrawerBottomBackgroundColor2(Color value) async {
-    _activeTheme = _activeTheme.copyWith(drawerBottomBackgroundColor2: value);
-    notifyListeners();
-    await _saveActiveTheme();
-  }
-
-  Future<void> setDrawerBottomBackgroundImagePath(String? path) async {
-    _activeTheme = _activeTheme.copyWith(drawerBottomBackgroundImagePath: path);
     notifyListeners();
     await _saveActiveTheme();
   }

@@ -1997,63 +1997,13 @@ class _ChatsScreenState extends State<ChatsScreen>
       ],
     );
 
-    final themeProvider = context.watch<ThemeProvider>();
-    Widget? chatsListBackground;
-    if (themeProvider.useExperimentalChatsListBackground) {
-      switch (themeProvider.experimentalChatsListBackgroundType) {
-        case ChatWallpaperType.solid:
-          chatsListBackground = Container(color: themeProvider.experimentalChatsListBackgroundColor1);
-          break;
-        case ChatWallpaperType.gradient:
-          chatsListBackground = Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  themeProvider.experimentalChatsListBackgroundColor1,
-                  themeProvider.experimentalChatsListBackgroundColor2,
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-          );
-          break;
-        case ChatWallpaperType.image:
-          if (themeProvider.experimentalChatsListBackgroundImagePath != null) {
-            chatsListBackground = Image.file(
-              File(themeProvider.experimentalChatsListBackgroundImagePath!),
-              fit: BoxFit.cover,
-              width: double.infinity,
-              height: double.infinity,
-            );
-          }
-          break;
-        case ChatWallpaperType.video:
-          break;
-      }
-    }
-
-    final bodyContentWithBackground = chatsListBackground != null
-        ? Stack(
-            children: [
-              Positioned.fill(child: chatsListBackground),
-              bodyContent,
-            ],
-          )
-        : bodyContent;
-
     if (widget.hasScaffold) {
       return Builder(
         builder: (context) {
-          final platform = Theme.of(context).platform;
-          final isMobile =
-              platform == TargetPlatform.android ||
-              platform == TargetPlatform.iOS;
-
-          Widget scaffold = Scaffold(
+          return Scaffold(
             appBar: _buildAppBar(context),
             drawer: _buildAppDrawer(context),
-            body: Row(children: [Expanded(child: bodyContentWithBackground)]),
+            body: Row(children: [Expanded(child: bodyContent)]),
             floatingActionButton: FloatingActionButton(
               onPressed: () {
                 _showAddMenu(context);
@@ -2063,50 +2013,10 @@ class _ChatsScreenState extends State<ChatsScreen>
               child: const Icon(Icons.edit),
             ),
           );
-
-          if (!isMobile) return scaffold;
-
-          final scaffoldKey = GlobalKey<ScaffoldState>();
-          scaffold = Scaffold(
-            key: scaffoldKey,
-            appBar: _buildAppBar(context),
-            drawer: _buildAppDrawer(context),
-            body: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragEnd: (details) {
-                final velocity = details.primaryVelocity ?? 0;
-                // Делаем жест проще: реагируем на более медленный свайп
-                if (velocity < -150) {
-                  if (_folderTabController.length > 0 &&
-                      _folderTabController.index ==
-                          _folderTabController.length - 1) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (ctx) => const SettingsScreen(),
-                      ),
-                    );
-                  } else {
-                    scaffoldKey.currentState?.openDrawer();
-                  }
-                }
-              },
-              child: Row(children: [Expanded(child: bodyContentWithBackground)]),
-            ),
-            floatingActionButton: FloatingActionButton(
-              onPressed: () {
-                _showAddMenu(context);
-              },
-              tooltip: 'Создать',
-              heroTag: 'create_menu',
-              child: const Icon(Icons.edit),
-            ),
-          );
-
-          return scaffold;
         },
       );
     } else {
-      return bodyContentWithBackground;
+      return bodyContent;
     }
   }
 
@@ -2115,49 +2025,6 @@ class _ChatsScreenState extends State<ChatsScreen>
 
     final themeProvider = context.watch<ThemeProvider>();
     final isDarkMode = themeProvider.themeMode == ThemeMode.dark;
-
-    Widget? _buildBackgroundWidget(ChatWallpaperType type, Color color1, Color color2, String? imagePath) {
-      switch (type) {
-        case ChatWallpaperType.solid:
-          return Container(color: color1);
-        case ChatWallpaperType.gradient:
-          return Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [color1, color2],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-          );
-        case ChatWallpaperType.image:
-          if (imagePath != null) {
-            return Image.file(
-              File(imagePath),
-              fit: BoxFit.cover,
-              width: double.infinity,
-              height: double.infinity,
-            );
-          }
-          return null;
-        case ChatWallpaperType.video:
-          return null;
-      }
-    }
-
-    final drawerTopBackground = _buildBackgroundWidget(
-      themeProvider.drawerTopBackgroundType,
-      themeProvider.drawerTopBackgroundColor1,
-      themeProvider.drawerTopBackgroundColor2,
-      themeProvider.drawerTopBackgroundImagePath,
-    );
-
-    final drawerBottomBackground = _buildBackgroundWidget(
-      themeProvider.drawerBottomBackgroundType,
-      themeProvider.drawerBottomBackgroundColor1,
-      themeProvider.drawerBottomBackgroundColor2,
-      themeProvider.drawerBottomBackgroundImagePath,
-    );
 
     return Drawer(
       child: Column(
@@ -2171,136 +2038,132 @@ class _ChatsScreenState extends State<ChatsScreen>
               final currentAccount = accountManager.currentAccount;
               final hasMultipleAccounts = accounts.length > 1;
 
-              return Stack(
+              return Column(
                 children: [
-                  if (drawerTopBackground != null)
-                    Positioned.fill(child: drawerTopBackground),
-                  Column(
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        padding: EdgeInsets.only(
-                          top: MediaQuery.of(context).padding.top + 16.0,
-                          left: 16.0,
-                          right: 16.0,
-                          bottom: 16.0,
-                        ),
-                        decoration: BoxDecoration(color: drawerTopBackground != null ? Colors.transparent : colors.primaryContainer),
-                        child: Column(
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.of(context).padding.top + 16.0,
+                      left: 16.0,
+                      right: 16.0,
+                      bottom: 16.0,
+                    ),
+                    decoration: BoxDecoration(color: colors.primaryContainer),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                CircleAvatar(
-                                  radius: 30, // Чуть крупнее
-                                  backgroundColor: colors.primary,
-                                  backgroundImage:
-                                      _isProfileLoading ||
-                                          _myProfile?.photoBaseUrl == null
-                                      ? null
-                                      : NetworkImage(_myProfile!.photoBaseUrl!),
-                                  child: _isProfileLoading
-                                      ? const SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : (_myProfile?.photoBaseUrl == null
-                                            ? Text(
-                                                _myProfile
-                                                            ?.displayName
-                                                            .isNotEmpty ==
-                                                        true
-                                                    ? _myProfile!.displayName[0]
-                                                          .toUpperCase()
-                                                    : '?',
-                                                style: TextStyle(
-                                                  color: colors.onPrimary,
-                                                  fontSize: 28, // Крупнее
-                                                ),
-                                              )
-                                            : null),
-                                ),
-                                IconButton(
-                                  icon: Icon(
-                                    isDarkMode
-                                        ? Icons.brightness_7
-                                        : Icons.brightness_4, // Солнце / Луна
-                                    color: colors.onPrimaryContainer,
-                                    size: 26,
-                                  ),
-                                  onPressed: () {
-                                    themeProvider.toggleTheme();
-                                  },
-                                  tooltip: isDarkMode
-                                      ? 'Светлая тема'
-                                      : 'Темная тема',
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-
-                            Text(
-                              _myProfile?.displayName ?? 'Загрузка...',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: colors.onPrimaryContainer,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _myProfile?.formattedPhone ?? '',
-                                    style: TextStyle(
-                                      color: colors.onPrimaryContainer.withOpacity(
-                                        0.8,
+                            CircleAvatar(
+                              radius: 30, // Чуть крупнее
+                              backgroundColor: colors.primary,
+                              backgroundImage:
+                                  _isProfileLoading ||
+                                      _myProfile?.photoBaseUrl == null
+                                  ? null
+                                  : NetworkImage(_myProfile!.photoBaseUrl!),
+                              child: _isProfileLoading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
                                       ),
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                                InkWell(
-                                  onTap: () {
-                                    setState(() {
-                                      _isAccountsExpanded = !_isAccountsExpanded;
-                                    });
-                                  },
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(left: 8.0),
-                                    child: Icon(
-                                      _isAccountsExpanded
-                                          ? Icons.expand_less
-                                          : Icons.expand_more,
-                                      color: colors.onPrimaryContainer,
-                                      size: 24,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                                    )
+                                  : (_myProfile?.photoBaseUrl == null
+                                        ? Text(
+                                            _myProfile
+                                                        ?.displayName
+                                                        .isNotEmpty ==
+                                                    true
+                                                ? _myProfile!.displayName[0]
+                                                      .toUpperCase()
+                                                : '?',
+                                            style: TextStyle(
+                                              color: colors.onPrimary,
+                                              fontSize: 28, // Крупнее
+                                            ),
+                                          )
+                                        : null),
+                            ),
+                            IconButton(
+                              icon: Icon(
+                                isDarkMode
+                                    ? Icons.brightness_7
+                                    : Icons.brightness_4, // Солнце / Луна
+                                color: colors.onPrimaryContainer,
+                                size: 26,
+                              ),
+                              onPressed: () {
+                                themeProvider.toggleTheme();
+                              },
+                              tooltip: isDarkMode
+                                  ? 'Светлая тема'
+                                  : 'Темная тема',
                             ),
                           ],
                         ),
-                      ),
+                        const SizedBox(height: 12),
 
-                      ClipRect(
-                        child: AnimatedSize(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOutCubic,
-                          child: _isAccountsExpanded
-                              ? Column(
-                                  children: [
-                                    if (hasMultipleAccounts)
-                                      ...accounts.map((account) {
+                        Text(
+                          _myProfile?.displayName ?? 'Загрузка...',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: colors.onPrimaryContainer,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _myProfile?.formattedPhone ?? '',
+                                style: TextStyle(
+                                  color: colors.onPrimaryContainer.withOpacity(
+                                    0.8,
+                                  ),
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                            InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _isAccountsExpanded = !_isAccountsExpanded;
+                                });
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 8.0),
+                                child: Icon(
+                                  _isAccountsExpanded
+                                      ? Icons.expand_less
+                                      : Icons.expand_more,
+                                  color: colors.onPrimaryContainer,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  ClipRect(
+                    child: AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOutCubic,
+                      child: _isAccountsExpanded
+                          ? Column(
+                              children: [
+                                if (hasMultipleAccounts)
+                                  ...accounts.map((account) {
                                     final isCurrent =
                                         account.id == currentAccount?.id;
                                     return ListTile(
@@ -2426,22 +2289,16 @@ class _ChatsScreenState extends State<ChatsScreen>
                               ],
                             )
                           : const SizedBox.shrink(),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               );
             },
           ),
           Expanded(
-            child: Stack(
+            child: Column(
               children: [
-                if (drawerBottomBackground != null)
-                  Positioned.fill(child: drawerBottomBackground),
-                Column(
-                  children: [
-                    _buildAccountsSection(context, colors),
+                _buildAccountsSection(context, colors),
                 ListTile(
                   leading: const Icon(Icons.person_outline),
                   title: const Text('Мой профиль'),
@@ -2584,8 +2441,6 @@ class _ChatsScreenState extends State<ChatsScreen>
                   },
                 ),
                 const SizedBox(height: 8), // Небольшой отступ снизу
-                  ],
-                ),
               ],
             ),
           ),

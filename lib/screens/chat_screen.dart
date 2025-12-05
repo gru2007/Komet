@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -2973,530 +2972,499 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeProvider>();
 
-    final isDesktop =
-        kIsWeb ||
-        defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.linux ||
-        defaultTargetPlatform == TargetPlatform.macOS;
-
-    final body = Stack(
-      children: [
-        Positioned.fill(child: _buildChatWallpaper(theme)),
-        Column(
-          children: [
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
-              switchInCurve: Curves.easeInOutCubic,
-              switchOutCurve: Curves.easeInOutCubic,
-              transitionBuilder: (child, animation) {
-                return SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, -0.5),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: FadeTransition(opacity: animation, child: child),
-                );
-              },
-              child: _pinnedMessage != null
-                  ? SafeArea(
-                      key: ValueKey(_pinnedMessage!.id),
-                      child: InkWell(
-                        onTap: _scrollToPinnedMessage,
-                        child: PinnedMessageWidget(
-                          pinnedMessage: _pinnedMessage!,
-                          contacts: _contactDetailsCache,
-                          myId: _actualMyId ?? 0,
+    return Scaffold(
+      extendBodyBehindAppBar: theme.useGlassPanels,
+      resizeToAvoidBottomInset: false,
+      appBar: _buildAppBar(),
+      body: Stack(
+        children: [
+          Positioned.fill(child: _buildChatWallpaper(theme)),
+          Column(
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                switchInCurve: Curves.easeInOutCubic,
+                switchOutCurve: Curves.easeInOutCubic,
+                transitionBuilder: (child, animation) {
+                  return SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, -0.5),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: FadeTransition(opacity: animation, child: child),
+                  );
+                },
+                child: _pinnedMessage != null
+                    ? SafeArea(
+                        key: ValueKey(_pinnedMessage!.id),
+                        child: InkWell(
                           onTap: _scrollToPinnedMessage,
-                          onClose: () {
-                            setState(() {
-                              _pinnedMessage = null;
-                            });
-                          },
-                        ),
-                      ),
-                    )
-                  : const SizedBox.shrink(key: ValueKey('empty')),
-            ),
-            Expanded(
-              child: Stack(
-                children: [
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    switchInCurve: Curves.easeInOutCubic,
-                    switchOutCurve: Curves.easeInOutCubic,
-                    transitionBuilder: (child, animation) {
-                      return FadeTransition(
-                        opacity: animation,
-                        child: ScaleTransition(
-                          scale: Tween<double>(begin: 0.8, end: 1.0).animate(
-                            CurvedAnimation(
-                              parent: animation,
-                              curve: Curves.easeOutCubic,
-                            ),
+                          child: PinnedMessageWidget(
+                            pinnedMessage: _pinnedMessage!,
+                            contacts: _contactDetailsCache,
+                            myId: _actualMyId ?? 0,
+                            onTap: _scrollToPinnedMessage,
+                            onClose: () {
+                              setState(() {
+                                _pinnedMessage = null;
+                              });
+                            },
                           ),
-                          child: child,
                         ),
-                      );
-                    },
-                    child: (!_isIdReady || _isLoadingHistory)
-                        ? const Center(
-                            key: ValueKey('loading'),
-                            child: CircularProgressIndicator(),
-                          )
-                        : _messages.isEmpty && !widget.isChannel
-                        ? _EmptyChatWidget(
-                            sticker: _emptyChatSticker,
-                            onStickerTap: _sendEmptyChatSticker,
-                          )
-                        : AnimatedPadding(
-                            key: const ValueKey('chat_list'),
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOutCubic,
-                            padding: EdgeInsets.only(
-                              bottom: () {
-                                final baseInset = MediaQuery.of(
-                                  context,
-                                ).viewInsets.bottom;
-                                final isAndroid =
-                                    defaultTargetPlatform ==
-                                    TargetPlatform.android;
-                                if (!isAndroid) {
-                                  return baseInset;
-                                }
-                                final keyboardVisible = baseInset > 0.0;
-                                if (keyboardVisible &&
-                                    theme
-                                        .ignoreMobileBottomPaddingWhenKeyboard) {
-                                  return baseInset;
-                                }
-                                return baseInset +
-                                    theme.mobileChatBottomPadding;
-                              }(),
-                            ),
-                            child: ScrollablePositionedList.builder(
-                              itemScrollController: _itemScrollController,
-                              itemPositionsListener: _itemPositionsListener,
-                              reverse: true,
-                              padding: EdgeInsets.fromLTRB(
-                                8.0,
-                                8.0,
-                                8.0,
-                                widget.isChannel
-                                    ? 24.0
-                                    : (isDesktop ? 100.0 : 0.0),
+                      )
+                    : const SizedBox.shrink(key: ValueKey('empty')),
+              ),
+              Expanded(
+                child: Stack(
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      switchInCurve: Curves.easeInOutCubic,
+                      switchOutCurve: Curves.easeInOutCubic,
+                      transitionBuilder: (child, animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: ScaleTransition(
+                            scale: Tween<double>(begin: 0.8, end: 1.0).animate(
+                              CurvedAnimation(
+                                parent: animation,
+                                curve: Curves.easeOutCubic,
                               ),
-                              itemCount: _chatItems.length,
-                              itemBuilder: (context, index) {
-                                final mappedIndex =
-                                    _chatItems.length - 1 - index;
-                                final item = _chatItems[mappedIndex];
-                                final isLastVisual =
-                                    index == _chatItems.length - 1;
+                            ),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: (!_isIdReady || _isLoadingHistory)
+                          ? const Center(
+                              key: ValueKey('loading'),
+                              child: CircularProgressIndicator(),
+                            )
+                          : _messages.isEmpty && !widget.isChannel
+                          ? _EmptyChatWidget(
+                              sticker: _emptyChatSticker,
+                              onStickerTap: _sendEmptyChatSticker,
+                            )
+                          : AnimatedPadding(
+                              key: const ValueKey('chat_list'),
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOutCubic,
+                              padding: EdgeInsets.only(
+                                bottom: MediaQuery.of(
+                                  context,
+                                ).viewInsets.bottom,
+                              ),
+                              child: ScrollablePositionedList.builder(
+                                itemScrollController: _itemScrollController,
+                                itemPositionsListener: _itemPositionsListener,
+                                reverse: true,
+                                padding: EdgeInsets.fromLTRB(
+                                  8.0,
+                                  8.0,
+                                  8.0,
+                                  widget.isChannel ? 16.0 : 100.0,
+                                ),
+                                itemCount: _chatItems.length,
+                                itemBuilder: (context, index) {
+                                  final mappedIndex =
+                                      _chatItems.length - 1 - index;
+                                  final item = _chatItems[mappedIndex];
+                                  final isLastVisual =
+                                      index == _chatItems.length - 1;
 
-                                // Убрали вызов _loadMore() отсюда - он вызывается из _itemPositionsListener
-                                // чтобы избежать setState() во время build фазы
+                                  // Убрали вызов _loadMore() отсюда - он вызывается из _itemPositionsListener
+                                  // чтобы избежать setState() во время build фазы
 
-                                if (item is MessageItem) {
-                                  final message = item.message;
-                                  final key = _messageKeys.putIfAbsent(
-                                    message.id,
-                                    () => GlobalKey(),
-                                  );
-                                  final bool isHighlighted =
-                                      _isSearching &&
-                                      _searchResults.isNotEmpty &&
-                                      _currentResultIndex != -1 &&
-                                      message.id ==
-                                          _searchResults[_currentResultIndex]
-                                              .id;
-
-                                  final isControlMessage = message.attaches.any(
-                                    (a) => a['_type'] == 'CONTROL',
-                                  );
-                                  if (isControlMessage) {
-                                    return _ControlMessageChip(
-                                      message: message,
-                                      contacts: _contactDetailsCache,
-                                      myId: _actualMyId ?? widget.myId,
+                                  if (item is MessageItem) {
+                                    final message = item.message;
+                                    final key = _messageKeys.putIfAbsent(
+                                      message.id,
+                                      () => GlobalKey(),
                                     );
-                                  }
+                                    final bool isHighlighted =
+                                        _isSearching &&
+                                        _searchResults.isNotEmpty &&
+                                        _currentResultIndex != -1 &&
+                                        message.id ==
+                                            _searchResults[_currentResultIndex]
+                                                .id;
 
-                                  final bool isMe =
-                                      item.message.senderId == _actualMyId;
-
-                                  MessageReadStatus? readStatus;
-                                  if (isMe) {
-                                    final messageId = item.message.id;
-                                    if (messageId.startsWith('local_')) {
-                                      readStatus = MessageReadStatus.sending;
-                                    } else {
-                                      readStatus = MessageReadStatus.sent;
+                                    final isControlMessage = message.attaches
+                                        .any((a) => a['_type'] == 'CONTROL');
+                                    if (isControlMessage) {
+                                      return _ControlMessageChip(
+                                        message: message,
+                                        contacts: _contactDetailsCache,
+                                        myId: _actualMyId ?? widget.myId,
+                                      );
                                     }
-                                  }
 
-                                  String? forwardedFrom;
-                                  String? forwardedFromAvatarUrl;
-                                  if (message.isForwarded) {
-                                    final link = message.link;
-                                    if (link is Map<String, dynamic>) {
-                                      final chatName =
-                                          link['chatName'] as String?;
-                                      final chatIconUrl =
-                                          link['chatIconUrl'] as String?;
+                                    final bool isMe =
+                                        item.message.senderId == _actualMyId;
 
-                                      if (chatName != null) {
-                                        forwardedFrom = chatName;
-                                        forwardedFromAvatarUrl = chatIconUrl;
+                                    MessageReadStatus? readStatus;
+                                    if (isMe) {
+                                      final messageId = item.message.id;
+                                      if (messageId.startsWith('local_')) {
+                                        readStatus = MessageReadStatus.sending;
                                       } else {
-                                        final forwardedMessage =
-                                            link['message']
-                                                as Map<String, dynamic>?;
-                                        final originalSenderId =
-                                            forwardedMessage?['sender'] as int?;
-                                        if (originalSenderId != null) {
-                                          final originalSenderContact =
-                                              _contactDetailsCache[originalSenderId];
-                                          if (originalSenderContact == null) {
-                                            _loadContactIfNeeded(
-                                              originalSenderId,
-                                            );
-                                            forwardedFrom =
-                                                'Участник $originalSenderId';
-                                            forwardedFromAvatarUrl = null;
-                                          } else {
-                                            forwardedFrom =
-                                                originalSenderContact.name;
-                                            forwardedFromAvatarUrl =
-                                                originalSenderContact
-                                                    .photoBaseUrl;
+                                        readStatus = MessageReadStatus.sent;
+                                      }
+                                    }
+
+                                    String? forwardedFrom;
+                                    String? forwardedFromAvatarUrl;
+                                    if (message.isForwarded) {
+                                      final link = message.link;
+                                      if (link is Map<String, dynamic>) {
+                                        final chatName =
+                                            link['chatName'] as String?;
+                                        final chatIconUrl =
+                                            link['chatIconUrl'] as String?;
+
+                                        if (chatName != null) {
+                                          forwardedFrom = chatName;
+                                          forwardedFromAvatarUrl = chatIconUrl;
+                                        } else {
+                                          final forwardedMessage =
+                                              link['message']
+                                                  as Map<String, dynamic>?;
+                                          final originalSenderId =
+                                              forwardedMessage?['sender']
+                                                  as int?;
+                                          if (originalSenderId != null) {
+                                            final originalSenderContact =
+                                                _contactDetailsCache[originalSenderId];
+                                            if (originalSenderContact == null) {
+                                              _loadContactIfNeeded(
+                                                originalSenderId,
+                                              );
+                                              forwardedFrom =
+                                                  'Участник $originalSenderId';
+                                              forwardedFromAvatarUrl = null;
+                                            } else {
+                                              forwardedFrom =
+                                                  originalSenderContact.name;
+                                              forwardedFromAvatarUrl =
+                                                  originalSenderContact
+                                                      .photoBaseUrl;
+                                            }
                                           }
                                         }
                                       }
                                     }
-                                  }
-                                  String? senderName;
-                                  if (widget.isGroupChat && !isMe) {
-                                    bool shouldShowName = true;
-                                    if (mappedIndex > 0) {
-                                      final previousItem =
-                                          _chatItems[mappedIndex - 1];
-                                      if (previousItem is MessageItem) {
-                                        final previousMessage =
-                                            previousItem.message;
-                                        if (previousMessage.senderId ==
-                                            message.senderId) {
-                                          final timeDifferenceInMinutes =
-                                              (message.time -
-                                                  previousMessage.time) /
-                                              (1000 * 60);
-                                          if (timeDifferenceInMinutes < 5) {
-                                            shouldShowName = false;
+                                    String? senderName;
+                                    if (widget.isGroupChat && !isMe) {
+                                      bool shouldShowName = true;
+                                      if (mappedIndex > 0) {
+                                        final previousItem =
+                                            _chatItems[mappedIndex - 1];
+                                        if (previousItem is MessageItem) {
+                                          final previousMessage =
+                                              previousItem.message;
+                                          if (previousMessage.senderId ==
+                                              message.senderId) {
+                                            final timeDifferenceInMinutes =
+                                                (message.time -
+                                                    previousMessage.time) /
+                                                (1000 * 60);
+                                            if (timeDifferenceInMinutes < 5) {
+                                              shouldShowName = false;
+                                            }
                                           }
                                         }
                                       }
-                                    }
-                                    if (shouldShowName) {
-                                      final senderContact =
-                                          _contactDetailsCache[message
-                                              .senderId];
-                                      if (senderContact != null) {
-                                        senderName = getContactDisplayName(
-                                          contactId: senderContact.id,
-                                          originalName: senderContact.name,
-                                          originalFirstName:
-                                              senderContact.firstName,
-                                          originalLastName:
-                                              senderContact.lastName,
-                                        );
-                                      } else {
-                                        senderName = 'ID ${message.senderId}';
-                                        _loadContactIfNeeded(message.senderId);
+                                      if (shouldShowName) {
+                                        final senderContact =
+                                            _contactDetailsCache[message
+                                                .senderId];
+                                        if (senderContact != null) {
+                                          senderName = getContactDisplayName(
+                                            contactId: senderContact.id,
+                                            originalName: senderContact.name,
+                                            originalFirstName:
+                                                senderContact.firstName,
+                                            originalLastName:
+                                                senderContact.lastName,
+                                          );
+                                        } else {
+                                          senderName = 'ID ${message.senderId}';
+                                          _loadContactIfNeeded(
+                                            message.senderId,
+                                          );
+                                        }
                                       }
                                     }
-                                  }
-                                  final hasPhoto = item.message.attaches.any(
-                                    (a) => a['_type'] == 'PHOTO',
-                                  );
-                                  final isNew = !_animatedMessageIds.contains(
-                                    item.message.id,
-                                  );
-                                  final deferImageLoading =
-                                      hasPhoto &&
-                                      isNew &&
-                                      !_anyOptimize &&
-                                      !context
-                                          .read<ThemeProvider>()
-                                          .animatePhotoMessages;
+                                    final hasPhoto = item.message.attaches.any(
+                                      (a) => a['_type'] == 'PHOTO',
+                                    );
+                                    final isNew = !_animatedMessageIds.contains(
+                                      item.message.id,
+                                    );
+                                    final deferImageLoading =
+                                        hasPhoto &&
+                                        isNew &&
+                                        !_anyOptimize &&
+                                        !context
+                                            .read<ThemeProvider>()
+                                            .animatePhotoMessages;
 
-                                  String? decryptedText;
-                                  if (_isEncryptionPasswordSetForCurrentChat &&
-                                      _encryptionConfigForCurrentChat != null &&
-                                      _encryptionConfigForCurrentChat!
-                                          .password
-                                          .isNotEmpty &&
-                                      item.message.text.startsWith(
-                                        ChatEncryptionService.encryptedPrefix,
-                                      )) {
-                                    decryptedText =
-                                        ChatEncryptionService.decryptWithPassword(
-                                          _encryptionConfigForCurrentChat!
-                                              .password,
-                                          item.message.text,
+                                    String? decryptedText;
+                                    if (_isEncryptionPasswordSetForCurrentChat &&
+                                        _encryptionConfigForCurrentChat !=
+                                            null &&
+                                        _encryptionConfigForCurrentChat!
+                                            .password
+                                            .isNotEmpty &&
+                                        item.message.text.startsWith(
+                                          ChatEncryptionService.encryptedPrefix,
+                                        )) {
+                                      decryptedText =
+                                          ChatEncryptionService.decryptWithPassword(
+                                            _encryptionConfigForCurrentChat!
+                                                .password,
+                                            item.message.text,
+                                          );
+                                    }
+
+                                    final bubble = ChatMessageBubble(
+                                      key: key,
+                                      message: item.message,
+                                      isMe: isMe,
+                                      readStatus: readStatus,
+                                      isReactionSending: _sendingReactions
+                                          .contains(item.message.id),
+                                      deferImageLoading: deferImageLoading,
+                                      myUserId: _actualMyId,
+                                      chatId: widget.chatId,
+                                      isEncryptionPasswordSet:
+                                          _isEncryptionPasswordSetForCurrentChat,
+                                      decryptedText: decryptedText,
+                                      onReply: widget.isChannel
+                                          ? null
+                                          : () => _replyToMessage(item.message),
+                                      onForward: () =>
+                                          _forwardMessage(item.message),
+                                      onEdit: isMe
+                                          ? () => _editMessage(item.message)
+                                          : null,
+                                      canEditMessage: isMe
+                                          ? item.message.canEdit(_actualMyId!)
+                                          : null,
+                                      onDeleteForMe: isMe
+                                          ? () async {
+                                              await ApiService.instance
+                                                  .deleteMessage(
+                                                    widget.chatId,
+                                                    item.message.id,
+                                                    forMe: true,
+                                                  );
+                                              widget.onChatUpdated?.call();
+                                            }
+                                          : null,
+                                      onDeleteForAll: isMe
+                                          ? () async {
+                                              await ApiService.instance
+                                                  .deleteMessage(
+                                                    widget.chatId,
+                                                    item.message.id,
+                                                    forMe: false,
+                                                  );
+                                              widget.onChatUpdated?.call();
+                                            }
+                                          : null,
+                                      onReaction: (emoji) {
+                                        _updateReactionOptimistically(
+                                          item.message.id,
+                                          emoji,
                                         );
-                                  }
-
-                                  final bubble = ChatMessageBubble(
-                                    key: key,
-                                    message: item.message,
-                                    isMe: isMe,
-                                    readStatus: readStatus,
-                                    isReactionSending: _sendingReactions
-                                        .contains(item.message.id),
-                                    deferImageLoading: deferImageLoading,
-                                    myUserId: _actualMyId,
-                                    chatId: widget.chatId,
-                                    isEncryptionPasswordSet:
-                                        _isEncryptionPasswordSetForCurrentChat,
-                                    decryptedText: decryptedText,
-                                    onReply: widget.isChannel
-                                        ? null
-                                        : () => _replyToMessage(item.message),
-                                    onForward: () =>
-                                        _forwardMessage(item.message),
-                                    onEdit: isMe
-                                        ? () => _editMessage(item.message)
-                                        : null,
-                                    canEditMessage: isMe
-                                        ? item.message.canEdit(_actualMyId!)
-                                        : null,
-                                    onDeleteForMe: isMe
-                                        ? () async {
-                                            await ApiService.instance
-                                                .deleteMessage(
-                                                  widget.chatId,
-                                                  item.message.id,
-                                                  forMe: true,
-                                                );
-                                            widget.onChatUpdated?.call();
-                                          }
-                                        : null,
-                                    onDeleteForAll: isMe
-                                        ? () async {
-                                            await ApiService.instance
-                                                .deleteMessage(
-                                                  widget.chatId,
-                                                  item.message.id,
-                                                  forMe: false,
-                                                );
-                                            widget.onChatUpdated?.call();
-                                          }
-                                        : null,
-                                    onReaction: (emoji) {
-                                      _updateReactionOptimistically(
-                                        item.message.id,
-                                        emoji,
-                                      );
-                                      ApiService.instance.sendReaction(
-                                        widget.chatId,
-                                        item.message.id,
-                                        emoji,
-                                      );
-                                      widget.onChatUpdated?.call();
-                                    },
-                                    onRemoveReaction: () {
-                                      _removeReactionOptimistically(
-                                        item.message.id,
-                                      );
-                                      ApiService.instance.removeReaction(
-                                        widget.chatId,
-                                        item.message.id,
-                                      );
-                                      widget.onChatUpdated?.call();
-                                    },
-                                    isGroupChat: widget.isGroupChat,
-                                    isChannel: widget.isChannel,
-                                    senderName: senderName,
-                                    forwardedFrom: forwardedFrom,
-                                    forwardedFromAvatarUrl:
-                                        forwardedFromAvatarUrl,
-                                    contactDetailsCache: _contactDetailsCache,
-                                    onReplyTap: _scrollToMessage,
-                                    useAutoReplyColor: context
-                                        .read<ThemeProvider>()
-                                        .useAutoReplyColor,
-                                    customReplyColor: context
-                                        .read<ThemeProvider>()
-                                        .customReplyColor,
-                                    isFirstInGroup: item.isFirstInGroup,
-                                    isLastInGroup: item.isLastInGroup,
-                                    isGrouped: item.isGrouped,
-                                    avatarVerticalOffset:
-                                        -8.0, // Смещение аватарки вверх на 8px
-                                    onComplain: () =>
-                                        _showComplaintDialog(item.message.id),
-                                  );
-
-                                  Widget finalMessageWidget = bubble as Widget;
-
-                                  if (isHighlighted) {
-                                    return TweenAnimationBuilder<double>(
-                                      duration: const Duration(
-                                        milliseconds: 600,
-                                      ),
-                                      tween: Tween<double>(
-                                        begin: 0.3,
-                                        end: 0.6,
-                                      ),
-                                      curve: Curves.easeInOut,
-                                      builder: (context, value, child) {
-                                        return Container(
-                                          margin: const EdgeInsets.symmetric(
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primaryContainer
-                                                .withOpacity(value),
-                                            borderRadius: BorderRadius.circular(
-                                              16,
-                                            ),
-                                            border: Border.all(
-                                              color: Theme.of(
-                                                context,
-                                              ).colorScheme.primary,
-                                              width: 1.5,
-                                            ),
-                                          ),
-                                          child: child,
+                                        ApiService.instance.sendReaction(
+                                          widget.chatId,
+                                          item.message.id,
+                                          emoji,
                                         );
+                                        widget.onChatUpdated?.call();
                                       },
-                                      child: finalMessageWidget,
+                                      onRemoveReaction: () {
+                                        _removeReactionOptimistically(
+                                          item.message.id,
+                                        );
+                                        ApiService.instance.removeReaction(
+                                          widget.chatId,
+                                          item.message.id,
+                                        );
+                                        widget.onChatUpdated?.call();
+                                      },
+                                      isGroupChat: widget.isGroupChat,
+                                      isChannel: widget.isChannel,
+                                      senderName: senderName,
+                                      forwardedFrom: forwardedFrom,
+                                      forwardedFromAvatarUrl:
+                                          forwardedFromAvatarUrl,
+                                      contactDetailsCache: _contactDetailsCache,
+                                      onReplyTap: _scrollToMessage,
+                                      useAutoReplyColor: context
+                                          .read<ThemeProvider>()
+                                          .useAutoReplyColor,
+                                      customReplyColor: context
+                                          .read<ThemeProvider>()
+                                          .customReplyColor,
+                                      isFirstInGroup: item.isFirstInGroup,
+                                      isLastInGroup: item.isLastInGroup,
+                                      isGrouped: item.isGrouped,
+                                      avatarVerticalOffset:
+                                          -8.0, // Смещение аватарки вверх на 8px
+                                      onComplain: () =>
+                                          _showComplaintDialog(item.message.id),
                                     );
-                                  }
 
-                                  // Плавное появление новых сообщений
-                                  if (isNew && !_anyOptimize) {
+                                    Widget finalMessageWidget =
+                                        bubble as Widget;
+
+                                    if (isHighlighted) {
+                                      return TweenAnimationBuilder<double>(
+                                        duration: const Duration(
+                                          milliseconds: 600,
+                                        ),
+                                        tween: Tween<double>(
+                                          begin: 0.3,
+                                          end: 0.6,
+                                        ),
+                                        curve: Curves.easeInOut,
+                                        builder: (context, value, child) {
+                                          return Container(
+                                            margin: const EdgeInsets.symmetric(
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primaryContainer
+                                                  .withOpacity(value),
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                              border: Border.all(
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.primary,
+                                                width: 1.5,
+                                              ),
+                                            ),
+                                            child: child,
+                                          );
+                                        },
+                                        child: finalMessageWidget,
+                                      );
+                                    }
+
+                                    // Плавное появление новых сообщений
+                                    if (isNew && !_anyOptimize) {
+                                      return TweenAnimationBuilder<double>(
+                                        duration: const Duration(
+                                          milliseconds: 400,
+                                        ),
+                                        tween: Tween<double>(
+                                          begin: 0.0,
+                                          end: 1.0,
+                                        ),
+                                        curve: Curves.easeOutCubic,
+                                        builder: (context, value, child) {
+                                          return Opacity(
+                                            opacity: value,
+                                            child: Transform.translate(
+                                              offset: Offset(
+                                                0,
+                                                20 * (1 - value),
+                                              ),
+                                              child: child,
+                                            ),
+                                          );
+                                        },
+                                        child: finalMessageWidget,
+                                      );
+                                    }
+
+                                    return finalMessageWidget;
+                                  } else if (item is DateSeparatorItem) {
+                                    return _DateSeparatorChip(date: item.date);
+                                  }
+                                  if (isLastVisual && _isLoadingMore) {
                                     return TweenAnimationBuilder<double>(
                                       duration: const Duration(
-                                        milliseconds: 400,
+                                        milliseconds: 300,
                                       ),
                                       tween: Tween<double>(
                                         begin: 0.0,
                                         end: 1.0,
                                       ),
-                                      curve: Curves.easeOutCubic,
+                                      curve: Curves.easeOut,
                                       builder: (context, value, child) {
                                         return Opacity(
                                           opacity: value,
-                                          child: Transform.translate(
-                                            offset: Offset(0, 20 * (1 - value)),
+                                          child: Transform.scale(
+                                            scale: 0.7 + (0.3 * value),
                                             child: child,
                                           ),
                                         );
                                       },
-                                      child: finalMessageWidget,
+                                      child: const Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: 12,
+                                        ),
+                                        child: Center(
+                                          child: CircularProgressIndicator(),
+                                        ),
+                                      ),
                                     );
                                   }
-
-                                  return finalMessageWidget;
-                                } else if (item is DateSeparatorItem) {
-                                  return _DateSeparatorChip(date: item.date);
-                                }
-                                if (isLastVisual && _isLoadingMore) {
-                                  return TweenAnimationBuilder<double>(
-                                    duration: const Duration(milliseconds: 300),
-                                    tween: Tween<double>(begin: 0.0, end: 1.0),
-                                    curve: Curves.easeOut,
-                                    builder: (context, value, child) {
-                                      return Opacity(
-                                        opacity: value,
-                                        child: Transform.scale(
-                                          scale: 0.7 + (0.3 * value),
-                                          child: child,
-                                        ),
-                                      );
-                                    },
-                                    child: const Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        vertical: 12,
-                                      ),
-                                      child: Center(
-                                        child: CircularProgressIndicator(),
-                                      ),
-                                    ),
-                                  );
-                                }
-                                return const SizedBox.shrink();
-                              },
+                                  return const SizedBox.shrink();
+                                },
+                              ),
                             ),
+                    ),
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 100),
+                      curve: Curves.easeOutQuad,
+                      right: 16,
+                      bottom:
+                          MediaQuery.of(context).viewInsets.bottom +
+                          MediaQuery.of(context).padding.bottom +
+                          100,
+                      child: AnimatedScale(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutBack,
+                        scale: _showScrollToBottomNotifier.value ? 1.0 : 0.0,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 150),
+                          opacity: _showScrollToBottomNotifier.value
+                              ? 1.0
+                              : 0.0,
+                          child: FloatingActionButton(
+                            mini: true,
+                            onPressed: _scrollToBottom,
+                            elevation: 4,
+                            child: const Icon(Icons.arrow_downward_rounded),
                           ),
-                  ),
-                  AnimatedPositioned(
-                    duration: const Duration(milliseconds: 100),
-                    curve: Curves.easeOutQuad,
-                    right: 16,
-                    bottom:
-                        MediaQuery.of(context).viewInsets.bottom +
-                        MediaQuery.of(context).padding.bottom +
-                        100,
-                    child: AnimatedScale(
-                      duration: const Duration(milliseconds: 200),
-                      curve: Curves.easeOutBack,
-                      scale: _showScrollToBottomNotifier.value ? 1.0 : 0.0,
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 150),
-                        opacity: _showScrollToBottomNotifier.value ? 1.0 : 0.0,
-                        child: FloatingActionButton(
-                          mini: true,
-                          onPressed: _scrollToBottom,
-                          elevation: 4,
-                          child: const Icon(Icons.arrow_downward_rounded),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-        AnimatedPositioned(
-          duration: const Duration(milliseconds: 100),
-          curve: Curves.easeOutQuad,
-          left: 8,
-          right: 8,
-          bottom:
-              MediaQuery.of(context).viewInsets.bottom +
-              MediaQuery.of(context).padding.bottom +
-              12,
-          child: _buildTextInput(),
-        ),
-      ],
-    );
-
-    if (isDesktop) {
-      return Scaffold(
-        extendBodyBehindAppBar: theme.useGlassPanels,
-        resizeToAvoidBottomInset: false,
-        appBar: _buildAppBar(),
-        body: body,
-      );
-    }
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onHorizontalDragEnd: (details) {
-        final velocity = details.primaryVelocity ?? 0;
-        if (velocity > 400) {
-          Navigator.of(context).maybePop();
-        }
-      },
-      child: Scaffold(
-        extendBodyBehindAppBar: theme.useGlassPanels,
-        resizeToAvoidBottomInset: false,
-        appBar: _buildAppBar(),
-        body: body,
+            ],
+          ),
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 100),
+            curve: Curves.easeOutQuad,
+            left: 8,
+            right: 8,
+            bottom:
+                MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).padding.bottom +
+                12,
+            child: _buildTextInput(),
+          ),
+        ],
       ),
     );
   }
