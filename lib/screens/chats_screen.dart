@@ -277,7 +277,6 @@ class _ChatsScreenState extends State<ChatsScreen>
 
   void _navigateToLogin() {
     print('Перенаправляем на экран входа из-за недействительного токена');
-     
   }
 
   void _showTokenExpiredDialog(String message) {
@@ -324,7 +323,7 @@ class _ChatsScreenState extends State<ChatsScreen>
         final profileData = payload['profile'];
         if (profileData != null) {
           print('🔄 ChatsScreen: Получен профиль из opcode 19, обновляем UI');
-          
+
           Future.microtask(() {
             if (mounted) {
               setState(() {
@@ -340,14 +339,11 @@ class _ChatsScreenState extends State<ChatsScreen>
       final chatIdValue = payload['chatId'];
       final int? chatId = chatIdValue != null ? chatIdValue as int? : null;
 
-      
-      
       if (opcode == 272 ||
           opcode == 274 ||
           opcode == 48 ||
           opcode == 55 ||
           opcode == 135) {
-        
       } else if (chatId == null) {
         return;
       }
@@ -356,15 +352,10 @@ class _ChatsScreenState extends State<ChatsScreen>
         _setTypingForChat(chatId);
       }
 
-      
-      
-      
       if (opcode == 64 && cmd == 1 && payload['chat'] is Map<String, dynamic>) {
         final chatJson = payload['chat'] as Map<String, dynamic>;
         final newChat = Chat.fromJson(chatJson);
 
-        
-        
         ApiService.instance.updateChatInCacheFromJson(chatJson);
 
         if (mounted) {
@@ -386,9 +377,6 @@ class _ChatsScreenState extends State<ChatsScreen>
         }
       }
 
-      
-      
-      
       if (opcode == 128 && chatId != null) {
         final newMessage = Message.fromJson(payload['message']);
         ApiService.instance.clearCacheForChat(chatId);
@@ -427,12 +415,9 @@ class _ChatsScreenState extends State<ChatsScreen>
             _filterChats();
           });
         } else if (payload['chat'] is Map<String, dynamic>) {
-          
           final chatJson = payload['chat'] as Map<String, dynamic>;
           final newChat = Chat.fromJson(chatJson);
 
-          
-          
           ApiService.instance.updateChatInCacheFromJson(chatJson);
 
           setState(() {
@@ -519,9 +504,7 @@ class _ChatsScreenState extends State<ChatsScreen>
               ? contactIdAny
               : int.tryParse(contactIdAny.toString());
           if (cid != null) {
-            final currentTime =
-                DateTime.now().millisecondsSinceEpoch ~/
-                1000; 
+            final currentTime = DateTime.now().millisecondsSinceEpoch ~/ 1000;
             final userPresence = {
               'seen': currentTime,
               'on': isOnline ? 'ON' : 'OFF',
@@ -596,15 +579,12 @@ class _ChatsScreenState extends State<ChatsScreen>
         if (mounted) setState(() {});
       }
 
-      
-      
       if (opcode == 48) {
         print('Получен ответ на создание/обновление группы: $payload');
 
         final chatJson = payload['chat'] as Map<String, dynamic>?;
         final chatsJson = payload['chats'] as List<dynamic>?;
 
-        
         Map<String, dynamic>? effectiveChatJson = chatJson;
         if (effectiveChatJson == null &&
             chatsJson != null &&
@@ -618,7 +598,6 @@ class _ChatsScreenState extends State<ChatsScreen>
         if (effectiveChatJson != null) {
           final newChat = Chat.fromJson(effectiveChatJson);
 
-          
           ApiService.instance.updateChatInCacheFromJson(effectiveChatJson);
           if (mounted) {
             setState(() {
@@ -629,7 +608,6 @@ class _ChatsScreenState extends State<ChatsScreen>
               if (existingIndex != -1) {
                 _allChats[existingIndex] = newChat;
               } else {
-                
                 final savedIndex = _allChats.indexWhere(_isSavedMessages);
                 final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
                 _allChats.insert(insertIndex, newChat);
@@ -639,12 +617,10 @@ class _ChatsScreenState extends State<ChatsScreen>
             });
           }
         } else {
-          
           _refreshChats();
         }
       }
 
-      
       if (opcode == 89 && cmd == 1) {
         final chatJson = payload['chat'] as Map<String, dynamic>?;
         if (chatJson != null) {
@@ -677,15 +653,11 @@ class _ChatsScreenState extends State<ChatsScreen>
         }
       }
 
-      
-      
       if (opcode == 55 && cmd == 1) {
         final chatJson = payload['chat'] as Map<String, dynamic>?;
         if (chatJson != null) {
           final updatedChat = Chat.fromJson(chatJson);
 
-          
-          
           ApiService.instance.updateChatInCacheFromJson(chatJson);
           if (mounted) {
             setState(() {
@@ -707,9 +679,6 @@ class _ChatsScreenState extends State<ChatsScreen>
         }
       }
 
-      
-      
-      
       if (opcode == 135 && payload['chat'] is Map<String, dynamic>) {
         final removedChat = payload['chat'] as Map<String, dynamic>;
         final int? removedChatId = removedChat['id'] as int?;
@@ -946,7 +915,6 @@ class _ChatsScreenState extends State<ChatsScreen>
                     fontSize: 16,
                   ),
                 ),
-                 
               ],
             ),
           ),
@@ -1185,7 +1153,6 @@ class _ChatsScreenState extends State<ChatsScreen>
                 },
               ),
 
-               
               ListTile(
                 leading: CircleAvatar(
                   backgroundColor: Theme.of(
@@ -1215,7 +1182,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                   ).colorScheme.primaryContainer,
                   child: Icon(
                     Icons.download,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    color: context.watch<ThemeProvider>().accentColor,
                   ),
                 ),
                 title: const Text('Загрузки'),
@@ -1320,7 +1287,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                 if (nameController.text.trim().isNotEmpty) {
                   ApiService.instance.createGroupWithMessage(
                     nameController.text.trim(),
-                    selectedContacts, 
+                    selectedContacts,
                   );
                   Navigator.of(context).pop();
                 }
@@ -1511,14 +1478,14 @@ class _ChatsScreenState extends State<ChatsScreen>
         _filteredChats.sort((a, b) {
           final aIsSaved = _isSavedMessages(a);
           final bIsSaved = _isSavedMessages(b);
-          if (aIsSaved && !bIsSaved) return -1; 
-          if (!aIsSaved && bIsSaved) return 1; 
+          if (aIsSaved && !bIsSaved) return -1;
+          if (!aIsSaved && bIsSaved) return 1;
 
           if (aIsSaved && bIsSaved) {
             if (a.id == 0) return -1;
             if (b.id == 0) return 1;
           }
-          return 0; 
+          return 0;
         });
       } else if (_searchFocusNode.hasFocus && query.isEmpty) {
         _filteredChats = [];
@@ -1691,8 +1658,6 @@ class _ChatsScreenState extends State<ChatsScreen>
   }
 
   void _loadChatsAndContacts() {
-    
-    
     final future = ApiService.instance.getChatsOnly();
 
     setState(() {
@@ -1968,9 +1933,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                   });
                 });
               }
-              
-              
-              
+
               if (_filteredChats.isEmpty && _allChats.isNotEmpty) {
                 _filteredChats = List.from(_allChats);
               }
@@ -2078,7 +2041,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             CircleAvatar(
-                              radius: 30, 
+                              radius: 30,
                               backgroundColor: colors.primary,
                               backgroundImage:
                                   _isProfileLoading ||
@@ -2107,7 +2070,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                                                 : '?',
                                             style: TextStyle(
                                               color: colors.onPrimary,
-                                              fontSize: 28, 
+                                              fontSize: 28,
                                             ),
                                           )
                                         : null),
@@ -2116,7 +2079,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                               icon: Icon(
                                 isDarkMode
                                     ? Icons.brightness_7
-                                    : Icons.brightness_4, 
+                                    : Icons.brightness_4,
                                 color: colors.onPrimaryContainer,
                                 size: 26,
                               ),
@@ -2245,7 +2208,6 @@ class _ChatsScreenState extends State<ChatsScreen>
                                                   account,
                                                   accountManager,
                                                   () {
-                                                    
                                                     setState(() {});
                                                   },
                                                 );
@@ -2436,14 +2398,13 @@ class _ChatsScreenState extends State<ChatsScreen>
                     leading: const Icon(Icons.settings_outlined),
                     title: const Text('Настройки'),
                     onTap: () {
-                      Navigator.pop(context); 
+                      Navigator.pop(context);
 
                       final screenSize = MediaQuery.of(context).size;
                       final screenWidth = screenSize.width;
                       final screenHeight = screenSize.height;
                       final isDesktopOrTablet =
-                          screenWidth >= 600 &&
-                          screenHeight >= 800; 
+                          screenWidth >= 600 && screenHeight >= 800;
 
                       print(
                         'Screen size: ${screenWidth}x$screenHeight, isDesktopOrTablet: $isDesktopOrTablet',
@@ -2457,7 +2418,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                             showBackToChats: true,
                             onBackToChats: () => Navigator.of(context).pop(),
                             myProfile: _myProfile,
-                            isModal: true, 
+                            isModal: true,
                           ),
                         );
                       } else {
@@ -2467,7 +2428,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                               showBackToChats: true,
                               onBackToChats: () => Navigator.of(context).pop(),
                               myProfile: _myProfile,
-                              isModal: false, 
+                              isModal: false,
                             ),
                           ),
                         );
@@ -2810,8 +2771,6 @@ class _ChatsScreenState extends State<ChatsScreen>
                 } else if (chat.title?.isNotEmpty == true) {
                   title = chat.title!;
                 } else {
-                  
-                  
                   title = "Данные загружаются...";
                   if (otherParticipantId != null && otherParticipantId != 0) {
                     _loadMissingContact(otherParticipantId);
@@ -3623,12 +3582,10 @@ class _ChatsScreenState extends State<ChatsScreen>
   void _showAddChatsToFolderDialog(ChatFolder folder) {
     final currentInclude = folder.include ?? [];
 
-    
     final allAvailableChats = _allChats.where((chat) {
       return chat.id != 0;
     }).toList();
 
-    
     final sortedChats = List<Chat>.from(allAvailableChats);
     sortedChats.sort((a, b) {
       final aInFolder = currentInclude.contains(a.id);
@@ -3659,10 +3616,8 @@ class _ChatsScreenState extends State<ChatsScreen>
     final currentInclude = folder.include ?? [];
     final selectedChatIds = selectedChats.map((chat) => chat.id).toSet();
 
-    
     final newInclude = selectedChatIds.toList();
 
-    
     final addedCount = newInclude
         .where((id) => !currentInclude.contains(id))
         .length;
@@ -3936,7 +3891,10 @@ class _ChatsScreenState extends State<ChatsScreen>
                   tooltip: 'Сферум',
                 ),
               IconButton(
-                icon: const Icon(Icons.download),
+                icon: Icon(
+                  Icons.download, //ахуеть линтер ошибок не дал ! ! !
+                  color: context.watch<ThemeProvider>().accentColor,
+                ),
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -4335,7 +4293,6 @@ class _ChatsScreenState extends State<ChatsScreen>
       } else if (chat.title?.isNotEmpty == true) {
         title = chat.title!;
       } else {
-        
         title = "Данные загружаются...";
         _loadMissingContact(otherParticipantId);
       }
@@ -5365,7 +5322,6 @@ class _ReadSettingsDialogContentState
   }
 }
 
-
 class _ChatsScreenScaffold extends StatelessWidget {
   final Widget bodyContent;
   final PreferredSizeWidget Function(BuildContext) buildAppBar;
@@ -5383,7 +5339,6 @@ class _ChatsScreenScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ThemeProvider>(
       builder: (context, theme, _) {
-        
         BoxDecoration? chatsListDecoration;
         if (theme.chatsListBackgroundType == ChatsListBackgroundType.gradient) {
           chatsListDecoration = BoxDecoration(
@@ -5428,7 +5383,6 @@ class _ChatsScreenScaffold extends StatelessWidget {
     );
   }
 }
-
 
 class _ChatsListPage extends StatefulWidget {
   final ChatFolder? folder;
@@ -5521,8 +5475,8 @@ class _ChatsListPageState extends State<_ChatsListPage>
       ),
       child: ListView.builder(
         itemCount: chatsForFolder.length,
-        itemExtent: 72.0, 
-        cacheExtent: 500.0, 
+        itemExtent: 72.0,
+        cacheExtent: 500.0,
         itemBuilder: (context, index) {
           return widget.buildChatListItem(
             chatsForFolder[index],

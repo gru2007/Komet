@@ -35,7 +35,6 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
   bool _isLoading = true;
   String _error = '';
 
-  
   List<Message> _mediaMessages = [];
   List<Message> _fileMessages = [];
   List<Message> _audioMessages = [];
@@ -55,13 +54,10 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
   }
 
   void _processMessages() {
-    
     final allMessages = List<Message>.from(widget.messages);
-    
-    
+
     allMessages.sort((a, b) => b.time.compareTo(a.time));
 
-    
     _filterMessages(allMessages);
 
     if (mounted) {
@@ -78,7 +74,6 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
     _linkMessages.clear();
 
     for (final message in messages) {
-      
       final hasMedia = message.attaches.any((attach) {
         final type = attach['_type'] as String?;
         return type == 'PHOTO' || type == 'VIDEO';
@@ -87,7 +82,6 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
         _mediaMessages.add(message);
       }
 
-      
       final hasFile = message.attaches.any((attach) {
         final type = attach['_type'] as String?;
         return type == 'FILE';
@@ -96,7 +90,6 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
         _fileMessages.add(message);
       }
 
-      
       final hasAudio = message.attaches.any((attach) {
         final type = attach['_type'] as String?;
         return type == 'AUDIO' || type == 'VOICE';
@@ -105,22 +98,18 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
         _audioMessages.add(message);
       }
 
-      
       bool hasLink = false;
       if (message.text.isNotEmpty) {
-        
         for (final element in message.elements) {
-          if (element['type'] == 'LINK' || element['attributes']?['url'] != null) {
+          if (element['type'] == 'LINK' ||
+              element['attributes']?['url'] != null) {
             hasLink = true;
             break;
           }
         }
-        
+
         if (!hasLink) {
-          final urlPattern = RegExp(
-            r'https?://[^\s]+',
-            caseSensitive: false,
-          );
+          final urlPattern = RegExp(r'https?://[^\s]+', caseSensitive: false);
           hasLink = urlPattern.hasMatch(message.text);
         }
       }
@@ -131,24 +120,27 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
   }
 
   void _goToMessage(String messageId) {
-    
+    if (!mounted) return;
     Navigator.of(context).pop();
-    
+
     if (widget.onGoToMessage != null) {
-      
       Future.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted) return; //бля а может и не надо сюда
         widget.onGoToMessage!(messageId);
       });
     }
   }
 
-  Future<void> _downloadFile(Message message, Map<String, dynamic> attach) async {
+  Future<void> _downloadFile(
+    Message message,
+    Map<String, dynamic> attach,
+  ) async {
     try {
       final url = attach['url'] ?? attach['baseUrl'];
       if (url == null || url.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('URL файла не найден')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('URL файла не найден')));
         return;
       }
 
@@ -169,9 +161,9 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
       final filePath = '${downloadDir.path}/$fileName';
       final file = io.File(filePath);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Загрузка файла...')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Загрузка файла...')));
 
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
@@ -212,13 +204,10 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
   }
 
   void _playAudio(Message message, Map<String, dynamic> attach) {
-    
-    
     _goToMessage(message.id);
   }
 
   void _viewMedia(Message message, Map<String, dynamic> attach) {
-    
     final url = attach['url'] ?? attach['baseUrl'];
     final preview = attach['previewData'];
 
@@ -238,10 +227,7 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
         } else {
           fullQualityUrl = '$url&size=original&quality=high&format=original';
         }
-        imageChild = Image.network(
-          fullQualityUrl,
-          fit: BoxFit.contain,
-        );
+        imageChild = Image.network(fullQualityUrl, fit: BoxFit.contain);
       }
     } else if (preview is String && preview.startsWith('data:')) {
       final idx = preview.indexOf('base64,');
@@ -257,13 +243,15 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
     }
 
     if (imageChild != null) {
-      
       Navigator.of(context).push(
         PageRouteBuilder(
           opaque: false,
           barrierColor: Colors.black,
           pageBuilder: (BuildContext context, _, __) {
-            return _FullScreenPhotoViewer(imageChild: imageChild!, attach: attach);
+            return _FullScreenPhotoViewer(
+              imageChild: imageChild!,
+              attach: attach,
+            );
           },
           transitionsBuilder: (_, animation, __, page) {
             return FadeTransition(opacity: animation, child: page);
@@ -289,17 +277,13 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
   }
 
   String _extractLinkFromMessage(Message message) {
-    
     for (final element in message.elements) {
       if (element['type'] == 'LINK') {
         return element['attributes']?['url'] as String? ?? '';
       }
     }
-    
-    final urlPattern = RegExp(
-      r'https?://[^\s]+',
-      caseSensitive: false,
-    );
+
+    final urlPattern = RegExp(r'https?://[^\s]+', caseSensitive: false);
     final match = urlPattern.firstMatch(message.text);
     return match?.group(0) ?? '';
   }
@@ -314,7 +298,6 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
     final url = attach['url'] ?? attach['baseUrl'] as String?;
     final type = attach['_type'] as String?;
 
-    
     Uint8List? previewBytes;
     if (previewData != null && previewData.startsWith('data:')) {
       final idx = previewData.indexOf('base64,');
@@ -322,13 +305,10 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
         final b64 = previewData.substring(idx + 7);
         try {
           previewBytes = base64Decode(b64);
-        } catch (_) {
-          
-        }
+        } catch (_) {}
       }
     }
 
-    
     String? previewUrl;
     if (url != null && url.isNotEmpty) {
       if (!url.contains('?')) {
@@ -358,7 +338,7 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
             child: CircularProgressIndicator(
               value: loadingProgress.expectedTotalBytes != null
                   ? loadingProgress.cumulativeBytesLoaded /
-                      loadingProgress.expectedTotalBytes!
+                        loadingProgress.expectedTotalBytes!
                   : null,
             ),
           );
@@ -375,7 +355,6 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
       );
     }
 
-    
     if (type == 'VIDEO') {
       return Stack(
         fit: StackFit.expand,
@@ -438,7 +417,6 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
           child: Stack(
             fit: StackFit.expand,
             children: [
-              
               Container(
                 decoration: BoxDecoration(
                   color: Colors.grey[300],
@@ -446,13 +424,18 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
                 ),
                 child: _buildMediaPreview(mediaAttach),
               ),
-              
+
               Positioned(
                 bottom: 4,
                 right: 4,
                 child: IconButton(
-                  icon: const Icon(Icons.more_vert, size: 20, color: Colors.white),
-                  onPressed: () => _showMediaActions(context, message, mediaAttach),
+                  icon: const Icon(
+                    Icons.more_vert,
+                    size: 20,
+                    color: Colors.white,
+                  ),
+                  onPressed: () =>
+                      _showMediaActions(context, message, mediaAttach),
                   style: IconButton.styleFrom(
                     backgroundColor: Colors.black54,
                     padding: const EdgeInsets.all(4),
@@ -612,7 +595,9 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
           margin: const EdgeInsets.symmetric(vertical: 4),
           child: ListTile(
             leading: const Icon(Icons.link),
-            title: Text(link.length > 50 ? '${link.substring(0, 50)}...' : link),
+            title: Text(
+              link.length > 50 ? '${link.substring(0, 50)}...' : link,
+            ),
             subtitle: Text(_formatTime(message.time)),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -676,60 +661,48 @@ class _ChatMediaScreenState extends State<ChatMediaScreen>
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(
-              icon: Icon(Icons.photo_library),
-              text: 'Медиа',
-            ),
-            Tab(
-              icon: Icon(Icons.insert_drive_file),
-              text: 'Файлы',
-            ),
-            Tab(
-              icon: Icon(Icons.audiotrack),
-              text: 'Голосовые',
-            ),
-            Tab(
-              icon: Icon(Icons.link),
-              text: 'Ссылки',
-            ),
+            Tab(icon: Icon(Icons.photo_library), text: 'Медиа'),
+            Tab(icon: Icon(Icons.insert_drive_file), text: 'Файлы'),
+            Tab(icon: Icon(Icons.audiotrack), text: 'Голосовые'),
+            Tab(icon: Icon(Icons.link), text: 'Ссылки'),
           ],
         ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error.isNotEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(_error, style: const TextStyle(color: Colors.red)),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _isLoading = true;
-                            _error = '';
-                          });
-                          _processMessages();
-                        },
-                        child: const Text('Повторить'),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(_error, style: const TextStyle(color: Colors.red)),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      if (!mounted) return;
+                      setState(() {
+                        _isLoading = true;
+                        _error = '';
+                      });
+                      _processMessages();
+                    },
+                    child: const Text('Повторить'),
                   ),
-                )
-              : TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildMediaGrid(_mediaMessages),
-                    _buildFileList(_fileMessages),
-                    _buildAudioList(_audioMessages),
-                    _buildLinkList(_linkMessages),
-                  ],
-                ),
+                ],
+              ),
+            )
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                _buildMediaGrid(_mediaMessages),
+                _buildFileList(_fileMessages),
+                _buildAudioList(_audioMessages),
+                _buildLinkList(_linkMessages),
+              ],
+            ),
     );
   }
 }
-
 
 class _FullScreenPhotoViewer extends StatelessWidget {
   final Widget imageChild;
@@ -758,4 +731,3 @@ class _FullScreenPhotoViewer extends StatelessWidget {
     );
   }
 }
-

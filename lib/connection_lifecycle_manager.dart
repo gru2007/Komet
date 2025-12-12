@@ -1,5 +1,3 @@
-
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:gwid/api/api_service.dart';
@@ -91,6 +89,7 @@ class _ConnectionLifecycleManagerState extends State<ConnectionLifecycleManager>
         print("✅ Переподключение выполнено успешно");
         if (mounted) {
           await _animationController.reverse();
+          if (!mounted) return;
           setState(() {
             _isReconnecting = false;
           });
@@ -104,6 +103,7 @@ class _ConnectionLifecycleManagerState extends State<ConnectionLifecycleManager>
               await ApiService.instance.performFullReconnection();
               if (mounted) {
                 await _animationController.reverse();
+                if (!mounted) return;
                 setState(() {
                   _isReconnecting = false;
                 });
@@ -112,6 +112,7 @@ class _ConnectionLifecycleManagerState extends State<ConnectionLifecycleManager>
               print("❌ Повторная попытка не удалась: $e");
               if (mounted) {
                 await _animationController.reverse();
+                if (!mounted) return;
                 setState(() {
                   _isReconnecting = false;
                 });

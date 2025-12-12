@@ -67,12 +67,10 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeProvider = context.watch<ThemeProvider>();
 
-    
     if (themeProvider.optimization) {
-      timeDilation =
-          0.001; 
+      timeDilation = 0.001;
     } else {
-      timeDilation = 1.0; 
+      timeDilation = 1.0;
     }
 
     return DynamicColorBuilder(
@@ -82,7 +80,6 @@ class MyApp extends StatelessWidget {
             ? lightDynamic.primary
             : themeProvider.accentColor;
 
-        
         final PageTransitionsTheme pageTransitionsTheme =
             themeProvider.optimization
             ? const PageTransitionsTheme(
@@ -108,7 +105,7 @@ class MyApp extends StatelessWidget {
           ),
           useMaterial3: true,
           pageTransitionsTheme: pageTransitionsTheme,
-          
+
           shadowColor: themeProvider.optimization ? Colors.transparent : null,
           splashFactory: themeProvider.optimization
               ? NoSplash.splashFactory
@@ -133,7 +130,7 @@ class MyApp extends StatelessWidget {
           ),
           useMaterial3: true,
           pageTransitionsTheme: pageTransitionsTheme,
-          
+
           shadowColor: themeProvider.optimization ? Colors.transparent : null,
           splashFactory: themeProvider.optimization
               ? NoSplash.splashFactory
@@ -145,7 +142,7 @@ class MyApp extends StatelessWidget {
               color: ColorScheme.fromSeed(
                 seedColor: accentColor,
                 brightness: Brightness.dark,
-              ).onSurface, 
+              ).onSurface,
             ),
           ),
         );
@@ -254,6 +251,7 @@ class _MiniFpsHudState extends State<_MiniFpsHud> {
             .map((t) => (t.totalSpan.inMicroseconds) / 1000.0)
             .fold(0.0, (a, b) => a + b) /
         _timings.length;
+    if (!mounted) return;
     setState(() {
       _avgMs = avg;
       _fps = avg > 0 ? (1000.0 / avg) : 0.0;

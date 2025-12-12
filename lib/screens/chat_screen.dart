@@ -63,14 +63,11 @@ class DateSeparatorItem extends ChatItem {
   DateSeparatorItem(this.date);
 }
 
-
-
-
 class _EmptyChatWidget extends StatelessWidget {
   final Map<String, dynamic>? sticker;
   final VoidCallback? onStickerTap;
 
-  const _EmptyChatWidget({this.sticker, this.onStickerTap});
+  const _EmptyChatWidget({super.key, this.sticker, this.onStickerTap});
 
   @override
   Widget build(BuildContext context) {
@@ -88,14 +85,12 @@ class _EmptyChatWidget extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           if (sticker != null) ...[
-            
             GestureDetector(
               onTap: onStickerTap,
               child: _buildSticker(sticker!),
             ),
             const SizedBox(height: 24),
           ] else ...[
-            
             const SizedBox(
               width: 170,
               height: 170,
@@ -126,7 +121,6 @@ class _EmptyChatWidget extends StatelessWidget {
       '🎨 _buildSticker: url=$url, lottieUrl=$lottieUrl, width=$width, height=$height',
     );
 
-    
     if (lottieUrl != null && lottieUrl.isNotEmpty) {
       print('🎨 Пытаемся показать Lottie-анимацию: $lottieUrl');
       return SizedBox(
@@ -138,7 +132,7 @@ class _EmptyChatWidget extends StatelessWidget {
           errorBuilder: (context, error, stackTrace) {
             print('❌ Ошибка загрузки Lottie: $error');
             print('❌ StackTrace Lottie: $stackTrace');
-            
+
             if (url != null && url.isNotEmpty) {
               return Image.network(url, fit: BoxFit.contain);
             }
@@ -148,7 +142,6 @@ class _EmptyChatWidget extends StatelessWidget {
       );
     }
 
-    
     final imageUrl = url;
 
     print('🎨 Используемый URL для статичного стикера: $imageUrl');
@@ -196,10 +189,8 @@ class ChatScreen extends StatefulWidget {
   final Contact contact;
   final int myId;
 
-  
   final VoidCallback? onChatUpdated;
 
-  
   final VoidCallback? onChatRemoved;
   final bool isGroupChat;
   final bool isChannel;
@@ -251,16 +242,11 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<int, Contact> _contactDetailsCache = {};
   final Set<int> _loadingContactIds = {};
 
-  
   int _initialUnreadCount = 0;
 
-  
   final Set<String> _sendingReactions = {};
 
-  
-
   Future<void> _onAttachPressed() async {
-    
     if (Platform.isAndroid || Platform.isIOS) {
       if (!mounted) return;
       final colors = Theme.of(context).colorScheme;
@@ -519,8 +505,7 @@ class _ChatScreenState extends State<ChatScreen> {
   int? _actualMyId;
 
   bool _isIdReady = false;
-  bool _isEncryptionPasswordSetForCurrentChat =
-      false; 
+  bool _isEncryptionPasswordSetForCurrentChat = false;
   ChatEncryptionConfig? _encryptionConfigForCurrentChat;
   bool _sendEncryptedForCurrentChat = true;
   bool _specialMessagesEnabled = true;
@@ -537,7 +522,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final FocusNode _searchFocusNode = FocusNode();
   List<Message> _searchResults = [];
   int _currentResultIndex = -1;
-  final Map<String, GlobalKey> _messageKeys = {};
 
   void _checkContactCache() {
     if (widget.chatId == 0) {
@@ -555,10 +539,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _scrollToBottom() {
-    
     if (!_itemScrollController.isAttached) return;
-
-    
+    if (!mounted || !_itemScrollController.isAttached) return;
     _isScrollingToBottom = true;
     _showScrollToBottomNotifier.value = false;
 
@@ -566,13 +548,13 @@ class _ChatScreenState extends State<ChatScreen> {
       index: 0,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutCubic,
-      alignment:
-          1.0, 
+      alignment: 1.0,
     );
 
-    
     Future.delayed(const Duration(milliseconds: 400), () {
+      //ЕБУЧЕЕ БУДУЩЕЕ АЛО НЕТУ ЕГО У МЕНЯ
       if (mounted) {
+        _isScrollingToBottom = false;
         final positions = _itemPositionsListener.itemPositions.value;
         if (positions.isNotEmpty) {
           final bottomItemPosition = positions.firstWhere(
@@ -586,7 +568,6 @@ class _ChatScreenState extends State<ChatScreen> {
             _isScrollingToBottom = false;
             _showScrollToBottomNotifier.value = false;
           } else {
-            
             _isScrollingToBottom = false;
           }
         }
@@ -595,8 +576,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _jumpToBottom() {
-    
-    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_itemScrollController.isAttached) {
         _itemScrollController.jumpTo(index: 0);
@@ -639,7 +618,7 @@ class _ChatScreenState extends State<ChatScreen> {
           widget.chatId,
           allChatContacts,
         );
-
+        if (!mounted) return;
         setState(() {});
       }
     } catch (e) {
@@ -800,8 +779,7 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _initialUnreadCount = widget.initialUnreadCount;
     _currentContact = widget.contact;
-    _pinnedMessage =
-        null; 
+    _pinnedMessage = null;
     _initializeChat();
     _loadEncryptionConfig();
     _loadSpecialMessagesSetting();
@@ -816,6 +794,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _startSelectionCheck();
       } else {
         _stopSelectionCheck();
+        if (!mounted) return;
         setState(() {
           _hasTextSelection = false;
         });
@@ -825,6 +804,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadSpecialMessagesSetting() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       _specialMessagesEnabled =
           prefs.getBool('special_messages_enabled') ?? true;
@@ -960,13 +940,10 @@ class _ChatScreenState extends State<ChatScreen> {
     const prefix1 = 'komet.color_#';
     const prefix2 = 'komet.cosmetic.pulse#';
 
-    
     String? detectedPrefix;
     int? prefixStartPos;
 
-    
     for (final prefix in [prefix1, prefix2]) {
-      
       int searchStart = 0;
       int lastFound = -1;
       while (true) {
@@ -983,13 +960,12 @@ class _ChatScreenState extends State<ChatScreen> {
           lastFound + prefix.length,
           cursorPos,
         );
-        
+
         if (afterPrefix.isEmpty || afterPrefix.trim().isEmpty) {
-          
           final afterCursor = cursorPos < text.length
               ? text.substring(cursorPos)
               : '';
-          
+
           if (afterCursor.length < 7 ||
               !RegExp(r"^[0-9A-Fa-f]{6}'").hasMatch(afterCursor)) {
             detectedPrefix = prefix;
@@ -1005,7 +981,7 @@ class _ChatScreenState extends State<ChatScreen> {
         prefixStartPos + detectedPrefix.length,
         cursorPos,
       );
-      
+
       if (after.isEmpty || after.trim().isEmpty) {
         if (!_showKometColorPicker ||
             _currentKometColorPrefix != detectedPrefix) {
@@ -1115,7 +1091,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       if (contact.id == _currentContact.id && mounted) {
         ApiService.instance.updateCachedContact(contact);
-        
+
         Future.microtask(() {
           if (mounted) {
             setState(() {
@@ -1129,46 +1105,32 @@ class _ChatScreenState extends State<ChatScreen> {
     _itemPositionsListener.itemPositions.addListener(() {
       final positions = _itemPositionsListener.itemPositions.value;
       if (positions.isNotEmpty) {
-        
-        
         final bottomItemPosition = positions.firstWhere(
           (p) => p.index == 0,
           orElse: () => positions.first,
         );
 
-        
-        
         final isBottomItemVisible = bottomItemPosition.index == 0;
         final isAtBottom =
             isBottomItemVisible && bottomItemPosition.itemTrailingEdge >= 0.9;
 
         _isUserAtBottom = isAtBottom;
 
-        
         if (isAtBottom) {
           _isScrollingToBottom = false;
         }
 
-        
-        
-        
-        
         final shouldShowArrow = !isAtBottom && !_isScrollingToBottom;
         _showScrollToBottomNotifier.value = shouldShowArrow;
 
-        
-        
         if (positions.isNotEmpty && _chatItems.isNotEmpty) {
           final maxIndex = positions
               .map((p) => p.index)
               .reduce((a, b) => a > b ? a : b);
-          
-          final threshold = _chatItems.length > 5
-              ? 3
-              : 1; 
+
+          final threshold = _chatItems.length > 5 ? 3 : 1;
           final isNearTop = maxIndex >= _chatItems.length - threshold;
 
-          
           if (isNearTop &&
               _hasMore &&
               !_isLoadingMore &&
@@ -1177,7 +1139,7 @@ class _ChatScreenState extends State<ChatScreen> {
             print(
               '📜 Пользователь доскроллил близко к верху (maxIndex: $maxIndex, total: ${_chatItems.length}), загружаем старые сообщения...',
             );
-            
+
             Future.microtask(() {
               if (mounted && _hasMore && !_isLoadingMore) {
                 _loadMore();
@@ -1190,7 +1152,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _searchController.addListener(() {
       if (_searchController.text.isEmpty && _searchResults.isNotEmpty) {
-        
         Future.microtask(() {
           if (mounted) {
             setState(() {
@@ -1246,7 +1207,7 @@ class _ChatScreenState extends State<ChatScreen> {
           print(
             'Получено подтверждение (Opcode 64) для cid: ${newMessage.cid}. Обновляем сообщение.',
           );
-          
+
           Future.microtask(() {
             if (mounted) {
               _updateMessage(newMessage);
@@ -1256,7 +1217,7 @@ class _ChatScreenState extends State<ChatScreen> {
       } else if (opcode == 128) {
         if (chatIdNormalized == widget.chatId) {
           final newMessage = Message.fromJson(payload['message']);
-          
+
           Future.microtask(() {
             if (!mounted) return;
             final hasSameId = _messages.any((m) => m.id == newMessage.id);
@@ -1299,7 +1260,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 'Обновлен presence для пользователя $cid: online=$isOnline, seen=$currentTime',
               );
 
-              
               Future.microtask(() {
                 if (mounted) {
                   setState(() {});
@@ -1311,7 +1271,7 @@ class _ChatScreenState extends State<ChatScreen> {
       } else if (opcode == 67) {
         if (chatIdNormalized == widget.chatId) {
           final editedMessage = Message.fromJson(payload['message']);
-          
+
           Future.microtask(() {
             if (mounted) {
               _updateMessage(editedMessage);
@@ -1323,7 +1283,7 @@ class _ChatScreenState extends State<ChatScreen> {
           final deletedMessageIds = List<String>.from(
             payload['messageIds'] ?? [],
           );
-          
+
           Future.microtask(() {
             if (mounted) {
               _removeMessages(deletedMessageIds);
@@ -1331,11 +1291,10 @@ class _ChatScreenState extends State<ChatScreen> {
           });
         }
       } else if (opcode == 178) {
-        
         if (cmd == 1) {
           if (_sendingReactions.isNotEmpty) {
             _sendingReactions.clear();
-            
+
             Future.microtask(() {
               if (mounted) {
                 setState(() {});
@@ -1343,12 +1302,11 @@ class _ChatScreenState extends State<ChatScreen> {
             });
           }
         }
-        
+
         if (cmd == 0 && chatIdNormalized == widget.chatId) {
           final messageId = payload['messageId'] as String?;
           final reactionInfo = payload['reactionInfo'] as Map<String, dynamic>?;
           if (messageId != null && reactionInfo != null) {
-            
             Future.microtask(() {
               if (mounted) {
                 _updateMessageReaction(messageId, reactionInfo);
@@ -1361,7 +1319,6 @@ class _ChatScreenState extends State<ChatScreen> {
           final messageId = payload['messageId'] as String?;
           final reactionInfo = payload['reactionInfo'] as Map<String, dynamic>?;
           if (messageId != null) {
-            
             Future.microtask(() {
               if (mounted) {
                 _updateMessageReaction(messageId, reactionInfo ?? {});
@@ -1370,9 +1327,6 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
       } else if (opcode == 50) {
-        
-        
-        
         if (chatIdNormalized == widget.chatId) {
           print(
             'Получен opcode 50 для чата ${widget.chatId}, игнорируем в ChatScreen',
@@ -1407,10 +1361,9 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages.clear();
       _messages.addAll(cachedMessages);
 
-      
       if (_messages.isNotEmpty) {
         _oldestLoadedTime = _messages.first.time;
-        
+
         _hasMore = true;
         print(
           '📜 Загружено из кэша: ${_messages.length} сообщений, _oldestLoadedTime=$_oldestLoadedTime',
@@ -1422,7 +1375,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       _buildChatItems();
-      
+
       Future.microtask(() {
         if (mounted) {
           setState(() {
@@ -1432,7 +1385,6 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       _updatePinnedMessage();
 
-      
       if (_messages.isEmpty && !widget.isChannel) {
         _loadEmptyChatSticker();
       }
@@ -1458,7 +1410,7 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
       }
-      senderIds.remove(0); 
+      senderIds.remove(0);
 
       final idsToFetch = senderIds
           .where((id) => !_contactDetailsCache.containsKey(id))
@@ -1509,7 +1461,6 @@ class _ChatScreenState extends State<ChatScreen> {
           ? allMessages.sublist(allMessages.length - page)
           : allMessages;
 
-      
       Future.microtask(() {
         if (mounted) {
           setState(() {
@@ -1518,8 +1469,7 @@ class _ChatScreenState extends State<ChatScreen> {
             _oldestLoadedTime = _messages.isNotEmpty
                 ? _messages.first.time
                 : null;
-            
-            
+
             _hasMore =
                 allMessages.length >= 1000 ||
                 allMessages.length > _messages.length;
@@ -1533,12 +1483,9 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       });
 
-      
-      
       _jumpToBottom();
       _updatePinnedMessage();
 
-      
       if (_messages.isEmpty && !widget.isChannel) {
         _loadEmptyChatSticker();
       }
@@ -1548,7 +1495,6 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _isLoadingHistory = false;
         });
-        
       }
     }
 
@@ -1594,7 +1540,7 @@ class _ChatScreenState extends State<ChatScreen> {
       print(
         '📜 Загружаем старые сообщения для chatId=${widget.chatId}, fromTimestamp=$_oldestLoadedTime',
       );
-      
+
       final olderMessages = await ApiService.instance
           .loadOlderMessagesByTimestamp(
             widget.chatId,
@@ -1607,21 +1553,18 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
 
       if (olderMessages.isEmpty) {
-        
         _hasMore = false;
         _isLoadingMore = false;
         setState(() {});
         return;
       }
 
-      
       final existingMessageIds = _messages.map((m) => m.id).toSet();
       final newMessages = olderMessages
           .where((m) => !existingMessageIds.contains(m.id))
           .toList();
 
       if (newMessages.isEmpty) {
-        
         _hasMore = false;
         _isLoadingMore = false;
         setState(() {});
@@ -1632,11 +1575,9 @@ class _ChatScreenState extends State<ChatScreen> {
         '📜 Добавляем ${newMessages.length} новых старых сообщений (отфильтровано ${olderMessages.length - newMessages.length} дубликатов)',
       );
 
-      
       _messages.insertAll(0, newMessages);
       _oldestLoadedTime = _messages.first.time;
 
-      
       _hasMore = olderMessages.length >= 30;
 
       _buildChatItems();
@@ -1718,25 +1659,12 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
     _chatItems = items;
-
-    
-    final currentMessageIds = _messages.map((m) => m.id).toSet();
-    final keysToRemove = _messageKeys.keys
-        .where((id) => !currentMessageIds.contains(id))
-        .toList();
-    for (final id in keysToRemove) {
-      _messageKeys.remove(id);
-    }
-    if (keysToRemove.isNotEmpty) {
-      print('📜 Очищено ${keysToRemove.length} ключей для удаленных сообщений');
-    }
   }
 
   Future<void> _loadEmptyChatSticker() async {
     try {
-      
       final availableStickerIds = [272821, 295349, 13571];
-      
+
       final random =
           DateTime.now().millisecondsSinceEpoch % availableStickerIds.length;
       final selectedStickerId = availableStickerIds[random];
@@ -1773,17 +1701,14 @@ class _ChatScreenState extends State<ChatScreen> {
       print('🎨 Получен ответ со стикерами: ${stickers?.length ?? 0}');
       if (stickers != null && stickers.isNotEmpty) {
         final sticker = stickers.first as Map<String, dynamic>;
-        
+
         final stickerId = sticker['id'] as int?;
         print(
           '🎨 Данные стикера: id=$stickerId, url=${sticker['url']}, lottieUrl=${sticker['lottieUrl']}, width=${sticker['width']}, height=${sticker['height']}',
         );
         if (mounted) {
           setState(() {
-            _emptyChatSticker = {
-              ...sticker,
-              'stickerId': stickerId, 
-            };
+            _emptyChatSticker = {...sticker, 'stickerId': stickerId};
           });
           print(
             '✅ Стикер для пустого чата загружен и сохранен (ID: $stickerId)',
@@ -1835,7 +1760,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final pinned = _pinnedMessage;
     if (pinned == null) return;
 
-    
     int? targetChatItemIndex;
     for (int i = 0; i < _chatItems.length; i++) {
       final item = _chatItems[i];
@@ -1850,14 +1774,11 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     if (targetChatItemIndex == null) {
-      
       return;
     }
 
     if (!_itemScrollController.isAttached) return;
 
-    
-    
     final visualIndex = _chatItems.length - 1 - targetChatItemIndex;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1927,7 +1848,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     _chatItems.add(messageItem);
 
-    
     _updatePinnedMessage();
 
     final theme = context.read<ThemeProvider>();
@@ -1937,7 +1857,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _animatedMessageIds.add(message.id);
     }
 
-    
     Future.microtask(() {
       if (mounted) {
         setState(() {});
@@ -1964,7 +1883,6 @@ class _ChatScreenState extends State<ChatScreen> {
       final updatedMessage = message.copyWith(reactionInfo: reactionInfo);
       _messages[messageIndex] = updatedMessage;
 
-      
       if (_sendingReactions.remove(messageId)) {
         print(
           '✅ Реакция для сообщения $messageId успешно подтверждена сервером',
@@ -1975,7 +1893,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
       print('Обновлена реакция для сообщения $messageId: $reactionInfo');
 
-      
       Future.microtask(() {
         if (mounted) {
           setState(() {});
@@ -2019,7 +1936,6 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       _messages[messageIndex] = updatedMessage;
 
-      
       _sendingReactions.add(messageId);
 
       _buildChatItems();
@@ -2072,14 +1988,12 @@ class _ChatScreenState extends State<ChatScreen> {
         );
         _messages[messageIndex] = updatedMessage;
 
-        
         _sendingReactions.add(messageId);
 
         _buildChatItems();
 
         print('Оптимистично удалена реакция с сообщения $messageId');
 
-        
         Future.microtask(() {
           if (mounted) {
             setState(() {});
@@ -2106,7 +2020,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages[index] = finalMessage;
       ApiService.instance.clearCacheForChat(widget.chatId);
       _buildChatItems();
-      
+
       Future.microtask(() {
         if (mounted) {
           setState(() {});
@@ -2124,7 +2038,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ..clear()
               ..addAll(fresh);
             _buildChatItems();
-            
+
             Future.microtask(() {
               if (mounted) {
                 setState(() {});
@@ -2145,7 +2059,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (actuallyRemoved > 0) {
       ApiService.instance.clearCacheForChat(widget.chatId);
       _buildChatItems();
-      
+
       Future.microtask(() {
         if (mounted) {
           setState(() {});
@@ -2278,8 +2192,6 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
 
-      
-      
       if (_encryptionConfigForCurrentChat != null &&
           _encryptionConfigForCurrentChat!.password.isNotEmpty &&
           _sendEncryptedForCurrentChat &&
@@ -2290,7 +2202,6 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
 
-      
       String textToSend = originalText;
       if (_encryptionConfigForCurrentChat != null &&
           _encryptionConfigForCurrentChat!.password.isNotEmpty &&
@@ -2331,7 +2242,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   'cid': _replyingToMessage!.cid,
                   'attaches': _replyingToMessage!.attaches,
                 },
-                'chatId': 0, 
+                'chatId': 0,
               }
             : null,
       };
@@ -2346,7 +2257,7 @@ class _ChatScreenState extends State<ChatScreen> {
         widget.chatId,
         textToSend,
         replyToMessageId: _replyingToMessage?.id,
-        cid: tempCid, 
+        cid: tempCid,
         elements: tempElements,
       );
 
@@ -2475,9 +2386,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final chats = chatData['chats'] as List<dynamic>;
     final availableChats = chats
-        .where(
-          (chat) => chat['id'] != widget.chatId || chat['id'] == 0,
-        ) 
+        .where((chat) => chat['id'] != widget.chatId || chat['id'] == 0)
         .toList();
 
     if (availableChats.isEmpty) {
@@ -2534,7 +2443,7 @@ class _ChatScreenState extends State<ChatScreen> {
   ) {
     final chatId = chat['id'] as int;
     final chatTitle = chat['title'] as String?;
-    
+
     String chatName;
     Widget avatar;
     String subtitle = '';
@@ -2564,30 +2473,23 @@ class _ChatScreenState extends State<ChatScreen> {
         );
         subtitle = '${participants.length} участников';
       } else {
-        
         final participantIds = participants.keys
             .map((id) => int.tryParse(id) ?? 0)
             .toList();
 
         int otherParticipantId = 0;
         if (participantIds.isNotEmpty) {
-          
           otherParticipantId = participantIds.firstWhere(
             (id) => _actualMyId == null || id != _actualMyId,
             orElse: () => participantIds.first,
           );
         }
 
-        
-        
         final contact = _contactDetailsCache[otherParticipantId];
         if (contact == null && otherParticipantId != 0) {
           _loadContactIfNeeded(otherParticipantId);
         }
 
-        
-        
-        
         chatName = contact?.name ?? 'ID $otherParticipantId';
 
         final avatarUrl = contact?.photoBaseUrl;
@@ -3017,13 +2919,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   onPressed: () async {
                     Navigator.of(context).pop();
                     try {
-                      
                       await ApiService.instance.clearChatHistory(
                         widget.chatId,
                         forAll: forAll,
                       );
 
-                      
                       await ApiService.instance.subscribeToChat(
                         widget.chatId,
                         false,
@@ -3210,8 +3110,6 @@ class _ChatScreenState extends State<ChatScreen> {
     if (chatContacts != null && chatContacts.isNotEmpty) {
       for (final contact in chatContacts) {
         _contactDetailsCache[contact.id] = contact;
-
-         
       }
       print(
         '✅ Загружено ${_contactDetailsCache.length} контактов из кэша чата ${widget.chatId}',
@@ -3219,7 +3117,6 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    
     final cachedContacts = await ChatCacheService().getCachedContacts();
     if (cachedContacts != null && cachedContacts.isNotEmpty) {
       for (final contact in cachedContacts) {
@@ -3296,6 +3193,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       switchInCurve: Curves.easeInOutCubic,
                       switchOutCurve: Curves.easeInOutCubic,
                       transitionBuilder: (child, animation) {
+                        if (!mounted) return child ?? const SizedBox.shrink();
                         return FadeTransition(
                           opacity: animation,
                           child: ScaleTransition(
@@ -3316,6 +3214,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             )
                           : _messages.isEmpty && !widget.isChannel
                           ? _EmptyChatWidget(
+                              key: const ValueKey('empty'),
                               sticker: _emptyChatSticker,
                               onStickerTap: _sendEmptyChatSticker,
                             )
@@ -3329,6 +3228,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ).viewInsets.bottom,
                               ),
                               child: ScrollablePositionedList.builder(
+                                key: const ValueKey('scroll_list'),
                                 itemScrollController: _itemScrollController,
                                 itemPositionsListener: _itemPositionsListener,
                                 reverse: true,
@@ -3346,15 +3246,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                   final isLastVisual =
                                       index == _chatItems.length - 1;
 
-                                  
-                                  
-
                                   if (item is MessageItem) {
                                     final message = item.message;
-                                    final key = _messageKeys.putIfAbsent(
-                                      message.id,
-                                      () => GlobalKey(),
-                                    );
                                     final bool isHighlighted =
                                         _isSearching &&
                                         _searchResults.isNotEmpty &&
@@ -3502,7 +3395,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                     }
 
                                     final bubble = ChatMessageBubble(
-                                      key: key,
+                                      key: ValueKey(message.id),
                                       message: item.message,
                                       isMe: isMe,
                                       readStatus: readStatus,
@@ -3586,8 +3479,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       isFirstInGroup: item.isFirstInGroup,
                                       isLastInGroup: item.isLastInGroup,
                                       isGrouped: item.isGrouped,
-                                      avatarVerticalOffset:
-                                          -8.0, 
+                                      avatarVerticalOffset: -8.0,
                                       onComplain: () =>
                                           _showComplaintDialog(item.message.id),
                                     );
@@ -3607,9 +3499,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                         curve: Curves.easeInOut,
                                         builder: (context, value, child) {
                                           return Container(
-                                            
                                             margin: const EdgeInsets.symmetric(
-                                              vertical: 1, 
+                                              vertical: 1,
                                             ),
                                             decoration: BoxDecoration(
                                               color: Theme.of(context)
@@ -3632,29 +3523,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                       );
                                     }
 
-                                    
                                     if (isNew && !_anyOptimize) {
-                                      return TweenAnimationBuilder<double>(
-                                        duration: const Duration(
-                                          milliseconds: 400,
-                                        ),
-                                        tween: Tween<double>(
-                                          begin: 0.0,
-                                          end: 1.0,
-                                        ),
-                                        curve: Curves.easeOutCubic,
-                                        builder: (context, value, child) {
-                                          return Opacity(
-                                            opacity: value,
-                                            child: Transform.translate(
-                                              offset: Offset(
-                                                0,
-                                                20 * (1 - value),
-                                              ),
-                                              child: child,
-                                            ),
-                                          );
-                                        },
+                                      return _NewMessageAnimation(
+                                        key: ValueKey('anim_${message.id}'),
                                         child: finalMessageWidget,
                                       );
                                     }
@@ -3851,7 +3722,7 @@ class _ChatScreenState extends State<ChatScreen> {
             )
           : null,
       leading: widget.isDesktopMode
-          ? null 
+          ? null
           : IconButton(
               icon: const Icon(Icons.arrow_back),
               onPressed: () => Navigator.of(context).pop(),
@@ -4078,12 +3949,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
               if (widget.isChannel)
                 const PopupMenuItem(
-                  value: 'leave_channel', 
+                  value: 'leave_channel',
                   child: Row(
                     children: [
                       Icon(Icons.exit_to_app, color: Colors.red),
                       SizedBox(width: 8),
-                      Text('Покинуть канал'), 
+                      Text('Покинуть канал'),
                     ],
                   ),
                 ),
@@ -4185,8 +4056,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
 
                   const SizedBox(height: 2),
-                  if (widget.isGroupChat ||
-                      widget.isChannel) 
+                  if (widget.isGroupChat || widget.isChannel)
                     Text(
                       widget.isChannel
                           ? "${widget.participantCount ?? 0} подписчиков"
@@ -4314,7 +4184,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildTextInput() {
     if (widget.isChannel) {
-      return const SizedBox.shrink(); 
+      return const SizedBox.shrink();
     }
     final theme = context.watch<ThemeProvider>();
     final isBlocked = _currentContact.isBlockedByMe && !theme.blockBypass;
@@ -4558,8 +4428,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 },
                               ),
                             Focus(
-                              focusNode:
-                                  _textFocusNode, 
+                              focusNode: _textFocusNode,
                               onKeyEvent: (node, event) {
                                 if (event is KeyDownEvent) {
                                   if (event.logicalKey ==
@@ -5108,9 +4977,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     vertical: 8.0,
                   ),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface.withOpacity(
-                      0.85,
-                    ), 
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surface.withOpacity(0.85),
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
@@ -5472,31 +5341,35 @@ class _ChatScreenState extends State<ChatScreen> {
     _textFocusNode.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _animatedMessageIds.clear();
     super.dispose();
   }
 
   void _startSearch() {
+    if (!mounted) return;
     setState(() {
       _isSearching = true;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _searchFocusNode.requestFocus();
     });
   }
 
   void _stopSearch() {
+    if (!mounted) return;
     setState(() {
       _isSearching = false;
       _searchResults.clear();
       _currentResultIndex = -1;
       _searchController.clear();
-      _messageKeys.clear();
     });
   }
 
   void _performSearch(String query) {
     if (query.isEmpty) {
       if (_searchResults.isNotEmpty) {
+        if (!mounted) return;
         setState(() {
           _searchResults.clear();
           _currentResultIndex = -1;
@@ -5508,6 +5381,7 @@ class _ChatScreenState extends State<ChatScreen> {
         .where((msg) => msg.text.toLowerCase().contains(query.toLowerCase()))
         .toList();
 
+    if (!mounted) return;
     setState(() {
       _searchResults = results.reversed.toList();
       _currentResultIndex = _searchResults.isNotEmpty ? 0 : -1;
@@ -5520,6 +5394,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _navigateToNextResult() {
     if (_searchResults.isEmpty) return;
+    if (!mounted) return;
     setState(() {
       _currentResultIndex = (_currentResultIndex + 1) % _searchResults.length;
     });
@@ -5539,6 +5414,9 @@ class _ChatScreenState extends State<ChatScreen> {
   void _scrollToResult() {
     if (_currentResultIndex == -1) return;
 
+    if (!mounted || !_itemScrollController.isAttached)
+      return; //блять а как оно без этого работало шо за свинарник
+
     final targetMessage = _searchResults[_currentResultIndex];
 
     final itemIndex = _chatItems.indexWhere(
@@ -5547,18 +5425,22 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (itemIndex != -1) {
       final viewIndex = _chatItems.length - 1 - itemIndex;
-
-      _itemScrollController.scrollTo(
-        index: viewIndex,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-        alignment: 0.5,
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_itemScrollController.isAttached) return;
+        _itemScrollController.scrollTo(
+          index: viewIndex,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOutCubic,
+          alignment: 0.5,
+        );
+      });
     }
   }
 
   void _scrollToMessage(String messageId) {
-    
+    if (!mounted)
+      return; //по сути этот параметр надо сунуть в корень хули он в калбеке забыл но ок -жижа
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
@@ -5569,27 +5451,67 @@ class _ChatScreenState extends State<ChatScreen> {
       if (itemIndex != -1) {
         final viewIndex = _chatItems.length - 1 - itemIndex;
 
-        if (_itemScrollController.isAttached) {
-          _itemScrollController.scrollTo(
-            index: viewIndex,
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.easeInOut,
-            alignment:
-                0.2, 
-          );
-        }
+        if (!mounted || !_itemScrollController.isAttached) return;
+
+        _itemScrollController.scrollTo(
+          index: viewIndex,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOutCubic,
+          alignment: 0.2,
+        );
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Исходное сообщение не найдено (возможно, оно в старой истории)',
-              ),
-            ),
+            const SnackBar(content: Text('Исходное сообщение не найдено...🥀')),
           );
         }
       }
     });
+  }
+}
+
+class _NewMessageAnimation extends StatefulWidget {
+  final Widget child;
+
+  const _NewMessageAnimation({super.key, required this.child});
+
+  @override
+  State<_NewMessageAnimation> createState() => _NewMessageAnimationState();
+}
+
+class _NewMessageAnimationState extends State<_NewMessageAnimation>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    _slide = Tween<Offset>(
+      begin: const Offset(0, 0.1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(position: _slide, child: widget.child),
+    );
   }
 }
 
@@ -5871,7 +5793,6 @@ class _ContactPresenceSubtitleState extends State<_ContactPresenceSubtitle> {
               ? incomingChatId
               : int.tryParse(incomingChatId?.toString() ?? '');
           if (cid == widget.chatId) {
-            
             Future.microtask(() {
               if (mounted) {
                 setState(() => _status = 'печатает…');
@@ -5904,7 +5825,7 @@ class _ContactPresenceSubtitleState extends State<_ContactPresenceSubtitle> {
             final bool isOnline = payload['online'] == true;
             if (!mounted) return;
             _isOnline = isOnline;
-            
+
             Future.microtask(() {
               if (mounted) {
                 setState(() {
@@ -6386,7 +6307,6 @@ extension BrightnessExtension on Brightness {
   bool get isDark => this == Brightness.dark;
 }
 
-
 class GroupProfileDraggableDialog extends StatelessWidget {
   final Contact contact;
 
@@ -6454,8 +6374,7 @@ class GroupProfileDraggableDialog extends StatelessWidget {
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (context) => GroupSettingsScreen(
-                              chatId: -contact
-                                  .id, 
+                              chatId: -contact.id,
                               initialContact: contact,
                               myId: 0,
                             ),
@@ -6517,7 +6436,6 @@ class _ContactProfileDialogState extends State<ContactProfileDialog> {
     super.initState();
     _loadLocalDescription();
 
-    
     _changesSubscription = ContactLocalNamesService().changes.listen((
       contactId,
     ) {
@@ -6667,7 +6585,7 @@ class _ContactProfileDialogState extends State<ContactProfileDialog> {
                               fontSize: 14,
                             ),
                             linkStyle: TextStyle(
-                              color: colors.primary, 
+                              color: colors.primary,
                               fontSize: 14,
                               decoration: TextDecoration.underline,
                             ),
@@ -6809,8 +6727,6 @@ class _ContactProfileDialogState extends State<ContactProfileDialog> {
                               width: double.infinity,
                               child: FilledButton.icon(
                                 onPressed: () {
-                                  
-                                  
                                   Navigator.of(context).pop();
                                 },
                                 icon: const Icon(Icons.message),
@@ -7210,7 +7126,7 @@ class _PromoteAdminDialog extends StatelessWidget {
 
 class _ControlMessageChip extends StatelessWidget {
   final Message message;
-  final Map<int, Contact> contacts; 
+  final Map<int, Contact> contacts;
   final int myId;
 
   const _ControlMessageChip({
@@ -7403,7 +7319,6 @@ class _ControlMessageChip extends StatelessWidget {
       default:
         final eventTypeStr = eventType?.toString() ?? 'неизвестное';
 
-        
         if (eventTypeStr.toLowerCase() == 'system') {
           return 'Стартовое событие, не обращайте внимания.';
         }

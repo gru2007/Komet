@@ -67,18 +67,18 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeProvider>();
     final colors = Theme.of(context).colorScheme;
-    final bool isSystemTheme = theme.appTheme == AppTheme.system;
+    //final bool isSystemTheme = theme.appTheme == AppTheme.system;
     final bool isCurrentlyDark =
         Theme.of(context).brightness == Brightness.dark;
 
-    if (isSystemTheme) {
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          final systemAccentColor = Theme.of(context).colorScheme.primary;
-          theme.updateBubbleColorsForSystemTheme(systemAccentColor);
-        }
-      });
-    }
+    //if (isSystemTheme) {
+    //  SchedulerBinding.instance.addPostFrameCallback((_) {
+    //    if (mounted) {
+    //      final systemAccentColor = Theme.of(context).colorScheme.primary;
+    //      theme.updateBubbleColorsForSystemTheme(systemAccentColor);
+    //    }
+    //  });
+    //}
 
     final Color? myBubbleColorToShow = isCurrentlyDark
         ? theme.myBubbleColorDark
@@ -99,7 +99,7 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
         : Colors.blue.shade100;
     final Color theirBubbleFallback = isCurrentlyDark
         ? const Color(0xFF182533)
-        : const Color(0xFF464646); 
+        : const Color(0xFF464646);
 
     return Scaffold(
       appBar: AppBar(
@@ -122,250 +122,254 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
                 onChanged: (appTheme) => theme.setTheme(appTheme),
               ),
               const SizedBox(height: 16),
-              IgnorePointer(
-                ignoring: isSystemTheme,
-                child: Opacity(
-                  opacity: isSystemTheme ? 0.5 : 1.0,
-                  child: _ColorPickerTile(
-                    title: "Акцентный цвет",
-                    subtitle: isSystemTheme
-                        ? "Используются цвета системы (Material You)"
-                        : "Основной цвет интерфейса",
-                    color: isSystemTheme ? colors.primary : theme.accentColor,
-                    onColorChanged: (color) => theme.setAccentColor(color),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          _ModernSection(
-            title: "Обои чата",
-            children: [
-              _CustomSettingTile(
-                icon: Icons.wallpaper,
-                title: "Использовать свои обои",
-                child: Switch(
-                  value: theme.useCustomChatWallpaper,
-                  onChanged: (value) => theme.setUseCustomChatWallpaper(value),
-                ),
-              ),
-              if (theme.useCustomChatWallpaper) ...[
-                const Divider(height: 24),
-                _CustomSettingTile(
-                  icon: Icons.image,
-                  title: "Тип обоев",
-                  child: DropdownButton<ChatWallpaperType>(
-                    value: theme.chatWallpaperType,
-                    underline: const SizedBox.shrink(),
-                    onChanged: (value) {
-                      if (value != null) theme.setChatWallpaperType(value);
-                    },
-                    items: ChatWallpaperType.values.map((type) {
-                      return DropdownMenuItem(
-                        value: type,
-                        child: Text(type.displayName),
-                      );
-                    }).toList(),
-                  ),
-                ),
-                if (theme.chatWallpaperType == ChatWallpaperType.solid ||
-                    theme.chatWallpaperType == ChatWallpaperType.gradient) ...[
-                  const SizedBox(height: 16),
-                  _ColorPickerTile(
-                    title: "Цвет 1",
-                    subtitle: "Основной цвет фона",
-                    color: theme.chatWallpaperColor1,
-                    onColorChanged: (color) =>
-                        theme.setChatWallpaperColor1(color),
-                  ),
-                ],
-                if (theme.chatWallpaperType == ChatWallpaperType.gradient) ...[
-                  const SizedBox(height: 16),
-                  _ColorPickerTile(
-                    title: "Цвет 2",
-                    subtitle: "Дополнительный цвет для градиента",
-                    color: theme.chatWallpaperColor2,
-                    onColorChanged: (color) =>
-                        theme.setChatWallpaperColor2(color),
-                  ),
-                ],
-                if (theme.chatWallpaperType == ChatWallpaperType.image) ...[
-                  const Divider(height: 24),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.photo_library_outlined),
-                    title: const Text("Выбрать изображение"),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () async {
-                      final picker = ImagePicker();
-                      final image = await picker.pickImage(
-                        source: ImageSource.gallery,
-                      );
-                      if (image != null) {
-                        theme.setChatWallpaperImagePath(image.path);
-                      }
-                    },
-                  ),
-                  if (theme.chatWallpaperImagePath?.isNotEmpty == true) ...[
-                    _SliderTile(
-                      icon: Icons.blur_on,
-                      label: "Размытие",
-                      value: theme.chatWallpaperImageBlur,
-                      min: 0.0,
-                      max: 10.0,
-                      divisions: 20,
-                      onChanged: (value) =>
-                          theme.setChatWallpaperImageBlur(value),
-                      displayValue: theme.chatWallpaperImageBlur
-                          .toStringAsFixed(1),
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(
-                        Icons.delete_outline,
-                        color: Colors.redAccent,
-                      ),
-                      title: const Text(
-                        "Удалить изображение",
-                        style: TextStyle(color: Colors.redAccent),
-                      ),
-                      onTap: () => theme.setChatWallpaperImagePath(null),
-                    ),
-                  ],
-                ],
-                if (theme.chatWallpaperType == ChatWallpaperType.video) ...[
-                  const Divider(height: 24),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.video_library_outlined),
-                    title: const Text("Выбрать видео"),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () async {
-                      final result = await FilePicker.platform.pickFiles(
-                        type: FileType.video,
-                      );
-                      if (result != null && result.files.single.path != null) {
-                        theme.setChatWallpaperVideoPath(
-                          result.files.single.path!,
-                        );
-                      }
-                    },
-                  ),
-                  if (theme.chatWallpaperVideoPath?.isNotEmpty == true) ...[
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(
-                        Icons.delete_outline,
-                        color: Colors.redAccent,
-                      ),
-                      title: const Text(
-                        "Удалить видео",
-                        style: TextStyle(color: Colors.redAccent),
-                      ),
-                      onTap: () => theme.setChatWallpaperVideoPath(null),
-                    ),
-                  ],
-                ],
-              ],
-            ],
-          ),
-          const SizedBox(height: 24),
-          _ModernSection(
-            title: "Сообщения",
-            children: [
-              
-              const _MessageBubblesPreview(),
-              const SizedBox(height: 16),
-
-              
-              _ExpandableSection(
-                title: "Прозрачность",
-                initiallyExpanded: false,
+              //  IgnorePointer(
+              //ignoring: isSystemTheme,
+              // child: Opacity(
+              //  opacity: isSystemTheme ? 0.5 : 1.0,
+              //  child: _ColorPickerTile(
+              //    title: "Акцентный цвет",
+              //  subtitle: isSystemTheme
+              //      ? "Используются цвета системы (Material You)"
+              //     : "Основной цвет интерфейса",
+              //  color: isSystemTheme ? colors.primary : theme.accentColor,
+              //   onColorChanged: (color) => theme.setAccentColor(color),
+              // ),
+              // ),
+              // ),
+              //],
+              //),
+              const SizedBox(height: 24),
+              _ModernSection(
+                title: "Обои чата",
                 children: [
-                  _SliderTile(
-                    icon: Icons.text_fields,
-                    label: "Непрозрачность текста",
-                    value: theme.messageTextOpacity,
-                    min: 0.1,
-                    max: 1.0,
-                    divisions: 18,
-                    onChanged: (value) => theme.setMessageTextOpacity(value),
-                    displayValue:
-                        "${(theme.messageTextOpacity * 100).round()}%",
-                  ),
-                  _SliderTile(
-                    icon: Icons.blur_circular,
-                    label: "Интенсивность тени",
-                    value: theme.messageShadowIntensity,
-                    min: 0.0,
-                    max: 0.5,
-                    divisions: 10,
-                    onChanged: (value) =>
-                        theme.setMessageShadowIntensity(value),
-                    displayValue:
-                        "${(theme.messageShadowIntensity * 100).round()}%",
-                  ),
-                  _SliderTile(
-                    icon: Icons.menu,
-                    label: "Непрозрачность меню",
-                    value: theme.messageMenuOpacity,
-                    min: 0.1,
-                    max: 1.0,
-                    divisions: 18,
-                    onChanged: (value) => theme.setMessageMenuOpacity(value),
-                    displayValue:
-                        "${(theme.messageMenuOpacity * 100).round()}%",
-                  ),
-                  _SliderTile(
-                    icon: Icons.blur_on,
-                    label: "Размытие меню",
-                    value: theme.messageMenuBlur,
-                    min: 0.0,
-                    max: 20.0,
-                    divisions: 20,
-                    onChanged: (value) => theme.setMessageMenuBlur(value),
-                    displayValue: theme.messageMenuBlur.toStringAsFixed(1),
-                  ),
-                  _SliderTile(
-                    icon: Icons.opacity,
-                    label: "Непрозрачность сообщений",
-                    value: 1.0 - theme.messageBubbleOpacity,
-                    min: 0.0,
-                    max: 1.0,
-                    divisions: 20,
-                    onChanged: (value) =>
-                        theme.setMessageBubbleOpacity(1.0 - value),
-                    displayValue:
-                        "${((1.0 - theme.messageBubbleOpacity) * 100).round()}%",
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-
-              
-              _ExpandableSection(
-                title: "Вид",
-                initiallyExpanded: false,
-                children: [
-                  _SliderTile(
-                    icon: Icons.rounded_corner,
-                    label: "Скругление углов",
-                    value: theme.messageBorderRadius,
-                    min: 4.0,
-                    max: 50.0,
-                    divisions: 23,
-                    onChanged: (value) => theme.setMessageBorderRadius(value),
-                    displayValue: "${theme.messageBorderRadius.round()}px",
-                  ),
-                  const SizedBox(height: 16),
                   _CustomSettingTile(
-                    icon: Icons.format_color_fill,
-                    title: "Тип отображения",
-                    child: IgnorePointer(
-                      ignoring: isSystemTheme,
-                      child: Opacity(
-                        opacity: isSystemTheme ? 0.5 : 1.0,
+                    icon: Icons.wallpaper,
+                    title: "Использовать свои обои",
+                    child: Switch(
+                      value: theme.useCustomChatWallpaper,
+                      onChanged: (value) =>
+                          theme.setUseCustomChatWallpaper(value),
+                    ),
+                  ),
+                  if (theme.useCustomChatWallpaper) ...[
+                    const Divider(height: 24),
+                    _CustomSettingTile(
+                      icon: Icons.image,
+                      title: "Тип обоев",
+                      child: DropdownButton<ChatWallpaperType>(
+                        value: theme.chatWallpaperType,
+                        underline: const SizedBox.shrink(),
+                        onChanged: (value) {
+                          if (value != null) theme.setChatWallpaperType(value);
+                        },
+                        items: ChatWallpaperType.values.map((type) {
+                          return DropdownMenuItem(
+                            value: type,
+                            child: Text(type.displayName),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    if (theme.chatWallpaperType == ChatWallpaperType.solid ||
+                        theme.chatWallpaperType ==
+                            ChatWallpaperType.gradient) ...[
+                      const SizedBox(height: 16),
+                      _ColorPickerTile(
+                        title: "Цвет 1",
+                        subtitle: "Основной цвет фона",
+                        color: theme.chatWallpaperColor1,
+                        onColorChanged: (color) =>
+                            theme.setChatWallpaperColor1(color),
+                      ),
+                    ],
+                    if (theme.chatWallpaperType ==
+                        ChatWallpaperType.gradient) ...[
+                      const SizedBox(height: 16),
+                      _ColorPickerTile(
+                        title: "Цвет 2",
+                        subtitle: "Дополнительный цвет для градиента",
+                        color: theme.chatWallpaperColor2,
+                        onColorChanged: (color) =>
+                            theme.setChatWallpaperColor2(color),
+                      ),
+                    ],
+                    if (theme.chatWallpaperType == ChatWallpaperType.image) ...[
+                      const Divider(height: 24),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.photo_library_outlined),
+                        title: const Text("Выбрать изображение"),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          final picker = ImagePicker();
+                          final image = await picker.pickImage(
+                            source: ImageSource.gallery,
+                          );
+                          if (image != null) {
+                            theme.setChatWallpaperImagePath(image.path);
+                          }
+                        },
+                      ),
+                      if (theme.chatWallpaperImagePath?.isNotEmpty == true) ...[
+                        _SliderTile(
+                          icon: Icons.blur_on,
+                          label: "Размытие",
+                          value: theme.chatWallpaperImageBlur,
+                          min: 0.0,
+                          max: 10.0,
+                          divisions: 20,
+                          onChanged: (value) =>
+                              theme.setChatWallpaperImageBlur(value),
+                          displayValue: theme.chatWallpaperImageBlur
+                              .toStringAsFixed(1),
+                        ),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.redAccent,
+                          ),
+                          title: const Text(
+                            "Удалить изображение",
+                            style: TextStyle(color: Colors.redAccent),
+                          ),
+                          onTap: () => theme.setChatWallpaperImagePath(null),
+                        ),
+                      ],
+                    ],
+                    if (theme.chatWallpaperType == ChatWallpaperType.video) ...[
+                      const Divider(height: 24),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.video_library_outlined),
+                        title: const Text("Выбрать видео"),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          final result = await FilePicker.platform.pickFiles(
+                            type: FileType.video,
+                          );
+                          if (result != null &&
+                              result.files.single.path != null) {
+                            theme.setChatWallpaperVideoPath(
+                              result.files.single.path!,
+                            );
+                          }
+                        },
+                      ),
+                      if (theme.chatWallpaperVideoPath?.isNotEmpty == true) ...[
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.redAccent,
+                          ),
+                          title: const Text(
+                            "Удалить видео",
+                            style: TextStyle(color: Colors.redAccent),
+                          ),
+                          onTap: () => theme.setChatWallpaperVideoPath(null),
+                        ),
+                      ],
+                    ],
+                  ],
+                ],
+              ),
+              const SizedBox(height: 24),
+              _ModernSection(
+                title: "Сообщения",
+                children: [
+                  const _MessageBubblesPreview(),
+                  const SizedBox(height: 16),
+
+                  _ExpandableSection(
+                    title: "Прозрачность",
+                    initiallyExpanded: false,
+                    children: [
+                      _SliderTile(
+                        icon: Icons.text_fields,
+                        label: "Непрозрачность текста",
+                        value: theme.messageTextOpacity,
+                        min: 0.1,
+                        max: 1.0,
+                        divisions: 18,
+                        onChanged: (value) =>
+                            theme.setMessageTextOpacity(value),
+                        displayValue:
+                            "${(theme.messageTextOpacity * 100).round()}%",
+                      ),
+                      _SliderTile(
+                        icon: Icons.blur_circular,
+                        label: "Интенсивность тени",
+                        value: theme.messageShadowIntensity,
+                        min: 0.0,
+                        max: 0.5,
+                        divisions: 10,
+                        onChanged: (value) =>
+                            theme.setMessageShadowIntensity(value),
+                        displayValue:
+                            "${(theme.messageShadowIntensity * 100).round()}%",
+                      ),
+                      _SliderTile(
+                        icon: Icons.menu,
+                        label: "Непрозрачность меню",
+                        value: theme.messageMenuOpacity,
+                        min: 0.1,
+                        max: 1.0,
+                        divisions: 18,
+                        onChanged: (value) =>
+                            theme.setMessageMenuOpacity(value),
+                        displayValue:
+                            "${(theme.messageMenuOpacity * 100).round()}%",
+                      ),
+                      _SliderTile(
+                        icon: Icons.blur_on,
+                        label: "Размытие меню",
+                        value: theme.messageMenuBlur,
+                        min: 0.0,
+                        max: 20.0,
+                        divisions: 20,
+                        onChanged: (value) => theme.setMessageMenuBlur(value),
+                        displayValue: theme.messageMenuBlur.toStringAsFixed(1),
+                      ),
+                      _SliderTile(
+                        icon: Icons.opacity,
+                        label: "Непрозрачность сообщений",
+                        value: 1.0 - theme.messageBubbleOpacity,
+                        min: 0.0,
+                        max: 1.0,
+                        divisions: 20,
+                        onChanged: (value) =>
+                            theme.setMessageBubbleOpacity(1.0 - value),
+                        displayValue:
+                            "${((1.0 - theme.messageBubbleOpacity) * 100).round()}%",
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  _ExpandableSection(
+                    title: "Вид",
+                    initiallyExpanded: false,
+                    children: [
+                      _SliderTile(
+                        icon: Icons.rounded_corner,
+                        label: "Скругление углов",
+                        value: theme.messageBorderRadius,
+                        min: 4.0,
+                        max: 50.0,
+                        divisions: 23,
+                        onChanged: (value) =>
+                            theme.setMessageBorderRadius(value),
+                        displayValue: "${theme.messageBorderRadius.round()}px",
+                      ),
+                      const SizedBox(height: 16),
+                      _CustomSettingTile(
+                        icon: Icons.format_color_fill,
+                        title: "Тип отображения",
+                        //                    child: IgnorePointer(
+                        //                      ignoring: isSystemTheme,
+                        //                      child: Opacity(
+                        //                        opacity: isSystemTheme ? 0.5 : 1.0,
                         child: DropdownButton<MessageBubbleType>(
                           value: theme.messageBubbleType,
                           underline: const SizedBox.shrink(),
@@ -382,72 +386,69 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
                           }).toList(),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   _CustomSettingTile(
                     icon: Icons.palette,
                     title: "Цвет моих сообщений",
-                    child: IgnorePointer(
-                      ignoring: isSystemTheme,
-                      child: Opacity(
-                        opacity: isSystemTheme ? 0.5 : 1.0,
-                        child: GestureDetector(
-                          onTap: () async {
-                            final initial =
-                                myBubbleColorToShow ?? myBubbleFallback;
-                            _showColorPicker(
-                              context,
-                              initialColor: initial,
-                              onColorChanged: (color) => myBubbleSetter(color),
-                            );
-                          },
-                          child: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: myBubbleColorToShow ?? myBubbleFallback,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.grey),
-                            ),
-                          ),
+                    //                    child: IgnorePointer(
+                    //                      ignoring: isSystemTheme,
+                    //                      child: Opacity(
+                    //                        opacity: isSystemTheme ? 0.5 : 1.0,
+                    child: GestureDetector(
+                      onTap: () async {
+                        final initial = myBubbleColorToShow ?? myBubbleFallback;
+                        _showColorPicker(
+                          context,
+                          initialColor: initial,
+                          onColorChanged: (color) => myBubbleSetter(color),
+                        );
+                      },
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: myBubbleColorToShow ?? myBubbleFallback,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey),
                         ),
                       ),
                     ),
                   ),
+                  //                  ),
+                  //                  ),
                   const SizedBox(height: 16),
                   _CustomSettingTile(
                     icon: Icons.palette_outlined,
                     title: "Цвет сообщений собеседника",
-                    child: IgnorePointer(
-                      ignoring: isSystemTheme,
-                      child: Opacity(
-                        opacity: isSystemTheme ? 0.5 : 1.0,
-                        child: GestureDetector(
-                          onTap: () async {
-                            final initial =
-                                theirBubbleColorToShow ?? theirBubbleFallback;
-                            _showColorPicker(
-                              context,
-                              initialColor: initial,
-                              onColorChanged: (color) =>
-                                  theirBubbleSetter(color),
-                            );
-                          },
-                          child: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color:
-                                  theirBubbleColorToShow ?? theirBubbleFallback,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.grey),
-                            ),
-                          ),
+                    //                   child: IgnorePointer(
+                    //                   ignoring: isSystemTheme,
+                    //                      child: Opacity(
+                    //                        opacity: isSystemTheme ? 0.5 : 1.0,
+                    child: GestureDetector(
+                      onTap: () async {
+                        final initial =
+                            theirBubbleColorToShow ?? theirBubbleFallback;
+                        _showColorPicker(
+                          context,
+                          initialColor: initial,
+                          onColorChanged: (color) => theirBubbleSetter(color),
+                        );
+                      },
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: theirBubbleColorToShow ?? theirBubbleFallback,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey),
                         ),
                       ),
                     ),
                   ),
+                  //                    ),
+                  //                  ),
                   const Divider(height: 24),
                   _CustomSettingTile(
                     icon: Icons.reply,
@@ -476,11 +477,9 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
           _ModernSection(
             title: "Всплывающие окна",
             children: [
-              
               _DialogPreview(),
               const SizedBox(height: 16),
 
-              
               _ExpandableSection(
                 title: "Настройки",
                 initiallyExpanded: false,
@@ -846,11 +845,9 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
           _ModernSection(
             title: "Панели чата",
             children: [
-              
               _PanelsPreview(),
               const SizedBox(height: 16),
 
-              
               _CustomSettingTile(
                 icon: Icons.tune,
                 title: "Эффект стекла для панелей",
@@ -862,7 +859,6 @@ class _CustomizationScreenState extends State<CustomizationScreen> {
               ),
               const SizedBox(height: 8),
 
-              
               _ExpandableSection(
                 title: "Настройки",
                 initiallyExpanded: false,
@@ -1409,13 +1405,6 @@ class AppThemeSelector extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        _ThemeButton(
-          theme: AppTheme.system,
-          selectedTheme: selectedTheme,
-          onChanged: onChanged,
-          icon: Icons.brightness_auto_outlined,
-          label: "Система",
-        ),
         _ThemeButton(
           theme: AppTheme.light,
           selectedTheme: selectedTheme,
@@ -2000,7 +1989,6 @@ class _DialogPreview extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: Stack(
           children: [
-            
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -2013,7 +2001,7 @@ class _DialogPreview extends StatelessWidget {
                 ),
               ),
             ),
-            
+
             if (theme.profileDialogBlur > 0)
               BackdropFilter(
                 filter: ImageFilter.blur(
@@ -2022,7 +2010,7 @@ class _DialogPreview extends StatelessWidget {
                 ),
                 child: Container(color: Colors.transparent),
               ),
-            
+
             Center(
               child: Container(
                 width: 200,
@@ -2062,14 +2050,10 @@ class _PanelsPreview extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: Stack(
           children: [
-            
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [
-                    Colors.grey.shade300, 
-                    Colors.grey.shade600, 
-                  ],
+                  colors: [Colors.grey.shade300, Colors.grey.shade600],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
@@ -2077,7 +2061,6 @@ class _PanelsPreview extends StatelessWidget {
             ),
             Column(
               children: [
-                
                 if (theme.useGlassPanels)
                   ClipRect(
                     child: BackdropFilter(
@@ -2137,7 +2120,7 @@ class _PanelsPreview extends StatelessWidget {
                     ),
                   ),
                 const Spacer(),
-                
+
                 if (theme.useGlassPanels)
                   ClipRect(
                     child: BackdropFilter(

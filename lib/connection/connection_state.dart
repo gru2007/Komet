@@ -1,29 +1,20 @@
 import 'dart:async';
 
-
 enum ConnectionState {
-
   disconnected,
-
 
   connecting,
 
-
   connected,
-
 
   ready,
 
-
   reconnecting,
-
 
   error,
 
-
   disabled,
 }
-
 
 class ConnectionInfo {
   final ConnectionState state;
@@ -68,21 +59,16 @@ class ConnectionInfo {
     );
   }
 
-
   bool get isActive =>
       state == ConnectionState.ready || state == ConnectionState.connected;
 
-
   bool get canSendMessages => state == ConnectionState.ready;
-
 
   bool get isConnecting =>
       state == ConnectionState.connecting ||
       state == ConnectionState.reconnecting;
 
-
   bool get hasError => state == ConnectionState.error;
-
 
   bool get isDisconnected =>
       state == ConnectionState.disconnected ||
@@ -101,7 +87,6 @@ class ConnectionInfo {
   }
 }
 
-
 class ConnectionStateManager {
   static final ConnectionStateManager _instance =
       ConnectionStateManager._internal();
@@ -116,18 +101,13 @@ class ConnectionStateManager {
   final StreamController<ConnectionInfo> _stateController =
       StreamController<ConnectionInfo>.broadcast();
 
-
   ConnectionInfo get currentInfo => _currentInfo;
-
 
   Stream<ConnectionInfo> get stateStream => _stateController.stream;
 
-
   final List<ConnectionInfo> _stateHistory = [];
 
-
   List<ConnectionInfo> get stateHistory => List.unmodifiable(_stateHistory);
-
 
   void setState(
     ConnectionState newState, {
@@ -154,10 +134,8 @@ class ConnectionStateManager {
     _addToHistory(newInfo);
     _stateController.add(newInfo);
 
-
     _logStateChange(oldState, newState, message);
   }
-
 
   void updateMetadata(Map<String, dynamic> metadata) {
     final updatedInfo = _currentInfo.copyWith(
@@ -167,13 +145,11 @@ class ConnectionStateManager {
     _stateController.add(updatedInfo);
   }
 
-
   void updateReconnectDelay(Duration delay) {
     final updatedInfo = _currentInfo.copyWith(reconnectDelay: delay);
     _currentInfo = updatedInfo;
     _stateController.add(updatedInfo);
   }
-
 
   void updateLatency(int latencyMs) {
     final updatedInfo = _currentInfo.copyWith(latency: latencyMs);
@@ -181,11 +157,9 @@ class ConnectionStateManager {
     _stateController.add(updatedInfo);
   }
 
-
   Duration get timeInCurrentState {
     return DateTime.now().difference(_currentInfo.timestamp);
   }
-
 
   int get connectionAttempts {
     return _stateHistory
@@ -193,13 +167,11 @@ class ConnectionStateManager {
         .length;
   }
 
-
   int get errorCount {
     return _stateHistory
         .where((info) => info.state == ConnectionState.error)
         .length;
   }
-
 
   double get averageLatency {
     final latencies = _stateHistory
@@ -211,7 +183,6 @@ class ConnectionStateManager {
     return latencies.reduce((a, b) => a + b) / latencies.length;
   }
 
-
   Map<ConnectionState, int> get stateStatistics {
     final stats = <ConnectionState, int>{};
     for (final info in _stateHistory) {
@@ -220,17 +191,14 @@ class ConnectionStateManager {
     return stats;
   }
 
-
   List<ConnectionInfo> getLastStates(int count) {
     final start = _stateHistory.length - count;
     return _stateHistory.sublist(start < 0 ? 0 : start);
   }
 
-
   void clearHistory() {
     _stateHistory.clear();
   }
-
 
   void reset() {
     setState(ConnectionState.disconnected, message: 'Состояние сброшено');
@@ -239,7 +207,6 @@ class ConnectionStateManager {
 
   void _addToHistory(ConnectionInfo info) {
     _stateHistory.add(info);
-
 
     if (_stateHistory.length > 50) {
       _stateHistory.removeAt(0);

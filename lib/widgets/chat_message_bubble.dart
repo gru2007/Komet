@@ -40,12 +40,7 @@ bool isMobile =
     Platform.instance.operatingSystem.iOS ||
     Platform.instance.operatingSystem.android;
 
-enum MessageReadStatus {
-  sending, 
-  sent, 
-  read, 
-}
-
+enum MessageReadStatus { sending, sent, read }
 
 class FileDownloadProgressService {
   static final FileDownloadProgressService _instance =
@@ -56,22 +51,19 @@ class FileDownloadProgressService {
   final Map<String, ValueNotifier<double>> _progressNotifiers = {};
   bool _initialized = false;
 
-  
   Future<void> _ensureInitialized() async {
     if (_initialized) return;
 
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      
       final fileIdMap = prefs.getStringList('file_id_to_path_map') ?? [];
 
-      
       for (final mapping in fileIdMap) {
         final parts = mapping.split(':');
         if (parts.length >= 2) {
           final fileId = parts[0];
-          final filePath = parts.skip(1).join(':'); 
+          final filePath = parts.skip(1).join(':');
 
           final file = io.File(filePath);
           if (await file.exists()) {
@@ -87,12 +79,12 @@ class FileDownloadProgressService {
       _initialized = true;
     } catch (e) {
       print('Error initializing download status: $e');
-      _initialized = true; 
+      _initialized = true;
     }
   }
 
   ValueNotifier<double> getProgress(String fileId) {
-    _ensureInitialized(); 
+    _ensureInitialized();
     if (!_progressNotifiers.containsKey(fileId)) {
       _progressNotifiers[fileId] = ValueNotifier<double>(-1);
     }
@@ -121,52 +113,50 @@ Color _getUserColor(int userId, BuildContext context) {
 
   final List<Color> materialYouColors = isDark
       ? [
-          
-          const Color(0xFFEF5350), 
-          const Color(0xFFEC407A), 
-          const Color(0xFFAB47BC), 
-          const Color(0xFF7E57C2), 
-          const Color(0xFF5C6BC0), 
-          const Color(0xFF42A5F5), 
-          const Color(0xFF29B6F6), 
-          const Color(0xFF26C6DA), 
-          const Color(0xFF26A69A), 
-          const Color(0xFF66BB6A), 
-          const Color(0xFF9CCC65), 
-          const Color(0xFFD4E157), 
-          const Color(0xFFFFEB3B), 
-          const Color(0xFFFFCA28), 
-          const Color(0xFFFFA726), 
-          const Color(0xFFFF7043), 
-          const Color(0xFF8D6E63), 
-          const Color(0xFF78909C), 
-          const Color(0xFFB39DDB), 
-          const Color(0xFF80CBC4), 
-          const Color(0xFFC5E1A5), 
+          const Color(0xFFEF5350),
+          const Color(0xFFEC407A),
+          const Color(0xFFAB47BC),
+          const Color(0xFF7E57C2),
+          const Color(0xFF5C6BC0),
+          const Color(0xFF42A5F5),
+          const Color(0xFF29B6F6),
+          const Color(0xFF26C6DA),
+          const Color(0xFF26A69A),
+          const Color(0xFF66BB6A),
+          const Color(0xFF9CCC65),
+          const Color(0xFFD4E157),
+          const Color(0xFFFFEB3B),
+          const Color(0xFFFFCA28),
+          const Color(0xFFFFA726),
+          const Color(0xFFFF7043),
+          const Color(0xFF8D6E63),
+          const Color(0xFF78909C),
+          const Color(0xFFB39DDB),
+          const Color(0xFF80CBC4),
+          const Color(0xFFC5E1A5),
         ]
       : [
-          
-          const Color(0xFFF44336), 
-          const Color(0xFFE91E63), 
-          const Color(0xFF9C27B0), 
-          const Color(0xFF673AB7), 
-          const Color(0xFF3F51B5), 
-          const Color(0xFF2196F3), 
-          const Color(0xFF03A9F4), 
-          const Color(0xFF00BCD4), 
-          const Color(0xFF009688), 
-          const Color(0xFF4CAF50), 
-          const Color(0xFF8BC34A), 
-          const Color(0xFFCDDC39), 
-          const Color(0xFFFFEE58), 
-          const Color(0xFFFFC107), 
-          const Color(0xFFFF9800), 
-          const Color(0xFFFF5722), 
-          const Color(0xFF795548), 
-          const Color(0xFF607D8B), 
-          const Color(0xFF9575CD), 
-          const Color(0xFF4DB6AC), 
-          const Color(0xFFAED581), 
+          const Color(0xFFF44336),
+          const Color(0xFFE91E63),
+          const Color(0xFF9C27B0),
+          const Color(0xFF673AB7),
+          const Color(0xFF3F51B5),
+          const Color(0xFF2196F3),
+          const Color(0xFF03A9F4),
+          const Color(0xFF00BCD4),
+          const Color(0xFF009688),
+          const Color(0xFF4CAF50),
+          const Color(0xFF8BC34A),
+          const Color(0xFFCDDC39),
+          const Color(0xFFFFEE58),
+          const Color(0xFFFFC107),
+          const Color(0xFFFF9800),
+          const Color(0xFFFF5722),
+          const Color(0xFF795548),
+          const Color(0xFF607D8B),
+          const Color(0xFF9575CD),
+          const Color(0xFF4DB6AC),
+          const Color(0xFFAED581),
         ];
 
   final colorIndex = userId % materialYouColors.length;
@@ -187,7 +177,7 @@ enum _KometSegmentType { normal, colored, galaxy, pulse }
 class _KometSegment {
   final String text;
   final _KometSegmentType type;
-  final Color? color; 
+  final Color? color;
 
   _KometSegment(this.text, this.type, {this.color});
 }
@@ -402,7 +392,7 @@ class ChatMessageBubble extends StatelessWidget {
   final int? chatId;
   final bool isEncryptionPasswordSet;
   final String? decryptedText;
-  
+
   final bool isReactionSending;
 
   const ChatMessageBubble({
@@ -434,8 +424,7 @@ class ChatMessageBubble extends StatelessWidget {
     this.isFirstInGroup = false,
     this.isLastInGroup = false,
     this.isGrouped = false,
-    this.avatarVerticalOffset =
-        -35.0, 
+    this.avatarVerticalOffset = -35.0,
     this.chatId,
     this.isEncryptionPasswordSet = false,
     this.decryptedText,
@@ -452,14 +441,13 @@ class ChatMessageBubble extends StatelessWidget {
   }
 
   EdgeInsets _getMessageMargin(BuildContext context) {
-    
     if (isLastInGroup) {
-      return const EdgeInsets.only(bottom: 6); 
+      return const EdgeInsets.only(bottom: 6);
     }
     if (isFirstInGroup) {
-      return const EdgeInsets.only(bottom: 2); 
+      return const EdgeInsets.only(bottom: 2);
     }
-    return const EdgeInsets.only(bottom: 2); 
+    return const EdgeInsets.only(bottom: 2);
   }
 
   Widget _buildForwardedMessage(
@@ -507,7 +495,6 @@ class ChatMessageBubble extends StatelessWidget {
       }
     }
 
-    
     int? originalSenderId;
     if (forwardedMessage['sender'] is int) {
       originalSenderId = forwardedMessage['sender'] as int;
@@ -542,24 +529,19 @@ class ChatMessageBubble extends StatelessWidget {
       onTap: handleTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        
-        padding: const EdgeInsets.symmetric(
-          horizontal: 8,
-          vertical: 4,
-        ), 
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: textColor.withOpacity(0.08 * messageTextOpacity),
           border: Border(
             left: BorderSide(
               color: textColor.withOpacity(0.3 * messageTextOpacity),
-              width: 3, 
+              width: 3,
             ),
           ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -636,7 +618,6 @@ class ChatMessageBubble extends StatelessWidget {
             ),
             const SizedBox(height: 6),
 
-            
             if (attaches.isNotEmpty) ...[
               ..._buildCallsWithCaption(
                 context,
@@ -691,21 +672,18 @@ class ChatMessageBubble extends StatelessWidget {
                     ? ChatEncryptionService.getConfigForChat(chatId!)
                     : Future.value(null),
                 builder: (context, snapshot) {
-                  
                   final elements =
                       (forwardedMessage['elements'] as List?)
                           ?.map((e) => (e as Map).cast<String, dynamic>())
                           .toList() ??
                       [];
 
-                  
                   String displayText = text;
                   bool isEncrypted = ChatEncryptionService.isEncryptedMessage(
                     text,
                   );
                   String? decryptedForwardedText;
 
-                  
                   if (isEncrypted &&
                       snapshot.hasData &&
                       snapshot.data != null) {
@@ -719,7 +697,6 @@ class ChatMessageBubble extends StatelessWidget {
                     }
                   }
 
-                  
                   final defaultTextStyle = TextStyle(
                     color: textColor.withOpacity(0.9 * messageTextOpacity),
                     fontSize: 14,
@@ -731,7 +708,6 @@ class ChatMessageBubble extends StatelessWidget {
                     decoration: TextDecoration.underline,
                   );
 
-                  
                   Future<void> onOpenLink(LinkableElement link) async {
                     final uri = Uri.parse(link.url);
                     if (await canLaunchUrl(uri)) {
@@ -752,7 +728,6 @@ class ChatMessageBubble extends StatelessWidget {
                     }
                   }
 
-                  
                   if (isEncrypted && !isEncryptionPasswordSet) {
                     return Text(
                       'это зашифрованное сообщение, для его отображения поставьте пароль шифрования на чат.',
@@ -779,7 +754,6 @@ class ChatMessageBubble extends StatelessWidget {
                     );
                   }
 
-                  
                   if (decryptedForwardedText != null) {
                     return Wrap(
                       crossAxisAlignment: WrapCrossAlignment.center,
@@ -805,7 +779,6 @@ class ChatMessageBubble extends StatelessWidget {
                     );
                   }
 
-                  
                   return _buildMixedMessageContent(
                     displayText,
                     defaultTextStyle,
@@ -978,51 +951,37 @@ class ChatMessageBubble extends StatelessWidget {
           (isDarkMode ? const Color(0xFF90CAF9) : const Color(0xFF1976D2));
     }
 
-    
     final textLength = replyText.length;
-    final minWidth = 120.0; 
+    final minWidth = 120.0;
 
-    
     double adaptiveWidth = minWidth;
     if (textLength > 0) {
-      
       adaptiveWidth = (textLength * 8.0 + 32).clamp(minWidth, double.infinity);
     }
 
     return GestureDetector(
       onTap: () {
-        
         if (replyMessageId != null && onReplyTap != null) {
           onReplyTap!(replyMessageId);
         }
       },
       child: Container(
         constraints: BoxConstraints(minWidth: minWidth, minHeight: 40),
-        width: adaptiveWidth, 
+        width: adaptiveWidth,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: isDarkMode
-              ? replyAccentColor.withOpacity(
-                  0.15,
-                ) 
-              : replyAccentColor.withOpacity(
-                  0.08,
-                ), 
+              ? replyAccentColor.withOpacity(0.15)
+              : replyAccentColor.withOpacity(0.08),
           borderRadius: BorderRadius.circular(
             (isUltraOptimized ? 4 : messageBorderRadius) * 0.3,
           ),
-          border: Border(
-            left: BorderSide(
-              color: replyAccentColor, 
-              width: 2,
-            ),
-          ),
+          border: Border(left: BorderSide(color: replyAccentColor, width: 2)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
           children: [
-            
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1046,7 +1005,7 @@ class ChatMessageBubble extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 2),
-            
+
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -1063,14 +1022,13 @@ class ChatMessageBubble extends StatelessWidget {
       ),
     );
   }
-   
 
   void _showMessageContextMenu(BuildContext context, Offset tapPosition) {
     final hasUserReaction = message.reactionInfo?['yourReaction'] != null;
 
     showDialog(
       context: context,
-      barrierColor: Colors.transparent, 
+      barrierColor: Colors.transparent,
       builder: (context) {
         return _MessageContextMenu(
           message: message,
@@ -1102,9 +1060,8 @@ class ChatMessageBubble extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    
     return Padding(
-      padding: const EdgeInsets.only(top: 0.0), 
+      padding: const EdgeInsets.only(top: 0.0),
       child: Wrap(
         spacing: 4.0,
         runSpacing: 4.0,
@@ -1117,10 +1074,8 @@ class ChatMessageBubble extends StatelessWidget {
           return GestureDetector(
             onTap: () {
               if (isUserReaction) {
-                
                 onRemoveReaction?.call();
               } else {
-                
                 onReaction?.call(emoji);
               }
             },
@@ -1217,7 +1172,6 @@ class ChatMessageBubble extends StatelessWidget {
     final messageShadowIntensity = themeProvider.messageShadowIntensity;
     final messageBorderRadius = themeProvider.messageBorderRadius;
 
-    
     final isFileOnly =
         message.attaches.isNotEmpty &&
         message.attaches.every((a) => a['_type'] == 'FILE') &&
@@ -1238,8 +1192,6 @@ class ChatMessageBubble extends StatelessWidget {
       context,
     );
 
-    
-    
     BoxDecoration bubbleDecoration;
     if (isFileOnly) {
       bubbleDecoration = const BoxDecoration(color: Colors.transparent);
@@ -1307,7 +1259,6 @@ class ChatMessageBubble extends StatelessWidget {
 
     if (onReaction != null || (isMe && (onEdit != null || onDelete != null))) {
       if (isMobile) {
-        
         messageContent = _LongPressContextMenuWrapper(
           child: messageContent,
           onShowMenu: (offset) => _showMessageContextMenu(context, offset),
@@ -1356,54 +1307,47 @@ class ChatMessageBubble extends StatelessWidget {
     List<Map<String, dynamic>> attaches,
     Color textColor,
   ) {
-    
     final keyboardAttach = attaches.firstWhere(
       (a) => a['_type'] == 'INLINE_KEYBOARD',
-      orElse: () =>
-          <String, dynamic>{}, 
+      orElse: () => <String, dynamic>{},
     );
 
     if (keyboardAttach.isEmpty) {
-      return []; 
+      return [];
     }
 
-    
     final keyboardData = keyboardAttach['keyboard'] as Map<String, dynamic>?;
     final buttonRows = keyboardData?['buttons'] as List<dynamic>?;
 
     if (buttonRows == null || buttonRows.isEmpty) {
-      return []; 
+      return [];
     }
 
     final List<Widget> rows = [];
 
-    
     for (final row in buttonRows) {
       if (row is List<dynamic> && row.isNotEmpty) {
         final List<Widget> buttonsInRow = [];
 
-        
         for (final buttonData in row) {
           if (buttonData is Map<String, dynamic>) {
             final String? text = buttonData['text'] as String?;
             final String? type = buttonData['type'] as String?;
             final String? url = buttonData['url'] as String?;
 
-            
             if (text != null && type == 'LINK' && url != null) {
               buttonsInRow.add(
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 2.0),
                     child: FilledButton(
-                      onPressed: () =>
-                          _launchURL(context, url), 
+                      onPressed: () => _launchURL(context, url),
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
                           vertical: 12,
                         ),
-                        
+
                         backgroundColor: textColor.withOpacity(0.1),
                         foregroundColor: textColor.withOpacity(0.9),
                       ),
@@ -1420,7 +1364,6 @@ class ChatMessageBubble extends StatelessWidget {
           }
         }
 
-        
         if (buttonsInRow.isNotEmpty) {
           rows.add(
             Padding(
@@ -1435,7 +1378,6 @@ class ChatMessageBubble extends StatelessWidget {
       }
     }
 
-    
     if (rows.isNotEmpty) {
       return [
         Padding(
@@ -1448,7 +1390,6 @@ class ChatMessageBubble extends StatelessWidget {
     return [];
   }
 
-  
   Future<void> _launchURL(BuildContext context, String url) async {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
@@ -1495,11 +1436,9 @@ class ChatMessageBubble extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             if (!isMe && isGroupChat && !isChannel) ...[
-              
               SizedBox(
                 width: 40,
-                child:
-                    isLastInGroup 
+                child: isLastInGroup
                     ? Transform.translate(
                         offset: Offset(0, avatarVerticalOffset),
                         child: _buildSenderAvatar(),
@@ -1512,10 +1451,10 @@ class ChatMessageBubble extends StatelessWidget {
                 constraints: BoxConstraints(
                   maxWidth: MediaQuery.of(context).size.width * 0.65,
                 ),
-                
+
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
-                  vertical: 4.5, 
+                  vertical: 4.5,
                 ),
                 margin: _getMessageMargin(context),
                 decoration: bubbleDecoration,
@@ -1525,14 +1464,9 @@ class ChatMessageBubble extends StatelessWidget {
                       : CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    
-                    
                     if (isGroupChat && !isMe && senderName != null)
                       Padding(
-                        padding: const EdgeInsets.only(
-                          left: 2.0,
-                          bottom: 0.0,
-                        ), 
+                        padding: const EdgeInsets.only(left: 2.0, bottom: 0.0),
                         child: Text(
                           senderName!,
                           style: TextStyle(
@@ -1548,7 +1482,7 @@ class ChatMessageBubble extends StatelessWidget {
                         ),
                       ),
                     if (isGroupChat && !isMe && senderName != null)
-                      const SizedBox(height: 2), 
+                      const SizedBox(height: 2),
 
                     Text(
                       'Это сообщение не поддерживается в Вашей версии Komet. '
@@ -1564,8 +1498,7 @@ class ChatMessageBubble extends StatelessWidget {
                       textAlign: TextAlign.left,
                     ),
 
-                    
-                    const SizedBox(height: 0.0), 
+                    const SizedBox(height: 0.0),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1675,11 +1608,7 @@ class ChatMessageBubble extends StatelessWidget {
                   ),
                 ),
                 Padding(
-                  
-                  padding: const EdgeInsets.only(
-                    top: 0,
-                    right: 6,
-                  ), 
+                  padding: const EdgeInsets.only(top: 0, right: 6),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1731,12 +1660,8 @@ class ChatMessageBubble extends StatelessWidget {
         ? const Color(0xFF9bb5c7)
         : const Color(0xFF6b7280);
 
-    
     Widget videoContent = Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12.0,
-        vertical: 6.0,
-      ), 
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
       child: Column(
         crossAxisAlignment: isMe
             ? CrossAxisAlignment.end
@@ -1762,11 +1687,7 @@ class ChatMessageBubble extends StatelessWidget {
                       lowQualityBytes: previewBytes,
                     ),
                   Padding(
-                    
-                    padding: const EdgeInsets.only(
-                      top: 2,
-                      right: 6,
-                    ), 
+                    padding: const EdgeInsets.only(top: 2, right: 6),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1787,14 +1708,11 @@ class ChatMessageBubble extends StatelessWidget {
 
     if (onReaction != null || (isMe && (onEdit != null || onDelete != null))) {
       if (isMobile) {
-        
-        
         videoContent = _LongPressContextMenuWrapper(
           child: videoContent,
           onShowMenu: (offset) => _showMessageContextMenu(context, offset),
         );
       } else {
-        
         videoContent = GestureDetector(
           onSecondaryTapDown: (TapDownDetails details) {
             _showMessageContextMenu(context, details.globalPosition);
@@ -1831,12 +1749,8 @@ class ChatMessageBubble extends StatelessWidget {
         ? const Color(0xFF9bb5c7)
         : const Color(0xFF6b7280);
 
-    
     Widget photoContent = Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12.0,
-        vertical: 6.0,
-      ), 
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
       child: Column(
         crossAxisAlignment: isMe
             ? CrossAxisAlignment.end
@@ -1871,11 +1785,7 @@ class ChatMessageBubble extends StatelessWidget {
                     isUltraOptimized,
                   ),
                   Padding(
-                    
-                    padding: const EdgeInsets.only(
-                      top: 2,
-                      right: 6,
-                    ), 
+                    padding: const EdgeInsets.only(top: 2, right: 6),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1896,7 +1806,6 @@ class ChatMessageBubble extends StatelessWidget {
 
     if (onReaction != null || (isMe && (onEdit != null || onDelete != null))) {
       if (isMobile) {
-        
         photoContent = _LongPressContextMenuWrapper(
           child: photoContent,
           onShowMenu: (offset) => _showMessageContextMenu(context, offset),
@@ -1923,12 +1832,8 @@ class ChatMessageBubble extends StatelessWidget {
         ? const Color(0xFF9bb5c7)
         : const Color(0xFF6b7280);
 
-    
     Widget videoContent = Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12.0,
-        vertical: 6.0,
-      ), 
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
       child: Column(
         crossAxisAlignment: isMe
             ? CrossAxisAlignment.end
@@ -2014,11 +1919,7 @@ class ChatMessageBubble extends StatelessWidget {
                           ),
                         if (index == videos.length - 1)
                           Padding(
-                            
-                            padding: const EdgeInsets.only(
-                              top: 2,
-                              right: 6,
-                            ), 
+                            padding: const EdgeInsets.only(top: 2, right: 6),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -2045,8 +1946,6 @@ class ChatMessageBubble extends StatelessWidget {
 
     if (onReaction != null || (isMe && (onEdit != null || onDelete != null))) {
       if (isMobile) {
-        
-        
         videoContent = _LongPressContextMenuWrapper(
           child: videoContent,
           onShowMenu: (offset) => _showMessageContextMenu(context, offset),
@@ -2121,7 +2020,6 @@ class ChatMessageBubble extends StatelessWidget {
 
     if (photos.isEmpty) return widgets;
 
-    
     widgets.add(
       _buildSmartPhotoGroup(context, photos, textColor, isUltraOptimized),
     );
@@ -2144,14 +2042,11 @@ class ChatMessageBubble extends StatelessWidget {
     if (videos.isEmpty) return widgets;
 
     for (final video in videos) {
-      
       final videoId = video['videoId'] as int?;
       final videoType = video['videoType'] as int?;
-      final previewData = video['previewData'] as String?; 
-      final thumbnailUrl =
-          video['url'] ?? video['baseUrl'] as String?; 
+      final previewData = video['previewData'] as String?;
+      final thumbnailUrl = video['url'] ?? video['baseUrl'] as String?;
 
-      
       Uint8List? previewBytes;
       if (previewData != null && previewData.startsWith('data:')) {
         final idx = previewData.indexOf('base64,');
@@ -2163,7 +2058,6 @@ class ChatMessageBubble extends StatelessWidget {
         }
       }
 
-      
       String? highQualityThumbnailUrl;
       if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
         highQualityThumbnailUrl = thumbnailUrl;
@@ -2176,7 +2070,6 @@ class ChatMessageBubble extends StatelessWidget {
         }
       }
 
-      
       if (videoId != null && chatId != null) {
         widgets.add(
           Padding(
@@ -2195,7 +2088,6 @@ class ChatMessageBubble extends StatelessWidget {
           ),
         );
       } else {
-        
         widgets.add(
           Container(
             padding: const EdgeInsets.all(16),
@@ -2247,7 +2139,6 @@ class ChatMessageBubble extends StatelessWidget {
     Color textColor,
     bool isUltraOptimized,
   ) {
-    
     final stickerSize = 170.0;
 
     return ConstrainedBox(
@@ -2312,10 +2203,8 @@ class ChatMessageBubble extends StatelessWidget {
     IconData callIcon;
     Color callColor;
 
-    
     switch (hangupType) {
       case 'HUNGUP':
-        
         final minutes = duration ~/ 60000;
         final seconds = (duration % 60000) ~/ 1000;
         final durationText = minutes > 0
@@ -2329,7 +2218,6 @@ class ChatMessageBubble extends StatelessWidget {
         break;
 
       case 'MISSED':
-        
         final callTypeText = callType == 'VIDEO'
             ? 'Пропущенный видеозвонок'
             : 'Пропущенный звонок';
@@ -2339,7 +2227,6 @@ class ChatMessageBubble extends StatelessWidget {
         break;
 
       case 'CANCELED':
-        
         final callTypeText = callType == 'VIDEO'
             ? 'Видеозвонок отменен'
             : 'Звонок отменен';
@@ -2349,7 +2236,6 @@ class ChatMessageBubble extends StatelessWidget {
         break;
 
       case 'REJECTED':
-        
         final callTypeText = callType == 'VIDEO'
             ? 'Видеозвонок отклонен'
             : 'Звонок отклонен';
@@ -2359,7 +2245,6 @@ class ChatMessageBubble extends StatelessWidget {
         break;
 
       default:
-        
         callText = callType == 'VIDEO' ? 'Видеозвонок' : 'Звонок';
         callIcon = callType == 'VIDEO' ? Icons.videocam : Icons.call;
         callColor = textColor.withOpacity(0.6);
@@ -2376,7 +2261,6 @@ class ChatMessageBubble extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            
             Container(
               width: 48,
               height: 48,
@@ -2387,7 +2271,7 @@ class ChatMessageBubble extends StatelessWidget {
               child: Icon(callIcon, color: callColor, size: 24),
             ),
             const SizedBox(width: 12),
-            
+
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2472,14 +2356,11 @@ class ChatMessageBubble extends StatelessWidget {
   ) {
     final borderRadius = BorderRadius.circular(isUltraOptimized ? 8 : 12);
 
-    
     final extension = _getFileExtension(fileName);
     final iconData = _getFileIcon(extension);
 
-    
     final sizeStr = _formatFileSize(fileSize);
 
-    
     final fileId = fileData['fileId'] as int?;
     final token = fileData['token'] as String?;
 
@@ -2496,7 +2377,6 @@ class ChatMessageBubble extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              
               Container(
                 width: 48,
                 height: 48,
@@ -2511,7 +2391,7 @@ class ChatMessageBubble extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              
+
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2534,7 +2414,6 @@ class ChatMessageBubble extends StatelessWidget {
                             .getProgress(fileId.toString()),
                         builder: (context, progress, child) {
                           if (progress < 0) {
-                            
                             return Text(
                               sizeStr,
                               style: TextStyle(
@@ -2543,7 +2422,6 @@ class ChatMessageBubble extends StatelessWidget {
                               ),
                             );
                           } else if (progress < 1.0) {
-                            
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -2563,7 +2441,6 @@ class ChatMessageBubble extends StatelessWidget {
                               ],
                             );
                           } else {
-                            
                             return Row(
                               children: [
                                 Icon(
@@ -2595,7 +2472,7 @@ class ChatMessageBubble extends StatelessWidget {
                   ],
                 ),
               ),
-              
+
               if (fileId != null)
                 ValueListenableBuilder<double>(
                   valueListenable: FileDownloadProgressService().getProgress(
@@ -3002,7 +2879,7 @@ class ChatMessageBubble extends StatelessWidget {
 
                           final musicPlayer = MusicPlayerService();
                           await musicPlayer.playTrack(track);
-                          
+
                           BottomSheetMusicPlayer.isExpandedNotifier.value =
                               true;
                           BottomSheetMusicPlayer.isFullscreenNotifier.value =
@@ -3137,7 +3014,6 @@ class ChatMessageBubble extends StatelessWidget {
     final wave = audioData['wave'] as String?;
     final audioId = audioData['audioId'] as int?;
 
-    
     final durationSeconds = (duration / 1000).round();
     final minutes = durationSeconds ~/ 60;
     final seconds = durationSeconds % 60;
@@ -3163,7 +3039,6 @@ class ChatMessageBubble extends StatelessWidget {
     int? chatId, {
     Map<String, dynamic>? preview,
   }) async {
-    
     if (fileId == null) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3183,27 +3058,23 @@ class ChatMessageBubble extends StatelessWidget {
       final fileIdMap = prefs.getStringList('file_id_to_path_map') ?? [];
       final fileIdString = fileId.toString();
 
-      
       final mapping = fileIdMap.firstWhere(
         (m) => m.startsWith('$fileIdString:'),
-        orElse: () => '', 
+        orElse: () => '',
       );
 
       if (mapping.isNotEmpty) {
-        
         final filePath = mapping.substring(fileIdString.length + 1);
         final file = io.File(filePath);
 
-        
         if (await file.exists()) {
           print(
             'Файл $fileName (ID: $fileId) найден локально: $filePath. Открываем...',
           );
-          
+
           final result = await OpenFile.open(filePath);
 
           if (result.type != ResultType.done && context.mounted) {
-            
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Не удалось открыть файл: ${result.message}'),
@@ -3211,9 +3082,8 @@ class ChatMessageBubble extends StatelessWidget {
               ),
             );
           }
-          return; 
+          return;
         } else {
-          
           print(
             'Файл $fileName (ID: $fileId) был в SharedPreferences, но удален. Начинаем загрузку.',
           );
@@ -3223,10 +3093,8 @@ class ChatMessageBubble extends StatelessWidget {
       }
     } catch (e) {
       print('Ошибка при проверке локального файла: $e. Продолжаем загрузку...');
-      
     }
 
-    
     print(
       'Файл $fileName (ID: $fileId) не найден. Запрашиваем URL у сервера...',
     );
@@ -3258,10 +3126,8 @@ class ChatMessageBubble extends StatelessWidget {
     }
 
     try {
-      
       final messageId = message.id;
 
-      
       final seq = ApiService.instance.sendRawRequest(88, {
         "fileId": fileId,
         "chatId": chatId,
@@ -3280,7 +3146,6 @@ class ChatMessageBubble extends StatelessWidget {
         return;
       }
 
-      
       final response = await ApiService.instance.messages
           .firstWhere(
             (msg) => msg['seq'] == seq && msg['opcode'] == 88,
@@ -3302,7 +3167,6 @@ class ChatMessageBubble extends StatelessWidget {
         throw Exception('Не получена ссылка на файл');
       }
 
-      
       await _downloadFile(
         downloadUrl,
         fileName,
@@ -3335,7 +3199,6 @@ class ChatMessageBubble extends StatelessWidget {
     String? token,
     int? chatId,
   }) async {
-    
     _startBackgroundDownload(
       url,
       fileName,
@@ -3347,7 +3210,6 @@ class ChatMessageBubble extends StatelessWidget {
       chatId: chatId,
     );
 
-    
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -3369,21 +3231,17 @@ class ChatMessageBubble extends StatelessWidget {
     int? chatId,
   }) async {
     try {
-      
       FileDownloadProgressService().updateProgress(fileId, 0.0);
 
-      
       final downloadDir = await DownloadPathHelper.getDownloadDirectory();
 
       if (downloadDir == null || !await downloadDir.exists()) {
         throw Exception('Downloads directory not found');
       }
 
-      
       final filePath = '${downloadDir.path}/$fileName';
       final file = io.File(filePath);
 
-      
       final request = http.Request('GET', Uri.parse(url));
       final streamedResponse = await request.send();
 
@@ -3401,21 +3259,17 @@ class ChatMessageBubble extends StatelessWidget {
         bytes.addAll(chunk);
         received += chunk.length;
 
-        
         if (contentLength > 0) {
           final progress = received / contentLength;
           FileDownloadProgressService().updateProgress(fileId, progress);
         }
       }
 
-      
       final data = Uint8List.fromList(bytes);
       await file.writeAsBytes(data);
 
-      
       FileDownloadProgressService().updateProgress(fileId, 1.0);
 
-      
       final prefs = await SharedPreferences.getInstance();
       final List<String> downloadedFiles =
           prefs.getStringList('downloaded_files') ?? [];
@@ -3424,7 +3278,6 @@ class ChatMessageBubble extends StatelessWidget {
         await prefs.setStringList('downloaded_files', downloadedFiles);
       }
 
-      
       final fileIdMap = prefs.getStringList('file_id_to_path_map') ?? [];
       final mappingKey = '$fileId:${file.path}';
       if (!fileIdMap.contains(mappingKey)) {
@@ -3432,7 +3285,6 @@ class ChatMessageBubble extends StatelessWidget {
         await prefs.setStringList('file_id_to_path_map', fileIdMap);
       }
 
-      
       if (preview != null && fileIdInt != null) {
         final extension = fileName.split('.').last.toLowerCase();
         if (['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg'].contains(extension)) {
@@ -3466,7 +3318,6 @@ class ChatMessageBubble extends StatelessWidget {
         }
       }
 
-      
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -3477,7 +3328,6 @@ class ChatMessageBubble extends StatelessWidget {
         );
       }
     } catch (e) {
-      
       FileDownloadProgressService().clearProgress(fileId);
 
       if (context.mounted) {
@@ -3500,11 +3350,9 @@ class ChatMessageBubble extends StatelessWidget {
   ) {
     final borderRadius = BorderRadius.circular(isUltraOptimized ? 4 : 12);
 
-    
-    
     final screenWidth = MediaQuery.of(context).size.width;
     final maxMessageWidth = screenWidth * 0.65;
-    
+
     final maxPhotoWidth = maxMessageWidth - 24;
 
     switch (photos.length) {
@@ -3597,7 +3445,6 @@ class ChatMessageBubble extends StatelessWidget {
       constraints: BoxConstraints(maxHeight: 180, maxWidth: maxWidth),
       child: Row(
         children: [
-          
           Expanded(
             flex: 2,
             child: RepaintBoundary(
@@ -3611,7 +3458,7 @@ class ChatMessageBubble extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 2),
-          
+
           Expanded(
             flex: 1,
             child: Column(
@@ -3657,7 +3504,6 @@ class ChatMessageBubble extends StatelessWidget {
       constraints: BoxConstraints(maxHeight: 180, maxWidth: maxWidth),
       child: Column(
         children: [
-          
           Expanded(
             child: Row(
               children: [
@@ -3688,7 +3534,7 @@ class ChatMessageBubble extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
-          
+
           Expanded(
             child: Row(
               children: [
@@ -3729,9 +3575,7 @@ class ChatMessageBubble extends StatelessWidget {
     BorderRadius borderRadius,
     double maxWidth,
   ) {
-    
-    
-    const double rowHeight = 89.0; 
+    const double rowHeight = 89.0;
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: 180, maxWidth: maxWidth),
       child: Column(
@@ -3874,16 +3718,14 @@ class ChatMessageBubble extends StatelessWidget {
       child = _imagePlaceholder();
     }
 
-    
     Navigator.of(context).push(
       PageRouteBuilder(
-        opaque: false, 
+        opaque: false,
         barrierColor: Colors.black,
         pageBuilder: (BuildContext context, _, __) {
-          
           return FullScreenPhotoViewer(imageChild: child, attach: attach);
         },
-        
+
         transitionsBuilder: (_, animation, __, page) {
           return FadeTransition(opacity: animation, child: page);
         },
@@ -3896,7 +3738,6 @@ class ChatMessageBubble extends StatelessWidget {
     List<Map<String, dynamic>> photos,
     int initialIndex,
   ) {
-    
     Navigator.of(context).push(
       PageRouteBuilder(
         opaque: false,
@@ -3915,8 +3756,6 @@ class ChatMessageBubble extends StatelessWidget {
   }
 
   Widget _buildPhotoWidget(BuildContext context, Map<String, dynamic> attach) {
-    
-    
     Uint8List? previewBytes;
     final preview = attach['previewData'];
     if (preview is String && preview.startsWith('data:')) {
@@ -3925,30 +3764,24 @@ class ChatMessageBubble extends StatelessWidget {
         final b64 = preview.substring(idx + 7);
         try {
           previewBytes = base64Decode(b64);
-        } catch (_) {
-          
-        }
+        } catch (_) {}
       }
     }
 
     final url = attach['url'] ?? attach['baseUrl'];
     if (url is String && url.isNotEmpty) {
-      
       if (url.startsWith('file://')) {
         final path = url.replaceFirst('file://', '');
         return Image.file(
           File(path),
           fit: BoxFit.cover,
           width: 220,
-          filterQuality:
-              FilterQuality.medium, 
+          filterQuality: FilterQuality.medium,
           gaplessPlayback: true,
           errorBuilder: (context, _, __) => _imagePlaceholder(),
         );
       }
 
-      
-      
       String previewQualityUrl = url;
       if (!url.contains('?')) {
         previewQualityUrl = '$url?size=medium&quality=high&format=jpeg';
@@ -3960,12 +3793,10 @@ class ChatMessageBubble extends StatelessWidget {
       final optimize =
           themeProvider.optimizeChats || themeProvider.ultraOptimizeChats;
 
-      
       return _ProgressiveNetworkImage(
-        key: ValueKey(previewQualityUrl), 
-        url: previewQualityUrl, 
-        previewBytes:
-            previewBytes, 
+        key: ValueKey(previewQualityUrl),
+        url: previewQualityUrl,
+        previewBytes: previewBytes,
         width: 220,
         height: 160,
         fit: BoxFit.cover,
@@ -3974,12 +3805,10 @@ class ChatMessageBubble extends StatelessWidget {
       );
     }
 
-    
     if (previewBytes != null) {
       return Image.memory(previewBytes, fit: BoxFit.cover, width: 180);
     }
 
-    
     return _imagePlaceholder();
   }
 
@@ -3992,8 +3821,6 @@ class ChatMessageBubble extends StatelessWidget {
       child: const Icon(Icons.image_outlined, color: Colors.black38),
     );
   }
-
-  
 
   Color _getBubbleColor(
     bool isMe,
@@ -4041,12 +3868,9 @@ class ChatMessageBubble extends StatelessWidget {
           cursor: SystemMouseCursors.click,
           child: GestureDetector(
             onTap: onSenderNameTap,
-            
+
             child: Padding(
-              padding: const EdgeInsets.only(
-                left: 2.0,
-                bottom: 0.0,
-              ), 
+              padding: const EdgeInsets.only(left: 2.0, bottom: 0.0),
               child: Text(
                 senderName!,
                 style: TextStyle(
@@ -4063,9 +3887,8 @@ class ChatMessageBubble extends StatelessWidget {
             ),
           ),
         ),
-      
-      if (isGroupChat && !isMe && senderName != null)
-        const SizedBox(height: 2), 
+
+      if (isGroupChat && !isMe && senderName != null) const SizedBox(height: 2),
       if (message.isForwarded && message.link != null) ...[
         if (message.link is Map<String, dynamic>)
           _buildForwardedMessage(
@@ -4324,18 +4147,15 @@ class ChatMessageBubble extends StatelessWidget {
     ];
   }
 
-  
   List<_KometSegment> _parseMixedMessageSegments(String text) {
     final segments = <_KometSegment>[];
     int index = 0;
 
     while (index < text.length) {
-      
       int nextPulse = text.indexOf("komet.cosmetic.pulse#", index);
       int nextGalaxy = text.indexOf("komet.cosmetic.galaxy'", index);
       int nextColor = text.indexOf("komet.color_", index);
 
-      
       int nextMarker = text.length;
       String? markerType;
       if (nextPulse != -1 && nextPulse < nextMarker) {
@@ -4351,7 +4171,6 @@ class ChatMessageBubble extends StatelessWidget {
         markerType = "color";
       }
 
-      
       if (markerType == null) {
         if (index < text.length) {
           segments.add(
@@ -4361,7 +4180,6 @@ class ChatMessageBubble extends StatelessWidget {
         break;
       }
 
-      
       if (nextMarker > index) {
         segments.add(
           _KometSegment(
@@ -4371,7 +4189,6 @@ class ChatMessageBubble extends StatelessWidget {
         );
       }
 
-      
       if (markerType == "pulse") {
         const prefix = "komet.cosmetic.pulse#";
         final afterHash = text.substring(nextMarker + prefix.length);
@@ -4410,7 +4227,7 @@ class ChatMessageBubble extends StatelessWidget {
           index = quoteIndex + 1;
           continue;
         }
-        
+
         segments.add(
           _KometSegment(
             text.substring(nextMarker, textStart + 10),
@@ -4440,7 +4257,7 @@ class ChatMessageBubble extends StatelessWidget {
             continue;
           }
         }
-        
+
         segments.add(
           _KometSegment(
             text.substring(nextMarker, colorStart + 10),
@@ -4454,7 +4271,6 @@ class ChatMessageBubble extends StatelessWidget {
     return segments;
   }
 
-  
   Widget _buildMixedMessageContent(
     String text,
     TextStyle baseStyle,
@@ -4488,7 +4304,6 @@ class ChatMessageBubble extends StatelessWidget {
           case _KometSegmentType.galaxy:
             return _GalaxyAnimatedText(text: seg.text);
           case _KometSegmentType.pulse:
-            
             final hexStr = seg.color!.value
                 .toRadixString(16)
                 .padLeft(8, '0')
@@ -4502,14 +4317,11 @@ class ChatMessageBubble extends StatelessWidget {
     );
   }
 
-  
-  
   Widget _buildKometColorRichText(String rawText, TextStyle baseStyle) {
     final segments = _parseKometColorSegments(rawText, baseStyle.color);
 
-    return RichText(
-      textAlign: TextAlign.left,
-      text: TextSpan(
+    return Text.rich(
+      TextSpan(
         style: baseStyle,
         children: segments
             .map(
@@ -4522,10 +4334,10 @@ class ChatMessageBubble extends StatelessWidget {
             )
             .toList(),
       ),
+      textAlign: TextAlign.left,
     );
   }
 
-  
   Widget _buildFormattedRichText(
     String text,
     TextStyle baseStyle,
@@ -4591,9 +4403,9 @@ class ChatMessageBubble extends StatelessWidget {
       start = end;
     }
 
-    return RichText(
+    return Text.rich(
+      TextSpan(children: spans, style: baseStyle),
       textAlign: TextAlign.left,
-      text: TextSpan(children: spans, style: baseStyle),
     );
   }
 
@@ -4619,7 +4431,6 @@ class ChatMessageBubble extends StatelessWidget {
       final colorStart = start + marker.length;
       final firstQuote = text.indexOf("'", colorStart);
       if (firstQuote == -1) {
-        
         segments.add(_KometColoredSegment(text.substring(start), null));
         break;
       }
@@ -4706,22 +4517,39 @@ class ChatMessageBubble extends StatelessWidget {
     BoxDecoration? decoration,
     List<Widget> children,
   ) {
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: children,
+    );
+
     return Container(
       constraints: BoxConstraints(
         maxWidth: MediaQuery.of(context).size.width * 0.65,
       ),
-      
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 4.5,
-      ), 
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4.5),
       margin: _getMessageMargin(context),
       decoration: decoration,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: children,
-      ),
+      child: isMobile
+          ? SelectionArea(
+              contextMenuBuilder: (context, selectableRegionState) {
+                return AdaptiveTextSelectionToolbar.buttonItems(
+                  anchors: selectableRegionState.contextMenuAnchors,
+                  buttonItems: [
+                    ContextMenuButtonItem(
+                      label: 'Скопировать',
+                      onPressed: () {
+                        selectableRegionState.copySelection(
+                          SelectionChangedCause.tap,
+                        );
+                      },
+                    ),
+                  ],
+                );
+              },
+              child: content,
+            )
+          : SelectionArea(child: content),
     );
   }
 
@@ -4759,10 +4587,6 @@ class ChatMessageBubble extends StatelessWidget {
   }
 }
 
-
-
-
-
 class _LongPressContextMenuWrapper extends StatefulWidget {
   final Widget child;
   final void Function(Offset globalPosition) onShowMenu;
@@ -4780,8 +4604,7 @@ class _LongPressContextMenuWrapper extends StatefulWidget {
 class _LongPressContextMenuWrapperState
     extends State<_LongPressContextMenuWrapper> {
   static const Duration _longPressDuration = Duration(milliseconds: 350);
-  static const double _maxMovementDistance =
-      15.0; 
+  static const double _maxMovementDistance = 15.0;
 
   Timer? _timer;
   Offset? _initialPosition;
@@ -4799,7 +4622,7 @@ class _LongPressContextMenuWrapperState
   void _onPointerMove(PointerMoveEvent event) {
     if (_initialPosition != null) {
       final distance = (event.position - _initialPosition!).distance;
-      
+
       if (distance > _maxMovementDistance) {
         _timer?.cancel();
         _initialPosition = null;
@@ -4885,26 +4708,19 @@ class _ProgressiveNetworkImageState extends State<_ProgressiveNetworkImage>
   void initState() {
     super.initState();
 
-    
-    
-    
     if (widget.url.isEmpty) {
       return;
     }
-    
 
-    
     final cached = GlobalImageStore.getData(widget.url);
     if (cached != null) {
       _fullBytes = cached;
-      
     }
-    
+
     if (_memoryCache.containsKey(widget.url)) {
       _fullBytes = _memoryCache[widget.url];
     }
     if (widget.startDownloadNextFrame) {
-      
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _tryLoadFromDiskThenDownload();
       });
@@ -4914,14 +4730,10 @@ class _ProgressiveNetworkImageState extends State<_ProgressiveNetworkImage>
   }
 
   Future<void> _tryLoadFromDiskThenDownload() async {
-    
-    
     if (widget.url.isEmpty) {
       return;
     }
-    
 
-    
     try {
       final dir = await getTemporaryDirectory();
       final name = crypto.md5.convert(widget.url.codeUnits).toString();
@@ -4933,7 +4745,7 @@ class _ProgressiveNetworkImageState extends State<_ProgressiveNetworkImage>
         _memoryCache[widget.url] = data;
         GlobalImageStore.setData(widget.url, data);
         if (mounted) setState(() => _fullBytes = data);
-        return; 
+        return;
       }
     } catch (_) {}
     await _download();
@@ -4958,15 +4770,14 @@ class _ProgressiveNetworkImageState extends State<_ProgressiveNetworkImage>
         received += chunk.length;
         if (contentLength > 0) {
           final p = received / contentLength;
-          _progress =
-              p; 
+          _progress = p;
           GlobalImageStore.setProgress(widget.url, _progress);
         }
       }
       final data = Uint8List.fromList(bytes);
       _memoryCache[widget.url] = data;
       GlobalImageStore.setData(widget.url, data);
-      
+
       try {
         final path = _diskPath;
         if (path != null) {
@@ -4999,19 +4810,16 @@ class _ProgressiveNetworkImageState extends State<_ProgressiveNetworkImage>
         child: const Icon(Icons.broken_image_outlined, color: Colors.black38),
       );
     }
-    
+
     return RepaintBoundary(
       child: SizedBox(
         width: width,
         height: height,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(
-            0,
-          ), 
+          borderRadius: BorderRadius.circular(0),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              
               if (widget.previewBytes != null)
                 Image.memory(
                   widget.previewBytes!,
@@ -5020,15 +4828,13 @@ class _ProgressiveNetworkImageState extends State<_ProgressiveNetworkImage>
                 )
               else
                 Container(color: Colors.black12),
-              
+
               if (_fullBytes != null)
                 Image.memory(
                   _fullBytes!,
                   fit: widget.fit,
                   filterQuality: FilterQuality.high,
                 ),
-              
-              
             ],
           ),
         ),
@@ -5042,7 +4848,6 @@ class _ProgressiveNetworkImageState extends State<_ProgressiveNetworkImage>
   void didUpdateWidget(covariant _ProgressiveNetworkImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.keepAlive != widget.keepAlive) {
-      
       updateKeepAlive();
     }
   }
@@ -5085,13 +4890,11 @@ class _CustomEmojiButtonState extends State<_CustomEmojiButton>
     super.dispose();
   }
 
-  
   void _handleTap() {
-    
     _scaleController.forward().then((_) {
       _scaleController.reverse();
     });
-    
+
     _showCustomEmojiDialog();
   }
 
@@ -5121,7 +4924,7 @@ class _CustomEmojiButtonState extends State<_CustomEmojiButton>
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(20),
               ),
-              
+
               child: Icon(
                 Icons.add_reaction_outlined,
                 size: 24,
@@ -5180,7 +4983,7 @@ class _CustomEmojiDialogState extends State<_CustomEmojiDialog> {
             ),
             child: TextField(
               controller: _controller,
-              maxLength: 1, 
+              maxLength: 1,
               decoration: InputDecoration(
                 hintText: 'Введите эмодзи...',
                 border: InputBorder.none,
@@ -5303,7 +5106,6 @@ class _MessageContextMenuState extends State<_MessageContextMenu>
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
 
-  
   static const List<String> _quickReactions = [
     '👍',
     '❤️',
@@ -5313,7 +5115,6 @@ class _MessageContextMenuState extends State<_MessageContextMenu>
     '🤔',
   ];
 
-  
   static const List<String> _allReactions = [
     '👍',
     '❤️',
@@ -5590,7 +5391,6 @@ class _MessageContextMenuState extends State<_MessageContextMenu>
   void _onCopy() {
     String textToCopy = widget.message.text;
 
-    
     if (textToCopy.isEmpty &&
         widget.message.isForwarded &&
         widget.message.link is Map<String, dynamic>) {
@@ -5760,8 +5560,6 @@ class _MessageContextMenuState extends State<_MessageContextMenu>
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        
-        
         if (widget.message.text.isNotEmpty || widget.message.isForwarded)
           _buildActionButton(
             icon: Icons.copy_rounded,
@@ -5900,14 +5698,14 @@ class FullScreenPhotoViewer extends StatefulWidget {
 
 class _FullScreenPhotoViewerState extends State<FullScreenPhotoViewer> {
   late final TransformationController _transformationController;
-  
+
   bool _isPanEnabled = false;
 
   @override
   void initState() {
     super.initState();
     _transformationController = TransformationController();
-    
+
     _transformationController.addListener(_onTransformChanged);
   }
 
@@ -5919,12 +5717,10 @@ class _FullScreenPhotoViewerState extends State<FullScreenPhotoViewer> {
   }
 
   void _onTransformChanged() {
-    
     final currentScale = _transformationController.value.getMaxScaleOnAxis();
-    
+
     final shouldPan = currentScale > 1.0;
 
-    
     if (shouldPan != _isPanEnabled) {
       setState(() {
         _isPanEnabled = shouldPan;
@@ -5936,20 +5732,17 @@ class _FullScreenPhotoViewerState extends State<FullScreenPhotoViewer> {
     if (widget.attach == null) return;
 
     try {
-      
       final downloadDir = await DownloadPathHelper.getDownloadDirectory();
 
       if (downloadDir == null || !await downloadDir.exists()) {
         throw Exception('Downloads directory not found');
       }
 
-      
       final url = widget.attach!['url'] ?? widget.attach!['baseUrl'];
       if (url == null || url.isEmpty) {
         throw Exception('Photo URL not found');
       }
 
-      
       String extension = 'jpg';
       final uri = Uri.tryParse(url);
       if (uri != null && uri.pathSegments.isNotEmpty) {
@@ -5960,18 +5753,15 @@ class _FullScreenPhotoViewerState extends State<FullScreenPhotoViewer> {
         }
       }
 
-      
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'photo_$timestamp.$extension';
       final filePath = '${downloadDir.path}/$fileName';
       final file = io.File(filePath);
 
-      
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         await file.writeAsBytes(response.bodyBytes);
 
-        
         final prefs = await SharedPreferences.getInstance();
         final List<String> downloadedFiles =
             prefs.getStringList('downloaded_files') ?? [];
@@ -6023,7 +5813,7 @@ class _FullScreenPhotoViewerState extends State<FullScreenPhotoViewer> {
               child: Center(child: widget.imageChild),
             ),
           ),
-          
+
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -6089,7 +5879,6 @@ class _FullScreenPhotoGalleryState extends State<FullScreenPhotoGallery> {
     _pageController = PageController(initialPage: _currentIndex);
     _thumbnailsScrollController = ScrollController();
 
-    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollThumbnailsToCurrent();
     });
@@ -6104,24 +5893,20 @@ class _FullScreenPhotoGalleryState extends State<FullScreenPhotoGallery> {
 
   void _scrollThumbnailsToCurrent() {
     if (_thumbnailsScrollController.hasClients && widget.photos.length > 1) {
-      
       const normalWidth = 60.0;
       const currentWidth = 80.0;
       const margin = 6.0;
-      const itemSpacing = normalWidth + (margin * 2); 
+      const itemSpacing = normalWidth + (margin * 2);
 
       final screenWidth = MediaQuery.of(context).size.width;
 
-      
       double startPosition = 0.0;
       for (int i = 0; i < _currentIndex; i++) {
         startPosition += itemSpacing;
       }
 
-      
       final currentCenter = startPosition + (currentWidth / 2);
 
-      
       final targetOffset = currentCenter - (screenWidth / 2);
 
       _thumbnailsScrollController.animateTo(
@@ -6216,20 +6001,17 @@ class _FullScreenPhotoGalleryState extends State<FullScreenPhotoGallery> {
     final attach = widget.photos[_currentIndex];
 
     try {
-      
       final downloadDir = await DownloadPathHelper.getDownloadDirectory();
 
       if (downloadDir == null || !await downloadDir.exists()) {
         throw Exception('Downloads directory not found');
       }
 
-      
       final url = attach['url'] ?? attach['baseUrl'];
       if (url == null || url.isEmpty) {
         throw Exception('Photo URL not found');
       }
 
-      
       String extension = 'jpg';
       final uri = Uri.tryParse(url);
       if (uri != null && uri.pathSegments.isNotEmpty) {
@@ -6240,18 +6022,15 @@ class _FullScreenPhotoGalleryState extends State<FullScreenPhotoGallery> {
         }
       }
 
-      
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'photo_$timestamp.$extension';
       final filePath = '${downloadDir.path}/$fileName';
       final file = io.File(filePath);
 
-      
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         await file.writeAsBytes(response.bodyBytes);
 
-        
         final prefs = await SharedPreferences.getInstance();
         final List<String> downloadedFiles =
             prefs.getStringList('downloaded_files') ?? [];
@@ -6290,14 +6069,13 @@ class _FullScreenPhotoGalleryState extends State<FullScreenPhotoGallery> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          
           PageView.builder(
             controller: _pageController,
             onPageChanged: (index) {
               setState(() {
                 _currentIndex = index;
               });
-              
+
               _scrollThumbnailsToCurrent();
             },
             itemCount: widget.photos.length,
@@ -6312,7 +6090,7 @@ class _FullScreenPhotoGalleryState extends State<FullScreenPhotoGallery> {
               );
             },
           ),
-          
+
           if (_showControls)
             Positioned(
               top: MediaQuery.of(context).padding.top + 8,
@@ -6324,7 +6102,7 @@ class _FullScreenPhotoGalleryState extends State<FullScreenPhotoGallery> {
                 ),
               ),
             ),
-          
+
           if (_showControls)
             Positioned(
               top: MediaQuery.of(context).padding.top + 8,
@@ -6333,7 +6111,6 @@ class _FullScreenPhotoGalleryState extends State<FullScreenPhotoGallery> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    
                     if (widget.photos.length > 1)
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -6353,7 +6130,7 @@ class _FullScreenPhotoGalleryState extends State<FullScreenPhotoGallery> {
                           ),
                         ),
                       ),
-                    
+
                     if (widget.photos.length > 1) const SizedBox(height: 8),
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
@@ -6376,7 +6153,7 @@ class _FullScreenPhotoGalleryState extends State<FullScreenPhotoGallery> {
                 ),
               ),
             ),
-          
+
           if (_showControls && widget.photos.length > 1)
             Positioned(
               bottom: 0,
@@ -6450,7 +6227,6 @@ class _FullScreenPhotoGalleryState extends State<FullScreenPhotoGallery> {
     if (url is String && url.isNotEmpty) {
       String thumbnailUrl = url;
       if (!url.startsWith('file://')) {
-        
         if (!url.contains('?')) {
           thumbnailUrl = '$url?size=small&quality=medium';
         } else {
@@ -6545,17 +6321,15 @@ class _RotatingIcon extends StatefulWidget {
 
 class _RotatingIconState extends State<_RotatingIcon>
     with SingleTickerProviderStateMixin {
-  
   late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
-      
       duration: const Duration(seconds: 2),
       vsync: this,
-    )..repeat(); 
+    )..repeat();
   }
 
   @override
@@ -6566,9 +6340,8 @@ class _RotatingIconState extends State<_RotatingIcon>
 
   @override
   Widget build(BuildContext context) {
-    
     return RotationTransition(
-      turns: _controller, 
+      turns: _controller,
       child: Icon(widget.icon, size: widget.size, color: widget.color),
     );
   }
@@ -6873,9 +6646,9 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
             width: 1,
           ),
         ),
-        
+
         child: Padding(
-          padding: const EdgeInsets.all(10), 
+          padding: const EdgeInsets.all(10),
           child: Row(
             children: [
               GestureDetector(

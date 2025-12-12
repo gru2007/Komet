@@ -23,6 +23,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
   }
 
   Future<void> _loadCacheStats() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
@@ -100,7 +101,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
         await avatarService.initialize();
 
         await cacheService.clear();
-        
+
         await Future.delayed(const Duration(milliseconds: 100));
         await avatarService.clearAvatarCache();
         await Future.delayed(const Duration(milliseconds: 100));
@@ -157,7 +158,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
 
         await avatarService.initialize();
         await avatarService.clearAvatarCache();
-        
+
         await Future.delayed(const Duration(milliseconds: 50));
         await _loadCacheStats();
 

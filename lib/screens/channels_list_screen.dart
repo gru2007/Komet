@@ -1,5 +1,3 @@
-
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:gwid/api/api_service.dart';
@@ -38,8 +36,8 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
     _apiSubscription = ApiService.instance.messages.listen((message) {
       if (!mounted) return;
 
-
       if (message['type'] == 'channels_found') {
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
           _errorMessage = null;
@@ -55,8 +53,8 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
         }
       }
 
-
       if (message['type'] == 'channels_not_found') {
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
           _channels.clear();
@@ -72,7 +70,7 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
             errorMessage = payload['message'];
           }
         }
-
+        if (!mounted) return;
         setState(() {
           _errorMessage = errorMessage;
         });
@@ -81,15 +79,16 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
   }
 
   void _loadPopularChannels() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-
       await ApiService.instance.searchChannels('каналы');
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
@@ -115,6 +114,7 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
       return;
     }
 
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -123,6 +123,7 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
     try {
       await ApiService.instance.searchChannels(searchQuery);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
@@ -172,7 +173,6 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
       ),
       body: Column(
         children: [
-
           Container(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -195,11 +195,11 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
               ),
               onSubmitted: (_) => _searchChannels(),
               onChanged: (value) {
+                if (!mounted) return;
                 setState(() {});
               },
             ),
           ),
-
 
           Expanded(
             child: _isLoading

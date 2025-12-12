@@ -41,14 +41,14 @@ class _ChatEncryptionSettingsScreenState
       _isPasswordCurrentlySet = widget.isPasswordSet;
       _sendEncrypted = true;
     }
+    if (!mounted) return;
     setState(() {});
   }
 
   Future<void> _savePassword() async {
     final password = _passwordController.text;
-    
-    final effectiveSendEncrypted =
-        password.isNotEmpty ? _sendEncrypted : false;
+
+    final effectiveSendEncrypted = password.isNotEmpty ? _sendEncrypted : false;
 
     await ChatEncryptionService.setPasswordForChat(widget.chatId, password);
     await ChatEncryptionService.setSendEncryptedForChat(
@@ -60,11 +60,9 @@ class _ChatEncryptionSettingsScreenState
       _isPasswordCurrentlySet = password.isNotEmpty;
       _sendEncrypted = effectiveSendEncrypted;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Пароль шифрования сохранён'),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Пароль шифрования сохранён')));
   }
 
   @override
@@ -79,9 +77,7 @@ class _ChatEncryptionSettingsScreenState
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Пароль от шифрования'),
-      ),
+      appBar: AppBar(title: const Text('Пароль от шифрования')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -121,10 +117,13 @@ class _ChatEncryptionSettingsScreenState
             const SizedBox(height: 16),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Отправлять зашифрованные сообщения в этом чате'),
+              title: const Text(
+                'Отправлять зашифрованные сообщения в этом чате',
+              ),
               value: _sendEncrypted,
               onChanged: _isPasswordCurrentlySet
                   ? (value) {
+                      if (!mounted) return;
                       setState(() {
                         _sendEncrypted = value;
                       });
@@ -173,5 +172,3 @@ class _ChatEncryptionSettingsScreenState
     );
   }
 }
-
-
