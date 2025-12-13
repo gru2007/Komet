@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:gwid/api/api_service.dart';
-import 'package:gwid/screens/chats_screen.dart';
+import 'package:gwid/models/profile.dart';
+import 'package:gwid/screens/home_screen.dart';
+import 'package:gwid/screens/phone_entry_screen.dart';
+import 'package:gwid/services/whitelist_service.dart';
 
 class PasswordAuthScreen extends StatefulWidget {
   const PasswordAuthScreen({super.key});
@@ -42,10 +45,57 @@ class _PasswordAuthScreenState extends State<PasswordAuthScreen> {
             'Успешная аутентификация паролем! Токен: $finalToken, UserID: $userId',
           );
 
+          (() async {
+            if (!mounted) return;
+            setState(() => _isLoading = true);
 
-          ApiService.instance
-              .saveToken(finalToken, userId: userId?.toString())
-              .then((_) {
+            try {
+              await ApiService.instance.saveToken(
+                finalToken,
+                userId: userId?.toString(),
+              );
+
+              final chatsResult = ApiService.instance.lastChatsPayload;
+              int? userIdInt;
+              if (chatsResult != null) {
+                final profileJson = chatsResult['profile'];
+                if (profileJson != null) {
+                  final profile = Profile.fromJson(profileJson);
+                  userIdInt = profile.id;
+                }
+              }
+              if (userIdInt == null && userId != null) {
+                userIdInt = int.tryParse(userId);
+              }
+
+              final whitelistService = WhitelistService();
+              final isAllowed = await whitelistService.checkAndValidate(
+                userIdInt,
+              );
+
+              if (!isAllowed) {
+                if (mounted) {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                      builder: (context) => const PhoneEntryScreen(),
+                    ),
+                    (route) => false,
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('АЛО ТЫ НЕ В ВАЙТЛИСТЕ'),
+                      backgroundColor: Colors.red,
+                      duration: Duration(seconds: 5),
+                    ),
+                  );
+                }
+                return;
+              }
+
+              ApiService.instance.clearPasswordAuthData();
+
+              if (mounted) {
+                setState(() => _isLoading = false);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: const Text('Пароль верный! Вход выполнен.'),
@@ -58,14 +108,23 @@ class _PasswordAuthScreenState extends State<PasswordAuthScreen> {
                   ),
                 );
 
-
-                ApiService.instance.clearPasswordAuthData();
-
                 Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const ChatsScreen()),
+                  MaterialPageRoute(builder: (context) => const HomeScreen()),
                   (route) => false,
                 );
-              });
+              }
+            } catch (e) {
+              if (mounted) {
+                setState(() => _isLoading = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Ошибка входа: ${e.toString()}'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
+          })();
         }
       }
 

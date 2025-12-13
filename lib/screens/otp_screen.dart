@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pinput/pinput.dart';
 import 'package:gwid/api/api_service.dart';
-import 'package:gwid/screens/chats_screen.dart';
+import 'package:gwid/models/profile.dart';
+import 'package:gwid/screens/home_screen.dart';
 import 'package:gwid/screens/password_auth_screen.dart';
 import 'package:gwid/screens/phone_entry_screen.dart';
 import 'package:gwid/services/whitelist_service.dart';
@@ -88,8 +89,20 @@ class _OTPScreenState extends State<OTPScreen> {
               await ApiService.instance.saveToken(finalToken!, userId: userId);
               print('Токен сохранен, переподключение завершено');
 
+              final chatsResult = ApiService.instance.lastChatsPayload;
+              int? userIdInt;
+              if (chatsResult != null) {
+                final profileJson = chatsResult['profile'];
+                if (profileJson != null) {
+                  final profile = Profile.fromJson(profileJson);
+                  userIdInt = profile.id;
+                }
+              }
+              if (userIdInt == null && userId != null) {
+                userIdInt = int.tryParse(userId);
+              }
+
               final whitelistService = WhitelistService();
-              final userIdInt = userId != null ? int.tryParse(userId) : null;
               final isAllowed = await whitelistService.checkAndValidate(
                 userIdInt,
               );
@@ -127,7 +140,7 @@ class _OTPScreenState extends State<OTPScreen> {
                   ),
                 );
                 Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const ChatsScreen()),
+                  MaterialPageRoute(builder: (context) => const HomeScreen()),
                   (route) => false,
                 );
               }

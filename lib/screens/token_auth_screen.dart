@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:gwid/api/api_service.dart';
 import 'package:gwid/models/profile.dart';
@@ -15,7 +14,6 @@ import 'package:gwid/services/whitelist_service.dart';
 import 'package:gwid/utils/proxy_service.dart';
 import 'package:gwid/utils/proxy_settings.dart';
 import 'package:gwid/screens/settings/qr_scanner_screen.dart';
-import 'package:gwid/screens/settings/session_spoofing_screen.dart';
 
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:crypto/crypto.dart' as crypto;
@@ -65,21 +63,20 @@ class _TokenAuthScreenState extends State<TokenAuthScreen> {
       }
 
       await ApiService.instance.saveToken(token);
-      
-      await ApiService.instance.connect();
-      await ApiService.instance.waitUntilOnline();
-      
-      final chatsResult = await ApiService.instance.getChatsAndContacts();
-      final profileJson = chatsResult['profile'];
+
+      final chatsResult = ApiService.instance.lastChatsPayload;
       int? userId;
-      if (profileJson != null) {
-        final profile = Profile.fromJson(profileJson);
-        userId = profile.id;
+      if (chatsResult != null) {
+        final profileJson = chatsResult['profile'];
+        if (profileJson != null) {
+          final profile = Profile.fromJson(profileJson);
+          userId = profile.id;
+        }
       }
-      
+
       final whitelistService = WhitelistService();
       final isAllowed = await whitelistService.checkAndValidate(userId);
-      
+
       if (!isAllowed) {
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
@@ -198,7 +195,7 @@ class _TokenAuthScreenState extends State<TokenAuthScreen> {
       final String token = decoded['token'];
 
       final int now = DateTime.now().millisecondsSinceEpoch;
-      const int oneMinuteInMillis = 60 * 1000; 
+      const int oneMinuteInMillis = 60 * 1000;
 
       if ((now - qrTimestamp) > oneMinuteInMillis) {
         throw Exception("QR-код устарел. Пожалуйста, сгенерируйте новый.");

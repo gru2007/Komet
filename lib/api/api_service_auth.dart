@@ -141,9 +141,20 @@ extension ApiServiceAuth on ApiService {
     await connect();
     await waitUntilOnline();
 
-    await getChatsAndContacts(force: true);
+    if (!_chatsFetchedInThisSession || _lastChatsPayload == null) {
+      await getChatsAndContacts(force: true);
+    }
 
-    
+    int attempts = 0;
+    while ((!_chatsFetchedInThisSession || _lastChatsPayload == null) && attempts < 50) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      attempts++;
+    }
+
+    if (_lastChatsPayload == null) {
+      throw Exception('Не удалось загрузить данные после авторизации');
+    }
+
     final profileJson = _lastChatsPayload?['profile'];
     if (profileJson != null) {
       final profileObj = Profile.fromJson(profileJson);

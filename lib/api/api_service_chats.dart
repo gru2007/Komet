@@ -101,10 +101,6 @@ extension ApiServiceChats on ApiService {
           }
         }
 
-        if (_onlineCompleter != null && !_onlineCompleter!.isCompleted) {
-          _onlineCompleter!.complete();
-        }
-
         final chatListJson = chatResponse['payload']?['chats'] ?? [];
         final contactListJson = chatResponse['payload']?['contacts'] ?? [];
         final presence = chatResponse['payload']?['presence'];
@@ -141,6 +137,10 @@ extension ApiServiceChats on ApiService {
         );
         unawaited(_chatCacheService.cacheContacts(contacts));
         _chatsFetchedInThisSession = true;
+
+        if (_onlineCompleter != null && !_onlineCompleter!.isCompleted) {
+          _onlineCompleter!.complete();
+        }
       }
     } catch (e) {
       print("Ошибка при автоматической авторизации: $e");
