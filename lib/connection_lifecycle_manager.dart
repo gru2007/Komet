@@ -120,9 +120,7 @@ class _ConnectionLifecycleManagerState extends State<ConnectionLifecycleManager>
           }
         });
       }
-    } else {
-      print("✅ Соединение активно, переподключение не требуется");
-    }
+    } else {}
   }
 
   @override

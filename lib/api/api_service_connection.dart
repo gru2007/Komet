@@ -281,11 +281,17 @@ extension ApiServiceConnection on ApiService {
         try {
           final decoded = jsonDecode(message) as Map<String, dynamic>;
           final opcode = decoded['opcode'];
+          final cmd = decoded['cmd'];
           final seq = decoded['seq'];
+
           if (opcode == 2) {
             _healthMonitor.onPongReceived();
           }
-          print('← opcode=$opcode seq=$seq');
+
+          if (opcode != 19) {
+            final payload = decoded['payload'];
+            print('← opcode=$opcode cmd=$cmd seq=$seq payload=$payload');
+          }
         } catch (_) {}
 
         try {

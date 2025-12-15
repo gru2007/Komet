@@ -693,10 +693,6 @@ extension ApiServiceChats on ApiService {
     String fromMessageId,
     int count,
   ) async {
-    print(
-      "Запрашиваем старые сообщения для чата $chatId начиная с $fromMessageId",
-    );
-
     final payload = {
       "chatId": chatId,
       "from": int.parse(fromMessageId),
@@ -733,10 +729,6 @@ extension ApiServiceChats on ApiService {
     int backward = 30,
   }) async {
     await waitUntilOnline();
-
-    print(
-      "📜 Запрашиваем старые сообщения для чата $chatId начиная с timestamp $fromTimestamp (backward: $backward)",
-    );
 
     final payload = {
       "chatId": chatId,

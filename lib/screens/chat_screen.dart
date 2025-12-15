@@ -909,9 +909,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (!widget.isGroupChat && !widget.isChannel) {
       _contactDetailsCache[widget.contact.id] = widget.contact;
-      print(
-        '✅ [_initializeChat] Собеседник добавлен в кэш: ${widget.contact.name} (ID: ${widget.contact.id})',
-      );
     }
 
     final profileData = ApiService.instance.lastChatsPayload?['profile'];
@@ -922,29 +919,18 @@ class _ChatScreenState extends State<ChatScreen> {
         contactProfile['id'] != 0) {
       String? idStr = prefs.getString("userId");
       _actualMyId = idStr!.isNotEmpty ? int.parse(idStr) : contactProfile['id'];
-      print(
-        '✅ [_initializeChat] ID пользователя получен из ApiService: $_actualMyId',
-      );
 
       try {
         final myContact = Contact.fromJson(contactProfile);
         _contactDetailsCache[_actualMyId!] = myContact;
-        print(
-          '✅ [_initializeChat] Собственный профиль добавлен в кэш: ${myContact.name} (ID: $_actualMyId)',
-        );
       } catch (e) {
         print(
-          '⚠️ [_initializeChat] Не удалось добавить собственный профиль в кэш: $e',
+          '[ChatScreen] Не удалось добавить собственный профиль в кэш: $e',
         );
       }
     } else if (_actualMyId == null) {
       final prefs = await SharedPreferences.getInstance();
       _actualMyId = int.parse(prefs.getString('userId')!);
-      print(
-        '⚠️ [_initializeChat] ID не найден, используется из виджета: $_actualMyId',
-      );
-    } else {
-      print('✅ [_initializeChat] Используется ID из кэша: $_actualMyId');
     }
 
     if (!widget.isGroupChat && !widget.isChannel) {
@@ -952,9 +938,6 @@ class _ChatScreenState extends State<ChatScreen> {
       await ChatCacheService().cacheChatContacts(
         widget.chatId,
         contactsToCache,
-      );
-      print(
-        '✅ [_initializeChat] Сохранено ${contactsToCache.length} контактов в кэш чата (включая собственный профиль)',
       );
     }
 
@@ -1026,10 +1009,6 @@ class _ChatScreenState extends State<ChatScreen> {
               !_isLoadingMore &&
               _messages.isNotEmpty &&
               _oldestLoadedTime != null) {
-            print(
-              '📜 Пользователь доскроллил близко к верху (maxIndex: $maxIndex, total: ${_chatItems.length}), загружаем старые сообщения...',
-            );
-
             Future.microtask(() {
               if (mounted && _hasMore && !_isLoadingMore) {
                 _loadMore();
@@ -1094,10 +1073,6 @@ class _ChatScreenState extends State<ChatScreen> {
       if (opcode == 64 && cmd == 1) {
         if (chatIdNormalized == widget.chatId) {
           final newMessage = Message.fromJson(payload['message']);
-          print(
-            'Получено подтверждение (Opcode 64) для cid: ${newMessage.cid}. Обновляем сообщение.',
-          );
-
           Future.microtask(() {
             if (mounted) {
               _updateMessage(newMessage);
@@ -1122,13 +1097,9 @@ class _ChatScreenState extends State<ChatScreen> {
           });
         }
       } else if (opcode == 129) {
-        if (chatIdNormalized == widget.chatId) {
-          print('Пользователь печатает в чате $chatIdNormalized');
-        }
+        if (chatIdNormalized == widget.chatId) {}
       } else if (opcode == 132) {
         if (chatIdNormalized == widget.chatId) {
-          print('Обновлен статус присутствия для чата $chatIdNormalized');
-
           final dynamic contactIdAny =
               payload['contactId'] ?? payload['userId'];
           if (contactIdAny != null) {
@@ -1146,9 +1117,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 cid.toString(): userPresence,
               });
 
-              print(
-                'Обновлен presence для пользователя $cid: online=$isOnline, seen=$currentTime',
-              );
             }
           }
         }
@@ -1211,11 +1179,7 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
       } else if (opcode == 50) {
-        if (chatIdNormalized == widget.chatId) {
-          print(
-            'Получен opcode 50 для чата ${widget.chatId}, игнорируем в ChatScreen',
-          );
-        }
+        if (chatIdNormalized == widget.chatId) {}
       }
     });
   }
@@ -1240,7 +1204,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     bool hasCache = cachedMessages != null && cachedMessages.isNotEmpty;
     if (hasCache) {
-      print("✅ Показываем ${cachedMessages.length} сообщений из кэша...");
       if (!mounted) return;
       _messages.clear();
       _messages.addAll(cachedMessages);
@@ -1249,9 +1212,6 @@ class _ChatScreenState extends State<ChatScreen> {
         _oldestLoadedTime = _messages.first.time;
 
         _hasMore = true;
-        print(
-          '📜 Загружено из кэша: ${_messages.length} сообщений, _oldestLoadedTime=$_oldestLoadedTime',
-        );
       }
 
       if (widget.isGroupChat) {
@@ -1275,13 +1235,11 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     try {
-      print("📡 Запрашиваем актуальные сообщения с сервера...");
       final allMessages = await ApiService.instance.getMessageHistory(
         widget.chatId,
         force: true,
       );
       if (!mounted) return;
-      print("✅ Получено ${allMessages.length} сообщений с сервера.");
 
       final Set<int> senderIds = {};
       for (final message in allMessages) {
@@ -1301,15 +1259,6 @@ class _ChatScreenState extends State<ChatScreen> {
           .toList();
 
       if (idsToFetch.isNotEmpty) {
-        print(
-          '📡 [_paginateInitialLoad] Загружаем ${idsToFetch.length} отсутствующих контактов из ${senderIds.length} отправителей...',
-        );
-        print(
-          '📡 [_paginateInitialLoad] В кэше: ${senderIds.length - idsToFetch.length}, нужно загрузить: ${idsToFetch.length}',
-        );
-        print(
-          '📡 [_paginateInitialLoad] IDs для загрузки: ${idsToFetch.take(10).join(', ')}${idsToFetch.length > 10 ? '...' : ''}',
-        );
         final newContacts = await ApiService.instance.fetchContactsByIds(
           idsToFetch,
         );
@@ -1324,14 +1273,7 @@ class _ChatScreenState extends State<ChatScreen> {
             widget.chatId,
             allChatContacts,
           );
-          print(
-            '✅ [_paginateInitialLoad] Обновлен кэш: ${allChatContacts.length} контактов для чата ${widget.chatId}',
-          );
         }
-      } else {
-        print(
-          '✅ [_paginateInitialLoad] Все ${senderIds.length} отправителей уже в кэше',
-        );
       }
 
       await chatCacheService.cacheChatMessages(widget.chatId, allMessages);
@@ -1357,9 +1299,6 @@ class _ChatScreenState extends State<ChatScreen> {
             _hasMore =
                 allMessages.length >= 1000 ||
                 allMessages.length > _messages.length;
-            print(
-              '📜 Первая загрузка: загружено ${allMessages.length} сообщений, показано ${_messages.length}, _hasMore=$_hasMore, _oldestLoadedTime=$_oldestLoadedTime',
-            );
 
             _buildChatItems();
             _isLoadingHistory = false;
@@ -1374,7 +1313,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _loadEmptyChatSticker();
       }
     } catch (e) {
-      print("❌ Ошибка при загрузке с сервера: $e");
+      print("[ChatScreen] Ошибка при загрузке истории сообщений: $e");
       if (mounted) {
         setState(() {
           _isLoadingHistory = false;
@@ -1398,21 +1337,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _loadMore() async {
-    print(
-      '📜 _loadMore() вызвана: _isLoadingMore=$_isLoadingMore, _hasMore=$_hasMore, _oldestLoadedTime=$_oldestLoadedTime',
-    );
-
     if (_isLoadingMore || !_hasMore) {
-      print(
-        '📜 _loadMore() пропущена: _isLoadingMore=$_isLoadingMore, _hasMore=$_hasMore',
-      );
       return;
     }
 
     if (_messages.isEmpty || _oldestLoadedTime == null) {
-      print(
-        '📜 _loadMore() пропущена: _messages.isEmpty=${_messages.isEmpty}, _oldestLoadedTime=$_oldestLoadedTime',
-      );
       _hasMore = false;
       return;
     }
@@ -1421,18 +1350,12 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {});
 
     try {
-      print(
-        '📜 Загружаем старые сообщения для chatId=${widget.chatId}, fromTimestamp=$_oldestLoadedTime',
-      );
-
       final olderMessages = await ApiService.instance
           .loadOlderMessagesByTimestamp(
             widget.chatId,
             _oldestLoadedTime!,
             backward: 30,
           );
-
-      print('📜 Получено ${olderMessages.length} старых сообщений');
 
       if (!mounted) return;
 
@@ -1455,10 +1378,6 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
 
-      print(
-        '📜 Добавляем ${newMessages.length} новых старых сообщений (отфильтровано ${olderMessages.length - newMessages.length} дубликатов)',
-      );
-
       _messages.insertAll(0, newMessages);
       _oldestLoadedTime = _messages.first.time;
 
@@ -1473,7 +1392,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       _updatePinnedMessage();
     } catch (e) {
-      print('❌ Ошибка при загрузке старых сообщений: $e');
+      print('[ChatScreen] Ошибка при загрузке старых сообщений: $e');
       if (mounted) {
         _isLoadingMore = false;
         _hasMore = false;
@@ -1572,15 +1491,13 @@ class _ChatScreenState extends State<ChatScreen> {
       final random =
           DateTime.now().millisecondsSinceEpoch % availableStickerIds.length;
       final selectedStickerId = availableStickerIds[random];
-
-      print('🎨 Загружаем стикер для пустого чата (ID: $selectedStickerId)...');
       final seq = ApiService.instance.sendRawRequest(28, {
         "type": "STICKER",
         "ids": [selectedStickerId],
       });
 
       if (seq == -1) {
-        print('❌ Не удалось отправить запрос на получение стикера');
+        print('[ChatScreen] Не удалось отправить запрос на получение стикера');
         return;
       }
 
@@ -1597,32 +1514,25 @@ class _ChatScreenState extends State<ChatScreen> {
           );
 
       if (response.isEmpty || response['payload'] == null) {
-        print('❌ Не получен ответ от сервера для стикера');
+        print('[ChatScreen] Не получен ответ от сервера для стикера');
         return;
       }
 
       final stickers = response['payload']['stickers'] as List?;
-      print('🎨 Получен ответ со стикерами: ${stickers?.length ?? 0}');
       if (stickers != null && stickers.isNotEmpty) {
         final sticker = stickers.first as Map<String, dynamic>;
 
         final stickerId = sticker['id'] as int?;
-        print(
-          '🎨 Данные стикера: id=$stickerId, url=${sticker['url']}, lottieUrl=${sticker['lottieUrl']}, width=${sticker['width']}, height=${sticker['height']}',
-        );
         if (mounted) {
           setState(() {
             _emptyChatSticker = {...sticker, 'stickerId': stickerId};
           });
-          print(
-            '✅ Стикер для пустого чата загружен и сохранен (ID: $stickerId)',
-          );
         }
       } else {
-        print('❌ Стикеры не найдены в ответе');
+        print('[ChatScreen] Стикеры не найдены в ответе');
       }
     } catch (e) {
-      print('❌ Ошибка при загрузке стикера для пустого чата: $e');
+      print('[ChatScreen] Ошибка при загрузке стикера для пустого чата: $e');
     }
   }
 
@@ -1640,10 +1550,9 @@ class _ChatScreenState extends State<ChatScreen> {
             pinnedMessageData is Map<String, dynamic>) {
           try {
             latestPinned = Message.fromJson(pinnedMessageData);
-            print('Найдено закрепленное сообщение: ${latestPinned.text}');
             break;
           } catch (e) {
-            print('Ошибка парсинга закрепленного сообщения: $e');
+            print('[ChatScreen] Ошибка парсинга закрепленного сообщения: $e');
           }
         }
       }
@@ -1651,11 +1560,6 @@ class _ChatScreenState extends State<ChatScreen> {
     if (mounted) {
       setState(() {
         _pinnedMessage = latestPinned;
-        if (latestPinned != null) {
-          print('Закрепленное сообщение установлено: ${latestPinned.text}');
-        } else {
-          print('Закрепленное сообщение не найдено');
-        }
       });
     }
   }
@@ -1698,7 +1602,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _addMessage(Message message, {bool forceScroll = false}) {
     if (_messages.any((m) => m.id == message.id)) {
-      print('Сообщение ${message.id} уже существует, пропускаем добавление');
       return;
     }
 
@@ -1787,15 +1690,9 @@ class _ChatScreenState extends State<ChatScreen> {
       final updatedMessage = message.copyWith(reactionInfo: reactionInfo);
       _messages[messageIndex] = updatedMessage;
 
-      if (_sendingReactions.remove(messageId)) {
-        print(
-          '✅ Реакция для сообщения $messageId успешно подтверждена сервером',
-        );
-      }
+      if (_sendingReactions.remove(messageId)) {}
 
       _buildChatItems();
-
-      print('Обновлена реакция для сообщения $messageId: $reactionInfo');
 
       if (mounted) {
         setState(() {});
@@ -1841,8 +1738,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _sendingReactions.add(messageId);
 
       _buildChatItems();
-
-      print('Оптимистично добавлена реакция $emoji к сообщению $messageId');
       _buildChatItems();
 
       if (mounted) {
@@ -1894,8 +1789,6 @@ class _ChatScreenState extends State<ChatScreen> {
         _sendingReactions.add(messageId);
 
         _buildChatItems();
-
-        print('Оптимистично удалена реакция с сообщения $messageId');
 
         if (mounted) {
           setState(() {});
@@ -1957,18 +1850,12 @@ class _ChatScreenState extends State<ChatScreen> {
           setState(() {});
         }
       } else {
-        print(
-          '⚠️ Элемент не найден в _chatItems для сообщения ${updatedMessage.id}, cid: ${updatedMessage.cid}. Перестраиваем список.',
-        );
         _buildChatItems();
         if (mounted) {
           setState(() {});
         }
       }
     } else {
-      print(
-        'Сообщение ${updatedMessage.id} не найдено для обновления. Запрашиваем свежую историю...',
-      );
       ApiService.instance
           .getMessageHistory(widget.chatId, force: true)
           .then((fresh) {
@@ -1989,12 +1876,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _removeMessages(List<String> messageIds) {
-    print('Удаляем сообщения: $messageIds');
     final removedCount = _messages.length;
     _messages.removeWhere((message) => messageIds.contains(message.id));
     final actuallyRemoved = removedCount - _messages.length;
-    print('Удалено сообщений: $actuallyRemoved');
-
     if (actuallyRemoved > 0) {
       ApiService.instance.clearCacheForChat(widget.chatId);
       _buildChatItems();
@@ -2009,18 +1893,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _sendEmptyChatSticker() async {
     if (_emptyChatSticker == null) {
-      print('❌ Стикер не загружен, невозможно отправить');
       return;
     }
 
     final stickerId = _emptyChatSticker!['stickerId'] as int?;
     if (stickerId == null) {
-      print('❌ ID стикера не найден');
       return;
     }
 
     try {
-      print('🎨 Отправляем стикер (ID: $stickerId) в чат ${widget.chatId}');
       final cid = DateTime.now().millisecondsSinceEpoch;
 
       final payload = {
@@ -2035,9 +1916,7 @@ class _ChatScreenState extends State<ChatScreen> {
       };
 
       ApiService.instance.sendRawRequest(64, payload);
-      print('✅ Стикер отправлен (opcode 64, cid: $cid)');
     } catch (e) {
-      print('❌ Ошибка при отправке стикера: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -3524,7 +3403,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       bottom:
                           MediaQuery.of(context).viewInsets.bottom +
                           MediaQuery.of(context).padding.bottom +
-                          140,
+                          80,
                       child: AnimatedScale(
                         duration: const Duration(milliseconds: 200),
                         curve: Curves.easeOutBack,

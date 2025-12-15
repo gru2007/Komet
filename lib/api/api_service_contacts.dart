@@ -262,26 +262,14 @@ extension ApiServiceContacts on ApiService {
       return [];
     }
 
-    print(
-      '📡 [fetchContactsByIds] Запрашиваем данные для ${contactIds.length} контактов...',
-    );
-    print(
-      '📡 [fetchContactsByIds] IDs: ${contactIds.take(10).join(', ')}${contactIds.length > 10 ? '...' : ''}',
-    );
     try {
       final int contactSeq = _sendMessage(32, {"contactIds": contactIds});
-      print(
-        '📤 [fetchContactsByIds] Отправлен опкод 32 с seq=$contactSeq и ${contactIds.length} ID',
-      );
 
       final contactResponse = await messages
           .firstWhere((msg) => msg['seq'] == contactSeq)
           .timeout(const Duration(seconds: 10));
 
       if (contactResponse['cmd'] == 3) {
-        print(
-          "❌ [fetchContactsByIds] Ошибка при получении контактов: ${contactResponse['payload']}",
-        );
         return [];
       }
 
@@ -291,29 +279,18 @@ extension ApiServiceContacts on ApiService {
           .map((json) => Contact.fromJson(json))
           .toList();
 
-      print(
-        '📦 [fetchContactsByIds] Получено ${contacts.length} контактов из ${contactIds.length} запрошенных',
-      );
-
       if (contacts.length < contactIds.length) {
         final receivedIds = contacts.map((c) => c.id).toSet();
         final missingIds = contactIds
             .where((id) => !receivedIds.contains(id))
             .toList();
-        print(
-          '⚠️ [fetchContactsByIds] Отсутствуют ${missingIds.length} контактов: ${missingIds.take(5).join(', ')}${missingIds.length > 5 ? '...' : ''}',
-        );
       }
 
       for (final contact in contacts) {
         _contactCache[contact.id] = contact;
       }
-      print(
-        "✅ [fetchContactsByIds] Закэшированы данные для ${contacts.length} контактов",
-      );
       return contacts;
     } catch (e) {
-      print('❌ [fetchContactsByIds] Исключение при получении контактов: $e');
       return [];
     }
   }
