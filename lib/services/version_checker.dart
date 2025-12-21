@@ -1,56 +1,37 @@
+import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:gwid/utils/spoofing_service.dart';
 
 class VersionChecker {
-
-
-
+  static const String _url = 'https://www.rustore.ru/catalog/app/ru.oneme.app';
+  static const String _defaultUserAgent =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
 
   static Future<String> getLatestVersion() async {
     try {
+      final spoofData = await SpoofingService.getSpoofedSessionData();
+      final userAgent = spoofData?['user_agent'] ?? _defaultUserAgent;
 
-      final html = await _fetchPage('https://web.max.ru/');
+      final html = await _fetchPage(_url, userAgent);
 
+      final version = _extractVersionFromJsonLd(html);
 
-      final mainChunkUrl = _extractMainChunkUrl(html);
-      print('[INFO] Загружаем главный chunk: $mainChunkUrl');
-
-
-      final mainChunkCode = await _fetchPage(mainChunkUrl);
-
-
-      final chunkPaths = _extractChunkPaths(mainChunkCode);
-
-
-      for (final path in chunkPaths) {
-        if (path.contains('/chunks/')) {
-          final url = _buildChunkUrl(path);
-          print('[INFO] Загружаем chunk: $url');
-
-          try {
-            final jsCode = await _fetchPage(url);
-            final version = _extractVersion(jsCode);
-
-            if (version != null) {
-              print('[SUCCESS] Версия: $version из $url');
-              return version;
-            }
-          } catch (e) {
-            print('[WARN] Не удалось скачать $url: $e');
-            continue;
-          }
-        }
+      if (version != null) {
+        print('[SUCCESS] Версия из RuStore: $version');
+        return version;
       }
 
-      throw Exception('Версия не найдена ни в одном из чанков');
+      throw Exception('Ключ softwareVersion не найден в JSON-LD');
     } catch (e) {
       throw Exception('Не удалось проверить версию: $e');
     }
   }
 
+  static Future<String> _fetchPage(String url, String userAgent) async {
+    print('[INFO] Запрос к $url c User-Agent: $userAgent');
 
-  static Future<String> _fetchPage(String url) async {
     final response = await http
-        .get(Uri.parse(url))
+        .get(Uri.parse(url), headers: {'User-Agent': userAgent})
         .timeout(const Duration(seconds: 10));
 
     if (response.statusCode != 200) {
@@ -60,62 +41,52 @@ class VersionChecker {
     return response.body;
   }
 
+  static String? _extractVersionFromJsonLd(String html) {
+    final scriptRegex = RegExp(
+      r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
+      caseSensitive: false,
+      dotAll: true,
+    );
 
-  static String _extractMainChunkUrl(String html) {
-    final parts = html.split('import(');
-    if (parts.length < 3) {
-      throw Exception('Не найден import() в HTML');
-    }
-
-    final mainChunkImport = parts[2]
-        .split(')')[0]
-        .replaceAll('"', '')
-        .replaceAll("'", '');
-
-    return 'https://web.max.ru$mainChunkImport';
-  }
-
-
-  static List<String> _extractChunkPaths(String mainChunkCode) {
-    final firstLine = mainChunkCode.split('\n')[0];
-    final arrayContent = firstLine.split('[')[1].split(']')[0];
-
-    return arrayContent.split(',');
-  }
-
-
-  static String _buildChunkUrl(String path) {
-    final cleanPath = path.substring(3, path.length - 1);
-    return 'https://web.max.ru/_app/immutable$cleanPath';
-  }
-
-
-  static String? _extractVersion(String jsCode) {
-    const wsAnchor = 'wss://ws-api.oneme.ru/websocket';
-    final pos = jsCode.indexOf(wsAnchor);
-
-    if (pos == -1) {
-      print('[INFO] ws-якорь не найден');
+    final match = scriptRegex.firstMatch(html);
+    if (match == null) {
+      print('[WARN] Тег JSON-LD не найден на странице');
       return null;
     }
 
-    print('[INFO] Найден ws-якорь на позиции $pos');
+    final jsonContent = match.group(1);
+    if (jsonContent == null) return null;
 
+    try {
+      final jsonData = jsonDecode(jsonContent);
+      Map<String, dynamic>? appInfo;
 
-    final snippet = jsCode.substring(pos, (pos + 2000).clamp(0, jsCode.length));
+      if (jsonData is Map<String, dynamic>) {
+        if (jsonData.containsKey('@graph') && jsonData['@graph'] is List) {
+          final graph = jsonData['@graph'] as List;
 
-    print('[INFO] Анализируем snippet (первые 500 символов):');
-    print('${snippet.substring(0, 500.clamp(0, snippet.length))}...\n');
+          final foundItem = graph.firstWhere(
+            (item) => item['@type'] == 'SoftwareApplication',
+            orElse: () => null,
+          );
 
+          if (foundItem != null) {
+            appInfo = foundItem as Map<String, dynamic>;
+          }
+        } else if (jsonData['@type'] == 'SoftwareApplication') {
+          appInfo = jsonData;
+        }
+      }
 
-    final versionRegex = RegExp(r'[:=]\s*"(\d{1,2}\.\d{1,2}\.\d{1,2})"');
-    final match = versionRegex.firstMatch(snippet);
+      if (appInfo != null) {
+        return appInfo['softwareVersion']?.toString();
+      }
 
-    if (match != null) {
-      return match.group(1);
+      print('[WARN] Объект SoftwareApplication не найден в JSON данных');
+    } catch (e) {
+      print('[ERROR] Ошибка парсинга JSON: $e');
     }
 
-    print('[INFO] Версия не найдена в snippet');
     return null;
   }
 }
