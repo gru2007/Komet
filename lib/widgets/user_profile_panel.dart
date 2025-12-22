@@ -396,6 +396,7 @@ class _UserProfilePanelState extends State<UserProfilePanel> {
         MaterialPageRoute(
           builder: (ctx) => ChatScreen(
             chatId: chatId!,
+            pinnedMessage: null,
             contact: Contact(
               id: widget.userId,
               name: widget.name ?? _displayName,

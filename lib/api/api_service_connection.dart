@@ -174,6 +174,37 @@ extension ApiServiceConnection on ApiService {
     });
   }
 
+  void _startAnalyticsTimer() {
+    _analyticsTimer?.cancel();
+    _analyticsTimer = Timer.periodic(Duration(seconds: 10 + (DateTime.now().millisecondsSinceEpoch % 41)), (timer) async {
+      if (_isSessionOnline && _isSessionReady && _userId != null) {
+        try {
+          final now = DateTime.now().millisecondsSinceEpoch;
+          final Map<String, dynamic> params = {
+            'session_id': _sessionId,
+            'action_id': _actionId++,
+            'screen_to': 150,
+          };
+
+          await _sendMessage(5, {
+            "events": [
+              {
+                "type": "NAV",
+                "event": "HEARTBEAT",
+                "userId": _userId,
+                "time": now,
+                "params": params,
+              },
+            ],
+          });
+          _log('📊 Отправлена периодическая аналитика (opcode=5)');
+        } catch (e) {
+          print('Ошибка отправки аналитики: $e');
+        }
+      }
+    });
+  }
+
   Future<void> connect() async {
     if (_socketConnected && _isSessionOnline) {
       return;
@@ -263,11 +294,11 @@ extension ApiServiceConnection on ApiService {
     final seq = _seq;
     final packet = _packPacket(10, 0, seq, opcode, payload);
 
-    print('📤 ОТПРАВКА: ver=10, cmd=0, seq=$seq, opcode=$opcode');
+    _log('📤 ОТПРАВКА: ver=10, cmd=0, seq=$seq, opcode=$opcode');
     if (opcode != 19) {
-      print('📤 PAYLOAD: $payload');
+      _log('📤 PAYLOAD: $payload');
     }
-    print('📤 Размер пакета: ${packet.length} байт');
+    _log('📤 Размер пакета: ${packet.length} байт');
 
     try {
       _socket!.add(packet);
@@ -333,9 +364,9 @@ extension ApiServiceConnection on ApiService {
       }
 
       final cmdType = (cmd == 0x100 || cmd == 256) ? 'OK' : (cmd == 0x300 || cmd == 768) ? 'ERROR' : 'UNKNOWN($cmd)';
-      print('📥 ПОЛУЧЕНО: ver=$ver, cmd=$cmd ($cmdType), seq=$seq, opcode=$opcode');
+      _log('📥 ПОЛУЧЕНО: ver=$ver, cmd=$cmd ($cmdType), seq=$seq, opcode=$opcode');
       if (opcode != 19) {
-        print('📥 PAYLOAD: $payload');
+        _log('📥 PAYLOAD: $payload');
       }
 
       if (opcode == 2) {
@@ -628,6 +659,7 @@ extension ApiServiceConnection on ApiService {
     }
 
     _pingTimer?.cancel();
+    _analyticsTimer?.cancel();
     _reconnectTimer?.cancel();
     _socketSubscription?.cancel();
     _socketSubscription = null;
@@ -673,6 +705,7 @@ extension ApiServiceConnection on ApiService {
 
   void forceReconnect() {
     _pingTimer?.cancel();
+    _analyticsTimer?.cancel();
     _reconnectTimer?.cancel();
     if (_socket != null) {
       _socket!.close();
@@ -701,6 +734,7 @@ extension ApiServiceConnection on ApiService {
   Future<void> performFullReconnection() async {
     try {
       _pingTimer?.cancel();
+      _analyticsTimer?.cancel();
       _reconnectTimer?.cancel();
 
       _socketSubscription?.cancel();
@@ -745,6 +779,7 @@ extension ApiServiceConnection on ApiService {
 
   void disconnect() {
     _pingTimer?.cancel();
+    _analyticsTimer?.cancel();
     _reconnectTimer?.cancel();
     _socketSubscription?.cancel();
     _isSessionOnline = false;

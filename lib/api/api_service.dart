@@ -70,6 +70,7 @@ class ApiService {
   Socket? _socket;
   StreamSubscription? _socketSubscription;
   Timer? _pingTimer;
+  Timer? _analyticsTimer;
   int _seq = 0;
   final Map<int, Completer<dynamic>> _pending = {};
   bool _socketConnected = false;
@@ -311,6 +312,7 @@ class ApiService {
 
   void dispose() {
     _pingTimer?.cancel();
+    _analyticsTimer?.cancel();
     _socketSubscription?.cancel();
     _socket?.close();
     _reconnectionCompleteController.close();

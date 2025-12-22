@@ -47,7 +47,7 @@ class AppearanceSettingsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          // настройки оптимизации доступны в отдельном экране \"Оптимизация\".
+        
         ],
       ),
     );

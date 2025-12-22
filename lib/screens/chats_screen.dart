@@ -2635,6 +2635,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                 chatId: chat.id,
                 contact: contactToUse,
                 myId: chat.ownerId,
+                pinnedMessage: chat.pinnedMessage,
                 isGroupChat: isGroupChat,
                 isChannel: isChannel,
                 participantCount: participantCount,
@@ -2824,6 +2825,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                         chatId: chat.id,
                         contact: contactFallback,
                         myId: chat.ownerId,
+                        pinnedMessage: chat.pinnedMessage,
                         isGroupChat: isGroupChat,
                         isChannel: isChannel,
                         participantCount: participantCount,
@@ -4383,6 +4385,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                 chatId: chat.id,
                 contact: contactFallback,
                 myId: chat.ownerId,
+                pinnedMessage: chat.pinnedMessage,
                 isGroupChat: isGroupChat,
                 isChannel: isChannel,
                 participantCount: participantCount,
@@ -4693,7 +4696,6 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
                 try {
                   await controller.evaluateJavascript(
                     source: '''
-                    // Переопределяем window.open сразу
                     if (window.open.toString().indexOf('native code') === -1) {
                       var originalOpen = window.open;
                       window.open = function(url, name, features) {
@@ -4721,23 +4723,23 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
                 try {
                   await controller.evaluateJavascript(
                     source: '''
-                    // Включаем прокрутку
+                   
                     document.body.style.overflow = 'auto';
                     document.documentElement.style.overflow = 'auto';
                     document.body.style.webkitOverflowScrolling = 'touch';
                     document.body.style.position = 'relative';
                     document.documentElement.style.position = 'relative';
                     
-                    // Перехватываем все клики по ссылкам и принудительно открываем в том же окне
+                  
                     (function() {
-                      // Функция для обработки ссылок
+              
                       function processLink(link) {
                         if (link && link.tagName === 'A') {
                           var href = link.getAttribute('href');
                           if (href && !href.startsWith('javascript:') && !href.startsWith('mailto:')) {
-                            // Убираем target="_blank" если есть
+                            
                             link.removeAttribute('target');
-                            // Добавляем обработчик клика
+                     
                             link.addEventListener('click', function(e) {
                               var href = this.getAttribute('href');
                               if (href && !href.startsWith('javascript:') && !href.startsWith('mailto:')) {
@@ -4751,7 +4753,7 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
                         }
                       }
                       
-                      // Обрабатываем все существующие ссылки
+                     
                       function processAllLinks() {
                         var links = document.querySelectorAll('a');
                         for (var i = 0; i < links.length; i++) {
@@ -4759,22 +4761,22 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
                         }
                       }
                       
-                      // Обрабатываем ссылки при загрузке
+              
                       processAllLinks();
                       
-                      // Перехватываем клики на уровне document
+                    
                       document.addEventListener('click', function(e) {
                         var target = e.target;
-                        // Находим ближайшую ссылку
+                   
                         while (target && target.tagName !== 'A' && target !== document.body) {
                           target = target.parentElement;
                         }
                         if (target && target.tagName === 'A') {
                           var href = target.getAttribute('href');
                           if (href && !href.startsWith('javascript:') && !href.startsWith('mailto:')) {
-                            // Убираем target если есть
+                          
                             target.removeAttribute('target');
-                            // Открываем в том же окне
+                          
                             e.preventDefault();
                             e.stopPropagation();
                             window.location.href = href;
@@ -4783,15 +4785,15 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
                         }
                       }, true);
                       
-                      // Отслеживаем динамически добавляемые ссылки
+                     
                       var observer = new MutationObserver(function(mutations) {
                         mutations.forEach(function(mutation) {
                           mutation.addedNodes.forEach(function(node) {
-                            if (node.nodeType === 1) { // Element node
+                            if (node.nodeType === 1) { 
                               if (node.tagName === 'A') {
                                 processLink(node);
                               }
-                              // Обрабатываем ссылки внутри добавленного элемента
+                             
                               var links = node.querySelectorAll ? node.querySelectorAll('a') : [];
                               for (var i = 0; i < links.length; i++) {
                                 processLink(links[i]);
@@ -4801,13 +4803,13 @@ class _SferumWebViewPanelState extends State<SferumWebViewPanel> {
                         });
                       });
                       
-                      // Начинаем наблюдение за изменениями в DOM
+                    
                       observer.observe(document.body, {
                         childList: true,
                         subtree: true
                       });
                       
-                      // Переопределяем window.open чтобы открывать в том же окне
+                    
                       var originalOpen = window.open;
                       window.open = function(url, name, features) {
                         if (url && typeof url === 'string') {

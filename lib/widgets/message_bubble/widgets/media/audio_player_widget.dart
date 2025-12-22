@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:gwid/services/cache_service.dart';
 
 class AudioPlayerWidget extends StatefulWidget {
@@ -8,6 +9,7 @@ class AudioPlayerWidget extends StatefulWidget {
   final int duration;
   final String durationText;
   final String? wave;
+  final Uint8List? waveBytes;
   final int? audioId;
   final Color textColor;
   final BorderRadius borderRadius;
@@ -19,6 +21,7 @@ class AudioPlayerWidget extends StatefulWidget {
     required this.duration,
     required this.durationText,
     this.wave,
+    this.waveBytes,
     this.audioId,
     required this.textColor,
     required this.borderRadius,
@@ -44,7 +47,9 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
     _audioPlayer = AudioPlayer();
     _totalDuration = Duration(milliseconds: widget.duration);
 
-    if (widget.wave != null && widget.wave!.isNotEmpty) {
+    if (widget.waveBytes != null && widget.waveBytes!.isNotEmpty) {
+      _waveformData = widget.waveBytes!.toList();
+    } else if (widget.wave != null && widget.wave!.isNotEmpty) {
       _decodeWaveform(widget.wave!);
     }
 
@@ -128,7 +133,6 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
         );
       }
     } catch (e) {
-      // ignore pre-cache errors
     }
   }
 

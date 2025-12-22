@@ -24,7 +24,7 @@ class ConnectionManagerSimple {
   StreamSubscription? _messageSubscription;
 
   final List<String> _serverUrls = AppUrls
-      .websocketUrls; //вот тут кароче модник да используем новую залупу которая в отдельном файле дэээ
+      .websocketUrls;
 
   int _currentUrlIndex = 0;
   String? _currentServerUrl;

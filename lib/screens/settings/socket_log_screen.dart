@@ -98,17 +98,19 @@ class _SocketLogScreenState extends State<SocketLogScreen> {
 
   void _loadInitialLogs() {
     final cachedLogs = ApiService.instance.connectionLogCache;
+    print('Загрузка ${cachedLogs.length} логов из кэша');
     for (var log in cachedLogs) {
       _addLogEntry(log, isInitial: true);
     }
     _applyFiltersAndSearch();
     setState(
       () {},
-    ); 
+    );
   }
 
   void _subscribeToNewLogs() {
     _logSubscription = ApiService.instance.connectionLog.listen((logMessage) {
+      print('Получен новый лог: $logMessage');
       if (mounted) {
         if (_allLogEntries.isNotEmpty &&
             _allLogEntries.last.message == logMessage) {
@@ -266,7 +268,7 @@ class _SocketLogScreenState extends State<SocketLogScreen> {
 
   AppBar _buildDefaultAppBar() {
     return AppBar(
-      title: const Text("Журнал подключения"),
+      title: const Text("Журнал Socket"),
       actions: [
         IconButton(
           icon: const Icon(Icons.search),

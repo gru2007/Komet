@@ -510,7 +510,7 @@ extension ApiServiceMedia on ApiService {
     final payload = {
       "videoId": videoId,
       "chatId": chatId,
-      "messageId": messageId,
+      "messageId": int.tryParse(messageId) ?? 0,
     };
 
     final int seq = await _sendMessage(83, payload);

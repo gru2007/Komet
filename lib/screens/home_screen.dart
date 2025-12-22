@@ -1275,6 +1275,7 @@ class _DesktopLayoutState extends State<_DesktopLayout> {
                     chatId: _selectedChat!.id,
                     contact: _selectedContact!,
                     myId: _myProfile?.id ?? 0,
+                    pinnedMessage: _selectedChat!.pinnedMessage,
                     isGroupChat: _isGroupChat,
                     isChannel: _isChannel,
                     participantCount: _participantCount,

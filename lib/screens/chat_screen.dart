@@ -47,6 +47,7 @@ class ChatScreen extends StatefulWidget {
   final int chatId;
   final Contact contact;
   final int myId;
+  final Message? pinnedMessage;
 
   final VoidCallback? onChatUpdated;
 
@@ -62,6 +63,7 @@ class ChatScreen extends StatefulWidget {
     required this.chatId,
     required this.contact,
     required this.myId,
+    this.pinnedMessage,
     this.onChatUpdated,
     this.onChatRemoved,
     this.isGroupChat = false,
@@ -552,7 +554,7 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _initialUnreadCount = widget.initialUnreadCount;
     _currentContact = widget.contact;
-    _pinnedMessage = null;
+    _pinnedMessage = widget.pinnedMessage;
     _initializeChat();
     _loadEncryptionConfig();
     _loadSpecialMessagesSetting();
@@ -2073,7 +2075,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _showForwardDialog(message);
   }
 
-  void _showForwardDialog(Message message) {
+  void _showForwardDialog(Message message) async {
     final chatData = ApiService.instance.lastChatsPayload;
     if (chatData == null || chatData['chats'] == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2086,7 +2088,14 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final chats = chatData['chats'] as List<dynamic>;
-    final availableChats = chats
+
+    final uniqueChats = <int, dynamic>{};
+    for (final chat in chats) {
+      final chatId = chat['id'] as int;
+      uniqueChats[chatId] = chat;
+    }
+
+    final availableChats = uniqueChats.values
         .where((chat) => chat['id'] != widget.chatId || chat['id'] == 0)
         .toList();
 
@@ -2099,6 +2108,10 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       return;
     }
+
+    await _loadContactsForForwardDialog(availableChats);
+
+    if (!mounted) return;
 
     showGeneralDialog(
       context: context,
@@ -2135,6 +2148,45 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _loadContactsForForwardDialog(List<dynamic> availableChats) async {
+    final contactIdsToLoad = <int>{};
+
+    for (final chat in availableChats) {
+      final chatMap = chat as Map<String, dynamic>;
+      final chatId = chatMap['id'] as int;
+
+      if (chatId == 0) continue;
+
+      final participants = chatMap['participants'] as Map<String, dynamic>? ?? {};
+      final isGroupChat = participants.length > 2;
+
+      if (!isGroupChat) {
+        final participantIds = participants.keys
+            .map((id) => int.tryParse(id) ?? 0)
+            .where((id) => id != 0)
+            .toList();
+
+        for (final participantId in participantIds) {
+          if (participantId != _actualMyId && !_contactDetailsCache.containsKey(participantId)) {
+            contactIdsToLoad.add(participantId);
+          }
+        }
+      }
+    }
+
+    if (contactIdsToLoad.isNotEmpty) {
+      try {
+        final contacts = await ApiService.instance.fetchContactsByIds(contactIdsToLoad.toList());
+        for (final contact in contacts) {
+          _contactDetailsCache[contact.id] = contact;
+        }
+        print('✅ Загружено ${contacts.length} контактов для списка пересылки');
+      } catch (e) {
+        print('❌ Ошибка загрузки контактов для списка пересылки: $e');
+      }
+    }
   }
 
   Widget _buildForwardChatTile(

@@ -70,6 +70,8 @@ extension ApiServiceChats on ApiService {
 
           sendNavEvent('COLD_START');
 
+          ApiService.instance._startAnalyticsTimer();
+
           _sendInitialSetupRequests();
         }
 
@@ -594,7 +596,6 @@ extension ApiServiceChats on ApiService {
 
   Future<void> _sendInitialSetupRequests() async {
     print("Запускаем отправку единичных запросов при старте...");
-    // После handshake сразу шлем первичные запросы, не блокируемся на флагах.
     await Future.delayed(const Duration(seconds: 1));
 
     _sendMessage(272, {"folderSync": 0});
@@ -1054,7 +1055,7 @@ extension ApiServiceChats on ApiService {
         "cid": clientMessageId,
         "link": {
           "type": "FORWARD",
-          "messageId": messageId,
+          "messageId": int.tryParse(messageId) ?? 0,
           "chatId": sourceChatId,
         },
         "attaches": [],

@@ -62,7 +62,6 @@ class _ConnectionLifecycleManagerState extends State<ConnectionLifecycleManager>
   }
 
   Future<void> _checkAndReconnectIfNeeded() async {
-    // Не дёргаем переподключение, если оно уже идёт (проверяем ДО всего)
     if (ApiService.instance.isConnecting) {
       print("🔄 Подключение уже в процессе, пропускаем проверку (ранняя)");
       return;
@@ -76,7 +75,6 @@ class _ConnectionLifecycleManagerState extends State<ConnectionLifecycleManager>
 
     await Future.delayed(const Duration(milliseconds: 500));
     
-    // Проверяем ещё раз после delay
     if (ApiService.instance.isConnecting) {
       print("🔄 Подключение уже в процессе, пропускаем проверку");
       return;

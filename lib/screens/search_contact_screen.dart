@@ -207,6 +207,7 @@ class _SearchContactScreenState extends State<SearchContactScreen> {
               chatId: chatId,
               contact: contact,
               myId: myId,
+              pinnedMessage: null,
               isGroupChat: false,
               isChannel: false,
               onChatUpdated: () {

@@ -261,6 +261,7 @@ extension ApiServiceAuth on ApiService {
       _lastChatsPayload = null;
       _chatsFetchedInThisSession = false;
       _pingTimer?.cancel();
+      _analyticsTimer?.cancel();
       _socket?.close();
       _socket = null;
       _socketConnected = false;
@@ -290,6 +291,7 @@ extension ApiServiceAuth on ApiService {
       await prefs.clear();
 
       _pingTimer?.cancel();
+      _analyticsTimer?.cancel();
       _socket?.close();
       _socket = null;
       _socketConnected = false;

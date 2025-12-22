@@ -90,7 +90,6 @@ extension ApiServiceContacts on ApiService {
 
   void markMessageAsRead(int chatId, dynamic messageId) {
     waitUntilOnline().then((_) {
-      // messageId должен быть int для сервера
       final int messageIdInt = messageId is String ? int.tryParse(messageId) ?? 0 : (messageId as int);
       final payload = {
         "type": "READ_MESSAGE",

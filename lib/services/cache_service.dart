@@ -68,6 +68,7 @@ class CacheService {
       'chats',
       'contacts',
       'audio',
+      'stickers',
     ];
 
     for (final dir in directories) {
@@ -549,20 +550,160 @@ class CacheService {
     final file = await getCachedAudioFile(url, customKey: customKey);
     if (file != null && await file.exists()) {
       final fileData = await file.readAsBytes();
-      
+
       if (_lz4Available && _lz4Codec != null) {
         try {
           final decompressedData = _lz4Codec!.decode(fileData);
           return Uint8List.fromList(decompressedData);
         } catch (e) {
-          
+
           print(
             '⚠️ Ошибка декомпрессии аудио файла $url, пробуем прочитать как обычный файл: $e',
           );
           return fileData;
         }
       } else {
-        
+
+        return fileData;
+      }
+    }
+    return null;
+  }
+
+  Future<String?> cacheStickerFile(String url, int stickerId) async {
+    if (_cacheDirectory == null) {
+      print('CacheService: _cacheDirectory is null, initializing...');
+      await initialize();
+      if (_cacheDirectory == null) {
+        print('CacheService: Failed to initialize cache directory');
+        return null;
+      }
+    }
+
+    try {
+      final customKey = 'sticker_$stickerId';
+      final fileName = _generateFileName(url, customKey);
+      final filePath = '${_cacheDirectory!.path}/stickers/$fileName';
+
+      final existingFile = File(filePath);
+      if (await existingFile.exists()) {
+        print('CacheService: Sticker already cached: $filePath');
+        return filePath;
+      }
+
+      print('CacheService: Downloading sticker from: $url');
+      print('CacheService: Target file path: $filePath');
+
+      final response = await http
+          .get(
+            Uri.parse(url),
+            headers: {
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+          )
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              print('CacheService: Request timeout');
+              throw TimeoutException('Request timeout');
+            },
+          );
+
+      print(
+        'CacheService: Response status: ${response.statusCode}, content-length: ${response.contentLength}',
+      );
+
+      if (response.statusCode == 200) {
+        if (response.bodyBytes.isEmpty) {
+          print('CacheService: Response body is empty');
+          return null;
+        }
+
+        final stickerDir = Directory('${_cacheDirectory!.path}/stickers');
+        if (!await stickerDir.exists()) {
+          await stickerDir.create(recursive: true);
+        }
+
+        if (_lz4Available && _lz4Codec != null) {
+          try {
+            final compressedData = _lz4Codec!.encode(response.bodyBytes);
+            await existingFile.writeAsBytes(compressedData);
+          } catch (e) {
+            print('⚠️ Ошибка сжатия стикера $url, сохраняем без сжатия: $e');
+            await existingFile.writeAsBytes(response.bodyBytes);
+          }
+        } else {
+          await existingFile.writeAsBytes(response.bodyBytes);
+        }
+        final fileSize = await existingFile.length();
+        print(
+          'CacheService: Sticker cached successfully: $filePath (compressed size: $fileSize bytes)',
+        );
+        return filePath;
+      } else {
+        print(
+          'CacheService: Failed to download sticker, status code: ${response.statusCode}',
+        );
+        print(
+          'CacheService: Response body: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}',
+        );
+      }
+    } catch (e, stackTrace) {
+      print('Ошибка кэширования стикера $url: $e');
+      print('Stack trace: $stackTrace');
+      if (e is TimeoutException) {
+        print('CacheService: Request timed out');
+      } else if (e is SocketException) {
+        print('CacheService: Network error - ${e.message}');
+      } else if (e is HttpException) {
+        print('CacheService: HTTP error - ${e.message}');
+      }
+    }
+
+    return null;
+  }
+
+  Future<File?> getCachedStickerFile(int stickerId, {String? url}) async {
+    if (_cacheDirectory == null) return null;
+
+    try {
+      final customKey = 'sticker_$stickerId';
+      final fileName = _generateFileName(url ?? customKey, customKey);
+      final filePath = '${_cacheDirectory!.path}/stickers/$fileName';
+
+      final file = File(filePath);
+      if (await file.exists()) {
+        return file;
+      }
+    } catch (e) {
+      print('Ошибка получения кэшированного стикера: $e');
+    }
+
+    return null;
+  }
+
+  Future<bool> hasCachedStickerFile(int stickerId, {String? url}) async {
+    final file = await getCachedStickerFile(stickerId, url: url);
+    return file != null;
+  }
+
+  Future<Uint8List?> getCachedStickerFileBytes(int stickerId, {String? url}) async {
+    final file = await getCachedStickerFile(stickerId, url: url);
+    if (file != null && await file.exists()) {
+      final fileData = await file.readAsBytes();
+
+      if (_lz4Available && _lz4Codec != null) {
+        try {
+          final decompressedData = _lz4Codec!.decode(fileData);
+          return Uint8List.fromList(decompressedData);
+        } catch (e) {
+          print(
+            '⚠️ Ошибка декомпрессии стикера, пробуем прочитать как обычный файл: $e',
+          );
+          return fileData;
+        }
+      } else {
         return fileData;
       }
     }

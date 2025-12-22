@@ -577,7 +577,6 @@ class ChatMessageBubble extends StatelessWidget {
 
     final replyText = replyMessage['text'] as String? ?? '';
     final replySenderId = replyMessage['sender'] as int?;
-    // id может быть int или String
     final rawId = replyMessage['id'];
     final replyMessageId = rawId is int ? rawId.toString() : (rawId as String?);
 
@@ -1283,7 +1282,8 @@ class ChatMessageBubble extends StatelessWidget {
     final videoId = video['videoId'] as int?;
     final previewDataRaw = video['previewData'];
     final previewData = previewDataRaw is String ? previewDataRaw : null;
-    final thumbnailUrl = video['url'] ?? video['baseUrl'] as String?;
+    final thumbnailUrlRaw = video['url'] ?? video['baseUrl'];
+    final thumbnailUrl = thumbnailUrlRaw is String ? thumbnailUrlRaw : null;
 
     Uint8List? previewBytes;
     if (previewDataRaw is List<int>) {
@@ -1587,8 +1587,10 @@ class ChatMessageBubble extends StatelessWidget {
             final video = entry.value;
             final videoId = video['videoId'] as int?;
             final videoType = video['videoType'] as int?;
-            final previewData = video['previewData'] as String?;
-            final thumbnailUrl = video['url'] ?? video['baseUrl'] as String?;
+            final previewDataRaw = video['previewData'];
+            final previewData = previewDataRaw is String ? previewDataRaw : null;
+            final thumbnailUrlRaw = video['url'] ?? video['baseUrl'];
+            final thumbnailUrl = thumbnailUrlRaw is String ? thumbnailUrlRaw : null;
 
             Uint8List? previewBytes;
             if (previewData != null && previewData.startsWith('data:')) {
@@ -1939,8 +1941,10 @@ class ChatMessageBubble extends StatelessWidget {
     for (final video in videos) {
       final videoId = video['videoId'] as int?;
       final videoType = video['videoType'] as int?;
-      final previewData = video['previewData'];
-      final thumbnailUrl = video['url'] ?? video['baseUrl'] as String?;
+      final previewDataRaw = video['previewData'];
+      final previewData = previewDataRaw is String ? previewDataRaw : null;
+      final thumbnailUrlRaw = video['url'] ?? video['baseUrl'];
+      final thumbnailUrl = thumbnailUrlRaw is String ? thumbnailUrlRaw : null;
 
       Uint8List? previewBytes;
       if (previewData is String && previewData.startsWith('data:')) {
@@ -1951,9 +1955,9 @@ class ChatMessageBubble extends StatelessWidget {
             previewBytes = base64Decode(b64);
           } catch (_) {}
         }
-      } else if (previewData is List<dynamic>) {
+      } else if (previewDataRaw is List<dynamic>) {
         try {
-          previewBytes = Uint8List.fromList(List<int>.from(previewData));
+          previewBytes = Uint8List.fromList(List<int>.from(previewDataRaw));
         } catch (_) {}
       }
 
@@ -2049,12 +2053,87 @@ class ChatMessageBubble extends StatelessWidget {
       ),
       child: GestureDetector(
         onTap: () => _openPhotoViewer(context, sticker),
+        onLongPressStart: (details) => _showMessageContextMenu(context, details.globalPosition),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(isUltraOptimized ? 8 : 12),
           child: _buildPhotoWidget(context, sticker),
         ),
       ),
     );
+  }
+
+  Widget _buildStickerWithCache(BuildContext context, int stickerId, String url) {
+    return FutureBuilder<Uint8List?>(
+      future: _loadStickerImage(stickerId, url),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+        
+          return Container(
+            width: 170,
+            height: 170,
+            color: Colors.grey[200],
+            child: const Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        } else if (snapshot.hasData && snapshot.data != null) {
+        
+          return Image.memory(
+            snapshot.data!,
+            fit: BoxFit.cover,
+            width: 170,
+            height: 170,
+            filterQuality: FilterQuality.medium,
+            errorBuilder: (context, _, __) => _imagePlaceholder(),
+          );
+        } else {
+        
+          return _ProgressiveNetworkImage(
+            url: url,
+            previewBytes: null,
+            width: 170,
+            height: 170,
+            fit: BoxFit.cover,
+            keepAlive: true,
+            startDownloadNextFrame: deferImageLoading,
+          );
+        }
+      },
+    );
+  }
+
+  Future<Uint8List?> _loadStickerImage(int stickerId, String url) async {
+    try {
+      final cacheService = CacheService();
+
+      final cachedBytes = await cacheService.getCachedStickerFileBytes(stickerId, url: url);
+      if (cachedBytes != null) {
+        print('✅ Sticker loaded from cache: $stickerId');
+        return cachedBytes;
+      }
+
+  
+      print('📥 Downloading sticker: $stickerId');
+      final cachedPath = await cacheService.cacheStickerFile(url, stickerId);
+      if (cachedPath != null) {
+     
+        final file = File(cachedPath);
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
+          print('✅ Sticker cached and loaded: $stickerId');
+          return bytes;
+        }
+      }
+
+      return null;
+    } catch (e) {
+      print('❌ Error loading sticker $stickerId: $e');
+      return null;
+    }
   }
 
   List<Widget> _buildCallsWithCaption(
@@ -2271,10 +2350,14 @@ class ChatMessageBubble extends StatelessWidget {
     final fileId = fileData['fileId'] as int?;
     final token = fileData['token'] as String?;
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final maxFileWidth = screenWidth < 400 ? screenWidth * 0.7 : 300.0;
+
     return GestureDetector(
       onTap: () =>
           _handleFileDownload(context, fileId, token, fileName, chatId),
       child: Container(
+        constraints: BoxConstraints(maxWidth: maxFileWidth),
         decoration: BoxDecoration(
           color: textColor.withOpacity(0.05),
           borderRadius: borderRadius,
@@ -2283,6 +2366,7 @@ class ChatMessageBubble extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 width: 48,
@@ -2299,7 +2383,7 @@ class ChatMessageBubble extends StatelessWidget {
               ),
               const SizedBox(width: 12),
 
-              Expanded(
+              Flexible(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -2521,6 +2605,7 @@ class ChatMessageBubble extends StatelessWidget {
         }
       },
       child: Container(
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width < 400 ? MediaQuery.of(context).size.width * 0.7 : 300.0),
         decoration: BoxDecoration(
           color: textColor.withOpacity(0.05),
           borderRadius: borderRadius,
@@ -2529,6 +2614,7 @@ class ChatMessageBubble extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
@@ -2554,7 +2640,7 @@ class ChatMessageBubble extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              Expanded(
+              Flexible(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -2937,7 +3023,16 @@ class ChatMessageBubble extends StatelessWidget {
     final borderRadius = BorderRadius.circular(isUltraOptimized ? 8 : 12);
     final url = audioData['url'] as String?;
     final duration = audioData['duration'] as int? ?? 0;
-    final wave = audioData['wave'] as String?;
+
+    final waveRaw = audioData['wave'];
+    final wave = waveRaw is String ? waveRaw : null;
+    Uint8List? waveBytes;
+    if (waveRaw is List<dynamic>) {
+      try {
+        waveBytes = Uint8List.fromList(List<int>.from(waveRaw));
+      } catch (_) {}
+    }
+
     final audioId = audioData['audioId'] as int?;
 
     final durationSeconds = (duration / 1000).round();
@@ -2950,6 +3045,7 @@ class ChatMessageBubble extends StatelessWidget {
       duration: duration,
       durationText: durationText,
       wave: wave,
+      waveBytes: waveBytes,
       audioId: audioId,
       textColor: textColor,
       borderRadius: borderRadius,
@@ -3057,7 +3153,7 @@ class ChatMessageBubble extends StatelessWidget {
       final seq = await ApiService.instance.sendRawRequest(88, {
         "fileId": fileId,
         "chatId": chatId,
-        "messageId": messageId,
+        "messageId": int.tryParse(messageId) ?? 0,
       });
 
       if (seq == -1) {
@@ -3702,6 +3798,16 @@ class ChatMessageBubble extends StatelessWidget {
   }
 
   Widget _buildPhotoWidget(BuildContext context, Map<String, dynamic> attach) {
+ 
+    if (attach['_type'] == 'STICKER' && attach['id'] is int) {
+      final stickerId = attach['id'] as int;
+      final url = attach['url'] ?? attach['baseUrl'];
+
+      if (url is String && url.isNotEmpty) {
+        return _buildStickerWithCache(context, stickerId, url);
+      }
+    }
+
     Uint8List? previewBytes;
     final preview = attach['previewData'];
     if (preview is String && preview.startsWith('data:')) {
@@ -7189,6 +7295,9 @@ class _VideoCirclePlayerState extends State<_VideoCirclePlayer> {
       });
     } catch (e) {
       print('❌ [VideoCirclePlayer] Error loading video: $e');
+      if (e is UnimplementedError && e.message?.contains('init() has not been implemented') == true) {
+        print('⚠️ [VideoCirclePlayer] Video playback not supported on this platform');
+      }
       if (mounted) {
         setState(() {
           _hasError = true;
