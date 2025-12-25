@@ -14,7 +14,7 @@ class BypassScreen extends StatefulWidget {
 
 class _BypassScreenState extends State<BypassScreen> {
   
-  int _selectedTab = 1;
+  int _selectedTab = 0;
   bool _kometAutoCompleteEnabled = false;
   bool _specialMessagesEnabled = true;
   bool _isLoadingSettings = true;
@@ -82,9 +82,9 @@ class _BypassScreenState extends State<BypassScreen> {
                     Expanded(
                       child: GestureDetector(
                         onTap: () {
-                          
-                          
-                          
+                          if (_selectedTab != 0) {
+                            setState(() => _selectedTab = 0);
+                          }
                         },
                         child: _SegmentButton(
                           selected: _selectedTab == 0,
@@ -642,13 +642,28 @@ class _BypassScreenState extends State<BypassScreen> {
                         const SizedBox(height: 20),
                         Consumer<ThemeProvider>(
                           builder: (context, themeProvider, child) {
-                            return SwitchListTile(
-                              title: const Text("Включить обход"),
-                              subtitle: const Text(
-                                "Активировать функции обхода ограничений",
+                            return Card(
+                              child: SwitchListTile(
+                                title: const Text(
+                                  "Обход блокировки",
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                subtitle: const Text(
+                                  "Разрешить отправку сообщений заблокированным пользователям",
+                                ),
+                                value: themeProvider.blockBypass,
+                                onChanged: (value) {
+                                  themeProvider.setBlockBypass(value);
+                                },
+                                secondary: Icon(
+                                  themeProvider.blockBypass
+                                      ? Icons.psychology
+                                      : Icons.psychology_outlined,
+                                  color: themeProvider.blockBypass
+                                      ? colors.primary
+                                      : colors.onSurfaceVariant,
+                                ),
                               ),
-                              value: false, 
-                              onChanged: (value) {},
                             );
                           },
                         ),
