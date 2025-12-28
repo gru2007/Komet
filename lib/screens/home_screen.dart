@@ -23,6 +23,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static bool _isDialogShowing = false;
   late Future<Map<String, dynamic>> _chatsFuture;
   Profile? _myProfile;
   bool _isProfileLoading = true;
@@ -875,13 +876,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _showSpoofUpdateDialogIfNeeded() async {
+    if (_isDialogShowing) return;
+
     final prefs = await SharedPreferences.getInstance();
     final shouldShow = prefs.getBool('show_spoof_update_dialog') ?? true;
 
     if (!shouldShow || !mounted) return;
 
+    _isDialogShowing = true;
+
     Future.delayed(const Duration(milliseconds: 500), () {
-      if (!mounted) return;
+      if (!mounted) {
+        _isDialogShowing = false;
+        return;
+      }
 
       showDialog(
         context: context,
@@ -941,7 +949,9 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           );
         },
-      );
+      ).then((_) {
+        _isDialogShowing = false;
+      });
     });
   }
 

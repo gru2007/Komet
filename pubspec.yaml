@@ -154,7 +154,7 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/icon/icon1.jpg"
+  image_path: "assets/icon/komet_512.png"
   adaptive_icon_background: "assets/icon/bg.png"
   adaptive_icon_foreground: "assets/icon/komet_512.png"
   windows:

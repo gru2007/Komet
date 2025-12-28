@@ -28,25 +28,32 @@ class _OTPScreenState extends State<OTPScreen> {
   final FocusNode _pinFocusNode = FocusNode();
   StreamSubscription? _apiSubscription;
   bool _isLoading = false;
+  bool _isNavigating = false;
 
   @override
   void initState() {
     super.initState();
     _apiSubscription = ApiService.instance.messages.listen((message) {
-      if (message['type'] == 'password_required' && mounted) {
+      if (message['type'] == 'password_required' && mounted && !_isNavigating) {
+        _isNavigating = true;
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => const PasswordAuthScreen(),
               ),
-            );
+            ).then((_) {
+              if (mounted) {
+                setState(() => _isNavigating = false);
+              }
+            });
           }
         });
         return;
       }
 
-      if (message['opcode'] == 18 && mounted) {
+      if (message['opcode'] == 18 && mounted && !_isNavigating) {
+        _isNavigating = true;
         print('Получен ответ opcode 18, полное сообщение: $message');
         final payload = message['payload'];
         print('Payload при авторизации: $payload');

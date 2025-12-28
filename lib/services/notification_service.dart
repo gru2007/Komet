@@ -41,7 +41,7 @@ class NotificationService {
     }
 
     // Инициализация локальных уведомлений
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings('notification_icon');
     
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -562,7 +562,7 @@ class NotificationService {
         showWhen: true,
         enableVibration: true,
         playSound: true,
-        icon: '@mipmap/ic_launcher',
+        icon: 'notification_icon',
         styleInformation: BigTextStyleInformation(
           displayText,
           contentTitle: isGroupChat ? '$groupTitle: $senderName' : senderName,
@@ -727,7 +727,7 @@ class NotificationService {
             showWhen: true,
             enableVibration: true,
             playSound: true,
-            icon: '@mipmap/ic_launcher',
+            icon: 'notification_icon',
             largeIcon: avatarBitmap,
             styleInformation: BigTextStyleInformation(messageText),
             tag: 'debug_tag_5',
@@ -752,7 +752,7 @@ class NotificationService {
             showWhen: true,
             enableVibration: true,
             playSound: true,
-            icon: '@mipmap/ic_launcher',
+            icon: 'notification_icon',
             largeIcon: avatarBitmap,
             styleInformation: avatarBitmap != null
                 ? BigPictureStyleInformation(
@@ -803,7 +803,7 @@ class NotificationService {
       showWhen: true,
       enableVibration: true,
       playSound: true,
-      icon: '@mipmap/ic_launcher',
+      icon: 'notification_icon',
       ongoing: true,
       autoCancel: false,
     );
@@ -1005,7 +1005,7 @@ class NotificationService {
       showWhen: true,
       enableVibration: true,
       playSound: true,
-      icon: '@mipmap/ic_launcher',
+      icon: 'notification_icon',
       tag: tag,
       largeIcon: largeIcon,
       groupKey: null,
