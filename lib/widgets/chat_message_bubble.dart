@@ -3693,15 +3693,21 @@ class ChatMessageBubble extends StatelessWidget {
   }
 
   void _openPhotoViewer(BuildContext context, Map<String, dynamic> attach) {
-    if (allPhotos != null && allPhotos!.isNotEmpty) {
-      final initialIndex = allPhotos!.indexWhere(
+    List<Map<String, dynamic>>? galleryPhotos = allPhotos;
+
+    if (galleryPhotos != null && galleryPhotos.isNotEmpty) {
+      final initialIndex = galleryPhotos.indexWhere(
         (p) =>
             (p['url'] ?? p['baseUrl']) == (attach['url'] ?? attach['baseUrl']),
       );
       if (initialIndex != -1) {
-        _openPhotoGallery(context, allPhotos!, initialIndex);
+        _openPhotoGallery(context, galleryPhotos, initialIndex);
         return;
       }
+
+      // If the forwarded photo is not in the cached list, avoid opening
+      // unrelated images from the gallery by falling back to a single view.
+      galleryPhotos = null;
     }
 
     final url = attach['url'] ?? attach['baseUrl'];
@@ -3756,7 +3762,7 @@ class ChatMessageBubble extends StatelessWidget {
           return FullScreenPhotoViewer(
             imageChild: child,
             attach: attach,
-            allPhotos: allPhotos,
+            allPhotos: galleryPhotos,
             onGoToMessage: onGoToMessage,
             messageId: message.id,
             onOpenGallery: _openPhotoGallery,
