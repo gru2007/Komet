@@ -370,7 +370,24 @@ extension ApiServiceMedia on ApiService {
       };
 
       clearChatsCache();
-      _sendMessage(64, payload);
+      
+      final queueItem = QueueItem(
+        id: 'photo_$cid',
+        type: QueueItemType.sendMessage,
+        opcode: 64,
+        payload: payload,
+        createdAt: DateTime.now(),
+        persistent: true,
+        chatId: chatId,
+        cid: cid,
+      );
+
+      unawaited(_sendMessage(64, payload).then((_) {
+        _queueService.removeFromQueue(queueItem.id);
+      }).catchError((e) {
+        print('Ошибка отправки фото: $e');
+        _queueService.addToQueue(queueItem);
+      }));
     } catch (e) {
       print('Ошибка отправки фото-сообщений: $e');
     }
@@ -493,7 +510,23 @@ extension ApiServiceMedia on ApiService {
 
         clearChatsCache();
 
-        _sendMessage(64, payload);
+        final queueItem = QueueItem(
+          id: 'file_$cid',
+          type: QueueItemType.sendMessage,
+          opcode: 64,
+          payload: payload,
+          createdAt: DateTime.now(),
+          persistent: true,
+          chatId: chatId,
+          cid: cid,
+        );
+
+        unawaited(_sendMessage(64, payload).then((_) {
+          _queueService.removeFromQueue(queueItem.id);
+        }).catchError((e) {
+          print('Ошибка отправки файла: $e');
+          _queueService.addToQueue(queueItem);
+        }));
         print('Сообщение о файле (Opcode 64) отправлено.');
       } finally {
         
@@ -501,6 +534,72 @@ extension ApiServiceMedia on ApiService {
       }
     } catch (e) {
       print('Ошибка отправки файла: $e');
+    }
+  }
+
+  Future<void> sendContactMessage(
+    int chatId, {
+    required int contactId,
+    int? senderId,
+  }) async {
+    try {
+      await waitUntilOnline();
+
+      final int cid = DateTime.now().millisecondsSinceEpoch;
+      
+      _emitLocal({
+        'ver': 11,
+        'cmd': 1,
+        'seq': -1,
+        'opcode': 128,
+        'payload': {
+          'chatId': chatId,
+          'message': {
+            'id': 'local_$cid',
+            'sender': senderId ?? 0,
+            'time': DateTime.now().millisecondsSinceEpoch,
+            'text': '',
+            'type': 'USER',
+            'cid': cid,
+            'attaches': [
+              {'_type': 'CONTACT', 'contactId': contactId},
+            ],
+          },
+        },
+      });
+
+      final payload = {
+        "chatId": chatId,
+        "message": {
+          "text": "",
+          "cid": cid,
+          "elements": [],
+          "attaches": [
+            {"_type": "CONTACT", "contactId": contactId},
+          ],
+        },
+        "notify": true,
+      };
+
+      final queueItem = QueueItem(
+        id: 'contact_$cid',
+        type: QueueItemType.sendMessage,
+        opcode: 64,
+        payload: payload,
+        createdAt: DateTime.now(),
+        persistent: true,
+        chatId: chatId,
+        cid: cid,
+      );
+
+      unawaited(_sendMessage(64, payload).then((_) {
+        _queueService.removeFromQueue(queueItem.id);
+      }).catchError((e) {
+        print('Ошибка отправки контакта: $e');
+        _queueService.addToQueue(queueItem);
+      }));
+    } catch (e) {
+      print('Ошибка отправки контакта: $e');
     }
   }
 

@@ -49,6 +49,7 @@ extension ApiServiceChats on ApiService {
       if (chatResponse['cmd'] == 0x100 || chatResponse['cmd'] == 256) {
         print("✅ Авторизация (opcode 19) успешна. Сессия ГОТОВА.");
         _isSessionReady = true;
+        _processMessageQueue();
 
         _connectionStatusController.add("ready");
         _updateConnectionState(
@@ -205,8 +206,6 @@ extension ApiServiceChats on ApiService {
   
   void updateChatInCacheFromJson(Map<String, dynamic> chatJson) {
     try {
-      
-      
       _lastChatsPayload ??= {
         'chats': <dynamic>[],
         'contacts': <dynamic>[],
@@ -229,8 +228,58 @@ extension ApiServiceChats on ApiService {
       } else {
         chats.insert(0, chatJson);
       }
+      
+      // Отправляем событие обновления чата для UI
+      _emitLocal({
+        'ver': 11,
+        'cmd': 1,
+        'seq': -1,
+        'opcode': 64,
+        'payload': {
+          'chatId': chatId,
+          'chat': chatJson,
+        },
+      });
     } catch (e) {
       print('Не удалось обновить кэш чатов из chatJson: $e');
+    }
+  }
+
+void _updateChatLastMessageLocally(int chatId, Map<String, dynamic> messageJson) {
+    try {
+      _lastChatsPayload ??= {
+        'chats': <dynamic>[],
+        'contacts': <dynamic>[],
+        'profile': null,
+        'presence': null,
+        'config': null,
+      };
+
+      final chats = _lastChatsPayload!['chats'] as List<dynamic>;
+      final existingIndex = chats.indexWhere(
+        (c) => c is Map && c['id'] == chatId,
+      );
+
+      if (existingIndex != -1) {
+        final chat = Map<String, dynamic>.from(chats[existingIndex] as Map);
+        chat['lastMessage'] = messageJson;
+        chats[existingIndex] = chat;
+        
+        // Отправляем событие обновления чата для UI
+        _emitLocal({
+          'ver': 11,
+          'cmd': 1,
+          'seq': -1,
+          'opcode': 64,
+          'payload': {
+            'chatId': chatId,
+            'chat': chat,
+            'message': messageJson,
+          },
+        });
+      }
+    } catch (e) {
+      print('Не удалось обновить последнее сообщение чата: $e');
     }
   }
 
@@ -446,6 +495,7 @@ extension ApiServiceChats on ApiService {
       if (opcode == 19 && (chatResponse['cmd'] == 0x100 || chatResponse['cmd'] == 256)) {
         print("✅ Авторизация (opcode 19) успешна. Сессия ГОТОВА.");
         _isSessionReady = true;
+        _processMessageQueue();
 
         _connectionStatusController.add("ready");
         _updateConnectionState(
@@ -478,7 +528,6 @@ extension ApiServiceChats on ApiService {
         }
 
         _startPinging();
-        _processMessageQueue();
       }
 
       final profile = chatResponse['payload']?['profile'];
@@ -681,9 +730,36 @@ extension ApiServiceChats on ApiService {
           messagesJson.map((json) => Message.fromJson(json)).toList()
             ..sort((a, b) => a.time.compareTo(b.time));
 
+      // Обработка контактов в сообщениях
+      final contactIds = <int>[];
+      for (final message in messagesList) {
+        for (final attach in message.attaches) {
+          if (attach['_type'] == 'CONTACT') {
+            final contactIdValue = attach['contactId'];
+            final int? contactId = contactIdValue is int 
+                ? contactIdValue
+                : (contactIdValue is String 
+                    ? int.tryParse(contactIdValue) 
+                    : null);
+            if (contactId != null) {
+              // Проверяем, есть ли контакт в кэше перед добавлением в список для запроса
+              final cachedContact = getCachedContact(contactId);
+              if (cachedContact == null && !contactIds.contains(contactId)) {
+                contactIds.add(contactId);
+              }
+            }
+          }
+        }
+      }
+      if (contactIds.isNotEmpty) {
+        unawaited(fetchContactsByIds(contactIds));
+      }
+
       _messageCache[chatId] = messagesList;
       _preloadMessageImages(messagesList);
-      unawaited(_chatCacheService.cacheChatMessages(chatId, messagesList));
+      
+      // Обновляем кеш сообщений (оптимизированно - только если данные новее)
+      unawaited(_updateMessagesCacheIfNewer(chatId, messagesList));
 
       return messagesList;
     } catch (e) {
@@ -1004,6 +1080,55 @@ extension ApiServiceChats on ApiService {
     }
   }
 
+  Future<void> _updateMessagesCacheIfNewer(int chatId, List<Message> newMessages) async {
+    try {
+      final cached = await _chatCacheService.getCachedChatMessages(chatId);
+      
+      if (cached == null || cached.isEmpty) {
+        await _chatCacheService.cacheChatMessages(chatId, newMessages);
+        return;
+      }
+      
+      final cachedIds = cached.map((m) => m.id).toSet();
+      final newIds = newMessages.map((m) => m.id).toSet();
+      
+      if (newIds.every((id) => cachedIds.contains(id))) {
+        bool needsUpdate = false;
+        for (final newMsg in newMessages) {
+          final cachedMsg = cached.firstWhere(
+            (m) => m.id == newMsg.id,
+            orElse: () => newMsg,
+          );
+          if (cachedMsg.id != newMsg.id || 
+              cachedMsg.updateTime != newMsg.updateTime ||
+              cachedMsg.text != newMsg.text) {
+            needsUpdate = true;
+            break;
+          }
+        }
+        if (!needsUpdate) {
+          return;
+        }
+      }
+      
+      final Map<String, Message> messagesMap = {};
+      for (final msg in cached) {
+        messagesMap[msg.id] = msg;
+      }
+      for (final msg in newMessages) {
+        messagesMap[msg.id] = msg;
+      }
+      
+      final mergedMessages = messagesMap.values.toList()
+        ..sort((a, b) => a.time.compareTo(b.time));
+      
+      await _chatCacheService.cacheChatMessages(chatId, mergedMessages);
+    } catch (e) {
+      print('Ошибка обновления кеша сообщений: $e');
+      await _chatCacheService.cacheChatMessages(chatId, newMessages);
+    }
+  }
+
   Map<String, dynamic> _contactToMap(Contact contact) {
     return {
       'id': contact.id,
@@ -1043,11 +1168,56 @@ extension ApiServiceChats on ApiService {
 
     clearChatsCache();
 
-    if (_isSessionOnline) {
-      unawaited(_sendMessage(64, payload));
+    // Отправляем локальное сообщение для немедленного отображения
+    final myId = _userId ?? (userId != null ? int.tryParse(userId!) : null) ?? 0;
+    final localMessage = {
+      'id': 'local_$clientMessageId',
+      'sender': myId,
+      'time': DateTime.now().millisecondsSinceEpoch,
+      'text': text,
+      'type': 'USER',
+      'cid': clientMessageId,
+      'attaches': [],
+      if (replyToMessageId != null)
+        'link': {'type': 'REPLY', 'messageId': replyToMessageId},
+    };
+    
+    _emitLocal({
+      'ver': 11,
+      'cmd': 1,
+      'seq': -1,
+      'opcode': 128,
+      'payload': {
+        'chatId': chatId,
+        'message': localMessage,
+      },
+    });
+    
+    // Локально обновляем список чатов - ПРЯМО ЗДЕСЬ
+    _updateChatLastMessageLocally(chatId, localMessage);
+    
+
+    final queueItem = QueueItem(
+      id: 'msg_$clientMessageId',
+      type: QueueItemType.sendMessage,
+      opcode: 64,
+      payload: payload,
+      createdAt: DateTime.now(),
+      persistent: true,
+      chatId: chatId,
+      cid: clientMessageId,
+    );
+
+    if (_isSessionOnline && _isSessionReady) {
+      unawaited(_sendMessage(64, payload).then((_) {
+        _queueService.removeFromQueue(queueItem.id);
+      }).catchError((e) {
+        print('Ошибка отправки сообщения: $e');
+        _queueService.addToQueue(queueItem);
+      }));
     } else {
-      print("Сессия не онлайн. Сообщение добавлено в очередь.");
-      _messageQueue.add({'opcode': 64, 'payload': payload});
+      print("Сессия не готова. Сообщение добавлено в очередь.");
+      _queueService.addToQueue(queueItem);
     }
   }
 

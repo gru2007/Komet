@@ -19,10 +19,12 @@ import 'package:gwid/services/avatar_cache_service.dart';
 import 'package:gwid/services/chat_read_settings_service.dart';
 import 'package:gwid/services/contact_local_names_service.dart';
 import 'package:gwid/services/notification_service.dart';
+import 'package:gwid/services/message_queue_service.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:gwid/screens/group_settings_screen.dart';
 import 'package:gwid/screens/edit_contact_screen.dart';
+import 'package:gwid/screens/contact_selection_screen.dart';
 import 'package:gwid/widgets/contact_name_widget.dart';
 import 'package:gwid/widgets/contact_avatar_widget.dart';
 import 'package:flutter_linkify/flutter_linkify.dart';
@@ -248,6 +250,42 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: colors.outlineVariant),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 12,
+                            ),
+                          ),
+                          icon: const Icon(Icons.person_outline),
+                          label: const Text('Поделиться контактом'),
+                          onPressed: () async {
+                            Navigator.of(ctx).pop();
+                            final selectedContact = await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const ContactSelectionScreen(),
+                              ),
+                            );
+                            if (selectedContact != null && mounted) {
+                              await ApiService.instance.sendContactMessage(
+                                widget.chatId,
+                                contactId: selectedContact,
+                                senderId: _actualMyId,
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 4),
                   Padding(
                     padding: const EdgeInsets.only(top: 4.0),
@@ -309,6 +347,16 @@ class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
             ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop('contact'),
+              child: Row(
+                children: const [
+                  Icon(Icons.person_outline),
+                  SizedBox(width: 8),
+                  Text('Поделиться контактом'),
+                ],
+              ),
+            ),
           ],
         ),
       );
@@ -362,6 +410,19 @@ class _ChatScreenState extends State<ChatScreen> {
           widget.chatId,
           senderId: _actualMyId,
         );
+      } else if (choice == 'contact') {
+        final selectedContact = await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const ContactSelectionScreen(),
+          ),
+        );
+        if (selectedContact != null && mounted) {
+          await ApiService.instance.sendContactMessage(
+            widget.chatId,
+            contactId: selectedContact,
+            senderId: _actualMyId,
+          );
+        }
       }
     }
   }
@@ -946,6 +1007,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _loadHistoryAndListen() {
     _paginateInitialLoad();
+    
+    // Слушаем переподключение для перезагрузки чата
+    ApiService.instance.reconnectionComplete.listen((_) {
+      if (mounted && ApiService.instance.currentActiveChatId == widget.chatId) {
+        print('Переподключение: перезагружаем чат ${widget.chatId}');
+        _paginateInitialLoad();
+      }
+    });
 
     _apiSubscription = ApiService.instance.messages.listen((message) {
       if (!mounted) return;
@@ -964,6 +1033,20 @@ class _ChatScreenState extends State<ChatScreen> {
       if (opcode == 64 && (cmd == 0x100 || cmd == 256)) {
         if (chatIdNormalized == widget.chatId) {
           final newMessage = Message.fromJson(payload['message']);
+          
+          // Удаляем из очереди по id сообщения
+          final messageId = newMessage.id;
+          if (messageId.isNotEmpty && !messageId.startsWith('local_')) {
+            // Ищем в очереди по chatId и cid, если есть
+            final queueService = MessageQueueService();
+            if (newMessage.cid != null) {
+              final queueItem = queueService.findByCid(newMessage.cid!);
+              if (queueItem != null) {
+                queueService.removeFromQueue(queueItem.id);
+              }
+            }
+          }
+          
           Future.microtask(() {
             if (mounted) {
               _updateMessage(newMessage);
@@ -973,6 +1056,9 @@ class _ChatScreenState extends State<ChatScreen> {
       } else if (opcode == 128) {
         if (chatIdNormalized == widget.chatId) {
           final newMessage = Message.fromJson(payload['message']);
+
+          // Обновляем кеш сообщений
+          unawaited(ChatCacheService().addMessageToCache(widget.chatId, newMessage));
 
           Future.microtask(() {
             if (!mounted) return;
@@ -1089,6 +1175,24 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _paginateInitialLoad() async {
     setState(() => _isLoadingHistory = true);
 
+    // Добавляем временный запрос загрузки чата в очередь
+    final loadChatQueueItem = QueueItem(
+      id: 'load_chat_${widget.chatId}',
+      type: QueueItemType.loadChat,
+      opcode: 49,
+      payload: {
+        "chatId": widget.chatId,
+        "from": DateTime.now().add(const Duration(days: 1)).millisecondsSinceEpoch,
+        "forward": 0,
+        "backward": 1000,
+        "getMessages": true,
+      },
+      createdAt: DateTime.now(),
+      persistent: false,
+      chatId: widget.chatId,
+    );
+    MessageQueueService().addToQueue(loadChatQueueItem);
+
     final chatCacheService = ChatCacheService();
     List<Message>? cachedMessages = await chatCacheService
         .getCachedChatMessages(widget.chatId);
@@ -1125,15 +1229,77 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
+    // Всегда пытаемся загрузить данные с сервера
+    List<Message> allMessages = [];
     try {
-      final allMessages = await ApiService.instance.getMessageHistory(
+      allMessages = await ApiService.instance.getMessageHistory(
         widget.chatId,
         force: true,
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          print('Таймаут загрузки истории, используем кеш');
+          return <Message>[];
+        },
       );
+      
+      // Удаляем запрос загрузки чата из очереди после успешной загрузки
+      if (allMessages.isNotEmpty) {
+        MessageQueueService().removeFromQueue('load_chat_${widget.chatId}');
+      }
+      
       if (!mounted) return;
 
+      // Если с сервера пришли данные - объединяем с кешем
+      if (allMessages.isNotEmpty) {
+        // Объединяем кеш и новые сообщения, убирая дубликаты
+        final Map<String, Message> messagesMap = {};
+        
+        // Сначала добавляем сообщения из кеша (если они есть)
+        for (final msg in _messages) {
+          messagesMap[msg.id] = msg;
+        }
+        
+        // Затем добавляем/обновляем сообщения с сервера
+        for (final msg in allMessages) {
+          // Если сообщение с таким id уже есть, заменяем его (серверные данные приоритетнее)
+          // Но если это локальное сообщение (id начинается с 'local_'), не заменяем его
+          if (!msg.id.startsWith('local_') || !messagesMap.containsKey(msg.id)) {
+            messagesMap[msg.id] = msg;
+          }
+        }
+        
+        // Также проверяем по cid для локальных сообщений
+        final cidMap = <int, Message>{};
+        for (final msg in messagesMap.values) {
+          final cid = msg.cid;
+          if (cid != null) {
+            final existing = cidMap[cid];
+            if (existing == null || !existing.id.startsWith('local_')) {
+              cidMap[cid] = msg;
+            } else if (!msg.id.startsWith('local_')) {
+              // Серверное сообщение заменяет локальное с тем же cid
+              cidMap[cid] = msg;
+              messagesMap.remove(existing.id);
+              messagesMap[msg.id] = msg;
+            }
+          }
+        }
+
+        final mergedMessages = messagesMap.values.toList()
+          ..sort((a, b) => a.time.compareTo(b.time));
+
+        if (!mounted) return;
+        _messages.clear();
+        _messages.addAll(mergedMessages);
+      } else {
+        // Если с сервера не пришли данные (таймаут или ошибка) - используем кеш как есть
+        // Кеш уже загружен выше, ничего не делаем
+        print('Используем кеш, так как сервер не ответил');
+      }
+
       final Set<int> senderIds = {};
-      for (final message in allMessages) {
+      for (final message in _messages) {
         senderIds.add(message.senderId);
 
         if (message.isReply && message.link?['message']?['sender'] != null) {
@@ -1167,7 +1333,11 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
 
-      await chatCacheService.cacheChatMessages(widget.chatId, allMessages);
+      // Сохраняем объединенные сообщения в кеш (включая локальные)
+      // Только если есть сообщения для сохранения
+      if (_messages.isNotEmpty) {
+        await chatCacheService.cacheChatMessages(widget.chatId, _messages);
+      }
 
       if (widget.isGroupChat) {
         await _loadGroupParticipants();
@@ -1496,7 +1666,8 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    ApiService.instance.clearCacheForChat(widget.chatId);
+    final allMessages = [..._messages, message]..sort((a, b) => a.time.compareTo(b.time));
+    unawaited(ChatCacheService().cacheChatMessages(widget.chatId, allMessages));
 
     final wasAtBottom = _isUserAtBottom;
 
@@ -1708,6 +1879,8 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       _messages[index] = finalMessage;
+
+      unawaited(ChatCacheService().cacheChatMessages(widget.chatId, _messages));
 
       if (oldHasPhoto != newHasPhoto) {
         _updateCachedPhotos();
@@ -2999,8 +3172,14 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ),
                                 itemCount: _chatItems.length,
                                 itemBuilder: (context, index) {
+                                  if (index < 0 || index >= _chatItems.length) {
+                                    return const SizedBox.shrink();
+                                  }
                                   final mappedIndex =
                                       _chatItems.length - 1 - index;
+                                  if (mappedIndex < 0 || mappedIndex >= _chatItems.length) {
+                                    return const SizedBox.shrink();
+                                  }
                                   final item = _chatItems[mappedIndex];
                                   final isLastVisual =
                                       index == _chatItems.length - 1;
@@ -4165,74 +4344,76 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       if (_specialMessagesEnabled) const SizedBox(width: 4),
                       Expanded(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
+                        child: Stack(
                           children: [
-                            if (_showKometColorPicker)
-                              _KometColorPickerBar(
-                                onColorSelected: (color) {
-                                  if (_currentKometColorPrefix == null) return;
-                                  final hex = color.value
-                                      .toRadixString(16)
-                                      .padLeft(8, '0')
-                                      .substring(2)
-                                      .toUpperCase();
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_showKometColorPicker)
+                                  _KometColorPickerBar(
+                                    onColorSelected: (color) {
+                                      if (_currentKometColorPrefix == null) return;
+                                      final hex = color.value
+                                          .toRadixString(16)
+                                          .padLeft(8, '0')
+                                          .substring(2)
+                                          .toUpperCase();
 
-                                  String newText;
-                                  int cursorOffset;
+                                      String newText;
+                                      int cursorOffset;
 
-                                  if (_currentKometColorPrefix ==
-                                      'komet.color_#') {
-                                    newText =
-                                        '$_currentKometColorPrefix$hex\'ваш текст\'';
-                                    final textLength = newText.length;
-                                    cursorOffset = textLength - 12;
-                                  } else if (_currentKometColorPrefix ==
-                                      'komet.cosmetic.pulse#') {
-                                    newText =
-                                        '$_currentKometColorPrefix$hex\'ваш текст\'';
-                                    final textLength = newText.length;
-                                    cursorOffset = textLength - 12;
-                                  } else {
-                                    return;
-                                  }
+                                      if (_currentKometColorPrefix ==
+                                          'komet.color_#') {
+                                        newText =
+                                            '$_currentKometColorPrefix$hex\'ваш текст\'';
+                                        final textLength = newText.length;
+                                        cursorOffset = textLength - 12;
+                                      } else if (_currentKometColorPrefix ==
+                                          'komet.cosmetic.pulse#') {
+                                        newText =
+                                            '$_currentKometColorPrefix$hex\'ваш текст\'';
+                                        final textLength = newText.length;
+                                        cursorOffset = textLength - 12;
+                                      } else {
+                                        return;
+                                      }
 
-                                  _textController.text = newText;
-                                  _textController.selection = TextSelection(
-                                    baseOffset: cursorOffset,
-                                    extentOffset: newText.length - 1,
-                                  );
-                                },
-                              ),
-                            Focus(
-                              focusNode: _textFocusNode,
-                              onKeyEvent: (node, event) {
-                                if (event is KeyDownEvent) {
-                                  if (event.logicalKey ==
-                                      LogicalKeyboardKey.enter) {
-                                    final bool isShiftPressed =
-                                        HardwareKeyboard
-                                            .instance
-                                            .logicalKeysPressed
-                                            .contains(
-                                              LogicalKeyboardKey.shiftLeft,
-                                            ) ||
-                                        HardwareKeyboard
-                                            .instance
-                                            .logicalKeysPressed
-                                            .contains(
-                                              LogicalKeyboardKey.shiftRight,
-                                            );
+                                      _textController.text = newText;
+                                      _textController.selection = TextSelection(
+                                        baseOffset: cursorOffset,
+                                        extentOffset: newText.length - 1,
+                                      );
+                                    },
+                                  ),
+                                Focus(
+                                  focusNode: _textFocusNode,
+                                  onKeyEvent: (node, event) {
+                                    if (event is KeyDownEvent) {
+                                      if (event.logicalKey ==
+                                          LogicalKeyboardKey.enter) {
+                                        final bool isShiftPressed =
+                                            HardwareKeyboard
+                                                .instance
+                                                .logicalKeysPressed
+                                                .contains(
+                                                  LogicalKeyboardKey.shiftLeft,
+                                                ) ||
+                                            HardwareKeyboard
+                                                .instance
+                                                .logicalKeysPressed
+                                                .contains(
+                                                  LogicalKeyboardKey.shiftRight,
+                                                );
 
-                                    if (!isShiftPressed) {
-                                      _sendMessage();
-                                      return KeyEventResult.handled;
+                                        if (!isShiftPressed) {
+                                          _sendMessage();
+                                          return KeyEventResult.handled;
+                                        }
+                                      }
                                     }
-                                  }
-                                }
-                                return KeyEventResult.ignored;
-                              },
-                              child: TextField(
+                                    return KeyEventResult.ignored;
+                                  },
+                                  child: TextField(
                                 controller: _textController,
                                 enabled: !isBlocked,
                                 keyboardType: TextInputType.multiline,
@@ -4349,10 +4530,61 @@ class _ChatScreenState extends State<ChatScreen> {
                                           _scheduleTypingPing();
                                         }
                                       },
-                              ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            // Индикатор подключения
+                            StreamBuilder<bool>(
+                              stream: Stream.periodic(const Duration(milliseconds: 500), (_) {
+                                return ApiService.instance.isOnline && ApiService.instance.isSessionReady;
+                              }).distinct(),
+                              initialData: ApiService.instance.isOnline && ApiService.instance.isSessionReady,
+                              builder: (context, snapshot) {
+                                final isConnected = snapshot.data ?? false;
+                                if (isConnected) return const SizedBox.shrink();
+                                return Positioned(
+                                  left: 8,
+                                  bottom: 8,
+                                  child: SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Theme.of(context).colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ],
                         ),
+                      ),
+                      // Индикатор подключения (альтернативный вариант)
+                      StreamBuilder<bool>(
+                        stream: Stream.periodic(const Duration(milliseconds: 500), (_) {
+                          return ApiService.instance.isOnline && ApiService.instance.isSessionReady;
+                        }).distinct(),
+                        initialData: ApiService.instance.isOnline && ApiService.instance.isSessionReady,
+                        builder: (context, snapshot) {
+                          final isConnected = snapshot.data ?? false;
+                          if (isConnected) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 4.0),
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                       const SizedBox(width: 4),
                       Material(
@@ -4594,54 +4826,122 @@ class _ChatScreenState extends State<ChatScreen> {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
-                            child: TextField(
-                              controller: _textController,
-                              enabled: !isBlocked,
-                              keyboardType: TextInputType.multiline,
-                              textInputAction: TextInputAction.newline,
-                              minLines: 1,
-                              maxLines: 5,
-                              decoration: InputDecoration(
-                                hintText: isBlocked
-                                    ? 'Пользователь заблокирован'
-                                    : 'Сообщение...',
-                                filled: true,
-                                isDense: true,
-                                fillColor: isBlocked
-                                    ? Theme.of(context)
-                                          .colorScheme
-                                          .surfaceContainerHighest
-                                          .withOpacity(0.25)
-                                    : Theme.of(context)
-                                          .colorScheme
-                                          .surfaceContainerHighest
-                                          .withOpacity(0.4),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(24),
-                                  borderSide: BorderSide.none,
+                            child: Stack(
+                              children: [
+                                TextField(
+                                  controller: _textController,
+                                  enabled: !isBlocked,
+                                  keyboardType: TextInputType.multiline,
+                                  textInputAction: TextInputAction.newline,
+                                  minLines: 1,
+                                  maxLines: 5,
+                                  decoration: InputDecoration(
+                                    hintText: isBlocked
+                                        ? 'Пользователь заблокирован'
+                                        : 'Сообщение...',
+                                    filled: true,
+                                    isDense: true,
+                                    fillColor: isBlocked
+                                        ? Theme.of(context)
+                                              .colorScheme
+                                              .surfaceContainerHighest
+                                              .withOpacity(0.25)
+                                        : Theme.of(context)
+                                              .colorScheme
+                                              .surfaceContainerHighest
+                                              .withOpacity(0.4),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(24),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(24),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(24),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 18.0,
+                                      vertical: 12.0,
+                                    ),
+                                  ),
+                                  onChanged: isBlocked
+                                      ? null
+                                      : (v) {
+                                          if (v.isNotEmpty) {
+                                            _scheduleTypingPing();
+                                          }
+                                        },
                                 ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(24),
-                                  borderSide: BorderSide.none,
+                                // Индикатор подключения
+                                StreamBuilder<bool>(
+                                  stream: Stream.periodic(const Duration(milliseconds: 500), (_) {
+                                    return ApiService.instance.isOnline && ApiService.instance.isSessionReady;
+                                  }).distinct(),
+                                  initialData: ApiService.instance.isOnline && ApiService.instance.isSessionReady,
+                                  builder: (context, snapshot) {
+                                    final isConnected = snapshot.data ?? false;
+                                    if (isConnected) return const SizedBox.shrink();
+                                    return Positioned(
+                                      left: 8,
+                                      bottom: 8,
+                                      child: SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(
+                                            Theme.of(context).colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
                                 ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(24),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 18.0,
-                                  vertical: 12.0,
-                                ),
-                              ),
-                              onChanged: isBlocked
-                                  ? null
-                                  : (v) {
-                                      if (v.isNotEmpty) {
-                                        _scheduleTypingPing();
-                                      }
-                                    },
+                              ],
                             ),
                           ),
+                          // Индикатор подключения (альтернативный вариант)
+                          StreamBuilder<bool>(
+                            stream: Stream.periodic(const Duration(milliseconds: 500), (_) {
+                              return ApiService.instance.isOnline && ApiService.instance.isSessionReady;
+                            }).distinct(),
+                            initialData: ApiService.instance.isOnline && ApiService.instance.isSessionReady,
+                            builder: (context, snapshot) {
+                              final isConnected = snapshot.data ?? false;
+                              if (isConnected) return const SizedBox.shrink();
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 4.0),
+                                child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          // Индикатор подключения
+                          if (!ApiService.instance.isOnline || !ApiService.instance.isSessionReady)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8.0),
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ),
                           const SizedBox(width: 4),
                           Builder(
                             builder: (context) {
@@ -5110,6 +5410,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    // Очищаем временную очередь для этого чата при выходе
+    MessageQueueService().clearTemporaryQueue(chatId: widget.chatId);
+    
     if (ApiService.instance.currentActiveChatId == widget.chatId) {
       ApiService.instance.currentActiveChatId = null;
     }

@@ -412,7 +412,6 @@ extension ApiServiceConnection on ApiService {
             _startHealthMonitoring();
 
             _startPinging();
-            _processMessageQueue();
 
             if (authToken != null && !_chatsFetchedInThisSession) {
               unawaited(_sendAuthRequestAfterHandshake());
@@ -446,7 +445,29 @@ extension ApiServiceConnection on ApiService {
             }
 
             if (error != null && error['error'] == 'proto.state') {
-              print('⚠️ Ошибка proto.state: сессия не готова для этого запроса, игнорируем');
+              print('⚠️ Ошибка proto.state: сессия не готова для этого запроса');
+              // Если это ошибка отправки сообщения - возвращаем в очередь
+              if (decodedMessage['opcode'] == 64) {
+                final messagePayload = decodedMessage['payload'];
+                if (messagePayload != null && messagePayload['message'] != null) {
+                  final messageData = messagePayload['message'] as Map<String, dynamic>;
+                  final cid = messageData['cid'] as int?;
+                  if (cid != null) {
+                    final queueItem = QueueItem(
+                      id: 'retry_msg_$cid',
+                      type: QueueItemType.sendMessage,
+                      opcode: 64,
+                      payload: messagePayload,
+                      createdAt: DateTime.now(),
+                      persistent: true,
+                      chatId: messagePayload['chatId'] as int?,
+                      cid: cid,
+                    );
+                    _queueService.addToQueue(queueItem);
+                    print('Сообщение возвращено в очередь из-за proto.state');
+                  }
+                }
+              }
               return;
             }
 
@@ -719,11 +740,55 @@ extension ApiServiceConnection on ApiService {
   }
 
   void _processMessageQueue() {
-    if (_messageQueue.isEmpty) return;
+    if (_messageQueue.isEmpty) {
+      _processQueueService();
+      return;
+    }
     for (var message in _messageQueue) {
       unawaited(_sendMessage(message['opcode'], message['payload']));
     }
     _messageQueue.clear();
+    _processQueueService();
+  }
+
+  void _processQueueService() {
+    if (!_isSessionReady) {
+      print('Сессия не готова, откладываем обработку очереди');
+      return;
+    }
+
+    // Обрабатываем постоянную очередь (сообщения)
+    final persistentItems = _queueService.getPersistentItems();
+    print('Обработка постоянной очереди: ${persistentItems.length} элементов');
+    for (var item in persistentItems) {
+      print('Отправляем из очереди: ${item.type.name}, opcode=${item.opcode}, cid=${item.cid}');
+      unawaited(_sendMessage(item.opcode, item.payload).then((_) {
+        print('Сообщение из очереди успешно отправлено, удаляем из очереди: ${item.id}');
+        _queueService.removeFromQueue(item.id);
+      }).catchError((e) {
+        print('Ошибка отправки из очереди: $e, оставляем в очереди');
+      }));
+    }
+
+    // Обрабатываем временную очередь (загрузка чатов)
+    final temporaryItems = _queueService.getTemporaryItems();
+    print('Обработка временной очереди: ${temporaryItems.length} элементов');
+    for (var item in temporaryItems) {
+      if (item.type == QueueItemType.loadChat && item.chatId != null) {
+        // Проверяем, что пользователь все еще в этом чате
+        if (currentActiveChatId == item.chatId) {
+          print('Отправляем запрос загрузки чата ${item.chatId} из очереди');
+          unawaited(_sendMessage(item.opcode, item.payload).then((_) {
+            _queueService.removeFromQueue(item.id);
+          }).catchError((e) {
+            print('Ошибка загрузки чата из очереди: $e');
+          }));
+        } else {
+          print('Пользователь больше не в чате ${item.chatId}, удаляем из очереди');
+          _queueService.removeFromQueue(item.id);
+        }
+      }
+    }
   }
 
   void forceReconnect() {

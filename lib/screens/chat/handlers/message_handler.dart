@@ -7,6 +7,7 @@ import 'package:gwid/models/message.dart';
 import 'package:gwid/models/profile.dart';
 import 'package:gwid/models/chat_folder.dart';
 import 'package:gwid/services/notification_service.dart';
+import 'package:gwid/services/message_queue_service.dart';
 import 'package:gwid/services/chat_cache_service.dart';
 
 class MessageHandler {
@@ -183,7 +184,27 @@ class MessageHandler {
 
       if (opcode == 129 && chatId != null) {
         setTypingForChat(chatId);
+      } else if (opcode == 64 && (cmd == 0x100 || cmd == 256)) {
+        // Успешная отправка сообщения с сервера - обновляем чат
+        final messageData = payload['message'] as Map<String, dynamic>?;
+        if (messageData != null) {
+          final messageId = messageData['id'] as String?;
+          final cid = messageData['cid'] as int?;
+          
+          // Удаляем из очереди по id или cid
+          final queueService = MessageQueueService();
+          if (cid != null) {
+            final queueItem = queueService.findByCid(cid);
+            if (queueItem != null) {
+              queueService.removeFromQueue(queueItem.id);
+            }
+          }
+        }
+        
+        // Обновляем чат с новым сообщением
+        _handleNewChat(payload);
       } else if (opcode == 64) {
+        // Локальное обновление чата (без cmd, это локальное сообщение)
         _handleNewChat(payload);
       } else if (opcode == 128 && chatId != null) {
         _handleNewMessage(chatId, payload);
@@ -227,30 +248,73 @@ class MessageHandler {
   }
 
   void _handleNewChat(Map<String, dynamic> payload) {
-    if (payload['chat'] is! Map<String, dynamic>) return;
-    final chatJson = payload['chat'] as Map<String, dynamic>;
-    final newChat = Chat.fromJson(chatJson);
+    final chatId = payload['chatId'] as int?;
+    final chatJson = payload['chat'] as Map<String, dynamic>?;
+    final messageJson = payload['message'] as Map<String, dynamic>?;
+    
+    // Если есть полный объект чата - используем его
+    if (chatJson != null) {
+      final newChat = Chat.fromJson(chatJson);
+      ApiService.instance.updateChatInCacheFromJson(chatJson);
 
-    ApiService.instance.updateChatInCacheFromJson(chatJson);
-
-    final context = getContext();
-    if (context.mounted) {
-      setState(() {
-        final existingIndex = allChats.indexWhere((chat) => chat.id == newChat.id);
-        if (existingIndex != -1) {
-          allChats[existingIndex] = newChat;
-        } else {
-          final savedIndex = allChats.indexWhere(isSavedMessages);
-          final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
-          allChats.insert(insertIndex, newChat);
-        }
-        filterChats();
-      });
+      final context = getContext();
+      if (context.mounted) {
+        setState(() {
+          final existingIndex = allChats.indexWhere((chat) => chat.id == newChat.id);
+          if (existingIndex != -1) {
+            allChats[existingIndex] = newChat;
+          } else {
+            final savedIndex = allChats.indexWhere(isSavedMessages);
+            final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
+            allChats.insert(insertIndex, newChat);
+          }
+          filterChats();
+        });
+      }
+    } 
+    // Если есть только сообщение и chatId - обновляем существующий чат
+    else if (chatId != null && messageJson != null) {
+      final newMessage = Message.fromJson(messageJson);
+      final context = getContext();
+      if (context.mounted) {
+        setState(() {
+          final chatIndex = allChats.indexWhere((chat) => chat.id == chatId);
+          if (chatIndex != -1) {
+            final oldChat = allChats[chatIndex];
+            final updatedChat = oldChat.copyWith(
+              lastMessage: newMessage,
+            );
+            allChats.removeAt(chatIndex);
+            _insertChatAtCorrectPosition(updatedChat);
+            filterChats();
+          }
+        });
+      }
     }
   }
 
   void _handleNewMessage(int chatId, Map<String, dynamic> payload) {
     final newMessage = Message.fromJson(payload['message']);
+    
+    // Обработка контактов в сообщении
+    for (final attach in newMessage.attaches) {
+      if (attach['_type'] == 'CONTACT') {
+        final contactIdValue = attach['contactId'];
+        final int? contactId = contactIdValue is int 
+            ? contactIdValue
+            : (contactIdValue is String 
+                ? int.tryParse(contactIdValue) 
+                : null);
+        if (contactId != null) {
+          // Проверяем, есть ли контакт в кэше перед запросом
+          final cachedContact = ApiService.instance.getCachedContact(contactId);
+          if (cachedContact == null) {
+            // Запрашиваем данные контакта по ID только если его нет в кэше
+            ApiService.instance.fetchContactsByIds([contactId]);
+          }
+        }
+      }
+    }
     
     // Дедупликация
     final messageId = newMessage.id;
@@ -271,6 +335,11 @@ class MessageHandler {
       final contactProfile = profileData?['contact'] as Map<String, dynamic>?;
       myId = contactProfile?['id'] as int?;
     }
+    
+    // Если myId не найден, пробуем получить из ApiService
+    if (myId == null && ApiService.instance.userId != null) {
+      myId = int.tryParse(ApiService.instance.userId!);
+    }
 
     // Не показываем уведомление для своих сообщений
     bool shouldShowNotification = (myId == null || newMessage.senderId != myId);
@@ -285,7 +354,9 @@ class MessageHandler {
     final int chatIndex = allChats.indexWhere((chat) => chat.id == chatId);
     if (shouldShowNotification && chatIndex != -1) {
       final oldChat = allChats[chatIndex];
-      if (newMessage.senderId == oldChat.ownerId) {
+      // Проверяем как по myId, так и по ownerId чата
+      if (newMessage.senderId == oldChat.ownerId || 
+          (myId != null && newMessage.senderId == myId)) {
         shouldShowNotification = false;
       }
     }
@@ -304,9 +375,13 @@ class MessageHandler {
     if (chatIndex != -1) {
       final oldChat = allChats[chatIndex];
       
+      // Определяем, наше ли это сообщение
+      final isMyMessage = (myId != null && newMessage.senderId == myId) || 
+                          newMessage.senderId == oldChat.ownerId;
+      
       final updatedChat = oldChat.copyWith(
         lastMessage: newMessage,
-        newMessages: newMessage.senderId != oldChat.ownerId
+        newMessages: !isMyMessage
             ? oldChat.newMessages + 1
             : oldChat.newMessages,
       );

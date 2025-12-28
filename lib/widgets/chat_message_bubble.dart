@@ -352,6 +352,14 @@ class ChatMessageBubble extends StatelessWidget {
                 messageTextOpacity,
                 chatId,
               ),
+              ..._buildContactsWithCaption(
+                context,
+                attaches,
+                textColor,
+                isUltraOptimized,
+                messageTextOpacity,
+                chatId,
+              ),
               const SizedBox(height: 6),
             ],
             if (text.isNotEmpty) ...[
@@ -1049,8 +1057,7 @@ class ChatMessageBubble extends StatelessWidget {
       final type = attach['_type']?.toString().toUpperCase();
       return type == 'VOICE' ||
           type == 'GIF' ||
-          type == 'LOCATION' ||
-          type == 'CONTACT';
+          type == 'LOCATION';
     });
 
     return hasUnsupportedAttachments;
@@ -2323,6 +2330,206 @@ class ChatMessageBubble extends StatelessWidget {
     }
 
     return widgets;
+  }
+
+  List<Widget> _buildContactsWithCaption(
+    BuildContext context,
+    List<Map<String, dynamic>> attaches,
+    Color textColor,
+    bool isUltraOptimized,
+    double messageTextOpacity,
+    int? chatId,
+  ) {
+    final contacts = attaches.where((a) => a['_type'] == 'CONTACT').toList();
+    final List<Widget> widgets = [];
+
+    if (contacts.isEmpty) return widgets;
+
+    for (final contactAttach in contacts) {
+      widgets.add(
+        _buildContactWidget(
+          context,
+          contactAttach,
+          textColor,
+          isUltraOptimized,
+          messageTextOpacity,
+          chatId,
+        ),
+      );
+      widgets.add(const SizedBox(height: 6));
+    }
+
+    return widgets;
+  }
+
+  Widget _buildContactWidget(
+    BuildContext context,
+    Map<String, dynamic> contactAttach,
+    Color textColor,
+    bool isUltraOptimized,
+    double messageTextOpacity,
+    int? chatId,
+  ) {
+    final contactIdValue = contactAttach['contactId'];
+    final int? contactId = contactIdValue is int 
+        ? contactIdValue
+        : (contactIdValue is String 
+            ? int.tryParse(contactIdValue) 
+            : null);
+    final contactName = contactAttach['name'] as String? ?? 
+                        contactAttach['firstName'] as String? ?? 
+                        'Контакт';
+    final photoUrl = contactAttach['photoUrl'] as String? ?? 
+                     contactAttach['baseUrl'] as String?;
+
+    // Сначала проверяем кэш синхронно
+    final cachedContact = contactId != null 
+        ? ApiService.instance.getCachedContact(contactId)
+        : null;
+    
+    // Если контакт есть в кэше - показываем сразу
+    if (cachedContact != null) {
+      return _buildContactContent(
+        context,
+        cachedContact,
+        textColor,
+        isUltraOptimized,
+        messageTextOpacity,
+        contactId,
+      );
+    }
+    
+    // Если нет в кэше - используем FutureBuilder для загрузки
+    return FutureBuilder<Contact?>(
+      key: ValueKey('contact_$contactId'),
+      future: contactId != null 
+          ? ApiService.instance.fetchContactsByIds([contactId]).then(
+              (contacts) => contacts.isNotEmpty ? contacts.first : null,
+            )
+          : Future.value(null),
+      builder: (context, snapshot) {
+        // Если контакт загрузился - проверяем кэш еще раз (на случай если он был загружен параллельно)
+        final contact = snapshot.data ?? (contactId != null 
+            ? ApiService.instance.getCachedContact(contactId)
+            : null);
+        return _buildContactContent(
+          context,
+          contact,
+          textColor,
+          isUltraOptimized,
+          messageTextOpacity,
+          contactId,
+          fallbackName: contactName,
+          fallbackPhotoUrl: photoUrl,
+        );
+      },
+    );
+  }
+
+  Widget _buildContactContent(
+    BuildContext context,
+    Contact? contact,
+    Color textColor,
+    bool isUltraOptimized,
+    double messageTextOpacity,
+    int? contactId, {
+    String? fallbackName,
+    String? fallbackPhotoUrl,
+  }) {
+    final displayName = contact?.name ?? fallbackName ?? 'Контакт';
+    final displayPhotoUrl = contact?.photoBaseUrl ?? fallbackPhotoUrl;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final maxContactWidth = screenWidth < 400 ? screenWidth * 0.7 : 300.0;
+
+    return Container(
+      constraints: BoxConstraints(maxWidth: maxContactWidth),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: textColor.withOpacity(0.1 * messageTextOpacity),
+        borderRadius: BorderRadius.circular(isUltraOptimized ? 8 : 12),
+        border: Border.all(
+          color: textColor.withOpacity(0.2 * messageTextOpacity),
+        ),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: contactId != null
+                ? () => openUserProfileById(context, contactId)
+                : null,
+            child: displayPhotoUrl != null && displayPhotoUrl.isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.network(
+                      displayPhotoUrl,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: textColor.withOpacity(0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.person,
+                            color: textColor.withOpacity(0.6),
+                          ),
+                        );
+                      },
+                    ),
+                  )
+                : Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: textColor.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.person,
+                      color: textColor.withOpacity(0.6),
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: GestureDetector(
+              onTap: contactId != null
+                  ? () => openUserProfileById(context, contactId)
+                  : null,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    style: TextStyle(
+                      color: textColor.withOpacity(messageTextOpacity),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  if (contact?.description != null && contact!.description!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      contact.description!,
+                      style: TextStyle(
+                        color: textColor.withOpacity(0.7 * messageTextOpacity),
+                        fontSize: 14,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildFileWidget(
@@ -4025,6 +4232,14 @@ class ChatMessageBubble extends StatelessWidget {
             messageTextOpacity,
             chatId,
           ),
+          ..._buildContactsWithCaption(
+            context,
+            message.attaches,
+            textColor,
+            isUltraOptimized,
+            messageTextOpacity,
+            chatId,
+          ),
           const SizedBox(height: 6),
         ],
         if (message.text.isNotEmpty) ...[
@@ -4179,9 +4394,15 @@ class ChatMessageBubble extends StatelessWidget {
                       size: 16,
                       color: iconColor,
                     );
+                  } else if (readStatus == MessageReadStatus.sent) {
+                    return Icon(
+                      Icons.done,
+                      size: 16,
+                      color: iconColor,
+                    );
                   } else {
                     return Icon(
-                      isRead ? Icons.done_all : Icons.done,
+                      Icons.done_all,
                       size: 16,
                       color: iconColor,
                     );

@@ -19,6 +19,7 @@ import 'services/account_manager.dart';
 import 'services/music_player_service.dart';
 import 'services/whitelist_service.dart';
 import 'services/notification_service.dart';
+import 'services/message_queue_service.dart';
 import 'plugins/plugin_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -32,6 +33,7 @@ Future<void> main() async {
   await AvatarCacheService().initialize();
   await ChatCacheService().initialize();
   await ContactLocalNamesService().initialize();
+  await MessageQueueService().initialize();
   print("Сервисы кеширования инициализированы");
 
   print("Инициализируем AccountManager...");

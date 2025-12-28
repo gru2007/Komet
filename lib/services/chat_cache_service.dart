@@ -218,8 +218,27 @@ class ChatCacheService {
       final cached = await getCachedChatMessages(chatId);
 
       if (cached != null) {
-        final updatedMessages = [message, ...cached];
-        await cacheChatMessages(chatId, updatedMessages);
+        // Проверяем, нет ли уже такого сообщения (по id или cid)
+        final exists = cached.any((m) => 
+          m.id == message.id || 
+          (m.cid != null && message.cid != null && m.cid == message.cid)
+        );
+        
+        if (!exists) {
+          // Добавляем новое сообщение, сохраняя порядок по времени
+          final updatedMessages = [...cached, message]
+            ..sort((a, b) => a.time.compareTo(b.time));
+          await cacheChatMessages(chatId, updatedMessages);
+        } else {
+          // Обновляем существующее сообщение
+          final updatedMessages = cached.map((m) => 
+            (m.id == message.id || 
+             (m.cid != null && message.cid != null && m.cid == message.cid))
+              ? message
+              : m
+          ).toList();
+          await cacheChatMessages(chatId, updatedMessages);
+        }
       } else {
         await cacheChatMessages(chatId, [message]);
       }

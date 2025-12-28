@@ -19,6 +19,7 @@ import 'package:gwid/services/avatar_cache_service.dart';
 import 'package:gwid/services/cache_service.dart';
 import 'package:gwid/services/chat_cache_service.dart';
 import 'package:gwid/services/profile_cache_service.dart';
+import 'package:gwid/services/message_queue_service.dart';
 import 'package:gwid/utils/spoofing_service.dart';
 import 'package:gwid/utils/log_utils.dart';
 import 'package:gwid/utils/fresh_mode_helper.dart';
@@ -116,6 +117,7 @@ class ApiService {
   final CacheService _cacheService = CacheService();
   final AvatarCacheService _avatarCacheService = AvatarCacheService();
   final ChatCacheService _chatCacheService = ChatCacheService();
+  final MessageQueueService _queueService = MessageQueueService();
   bool _cacheServicesInitialized = false;
 
   final ConnectionLogger _connectionLogger = ConnectionLogger();
@@ -128,6 +130,7 @@ class ApiService {
   bool _isLoadingBlockedContacts = false;
 
   bool _isSessionReady = false;
+  bool get isSessionReady => _isSessionReady;
 
   final _messageController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get messages => _messageController.stream;

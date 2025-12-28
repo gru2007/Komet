@@ -29,6 +29,7 @@ import 'package:gwid/widgets/contact_name_widget.dart';
 import 'package:gwid/widgets/contact_avatar_widget.dart';
 import 'package:gwid/services/account_manager.dart';
 import 'package:gwid/models/account.dart';
+import 'package:gwid/services/message_queue_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import 'package:gwid/screens/chat/models/search_result.dart';
@@ -3427,6 +3428,10 @@ class _ChatsScreenState extends State<ChatsScreen>
 
   Widget _buildLastMessagePreview(Chat chat) {
     final message = chat.lastMessage;
+    final colors = Theme.of(context).colorScheme;
+    
+    // Проверяем, наше ли последнее сообщение
+    final isMyMessage = _myProfile != null && message.senderId == _myProfile!.id;
 
     if (message.attaches.isNotEmpty) {
       for (final attach in message.attaches) {
@@ -3437,11 +3442,31 @@ class _ChatsScreenState extends State<ChatsScreen>
       }
     }
 
+    Widget messagePreview;
     if (message.text.isEmpty && message.attaches.isNotEmpty) {
-      return Text('Вложение', maxLines: 1, overflow: TextOverflow.ellipsis);
+      messagePreview = Text('Вложение', maxLines: 1, overflow: TextOverflow.ellipsis);
+    } else {
+      messagePreview = Text(message.text, maxLines: 1, overflow: TextOverflow.ellipsis);
     }
 
-    return Text(message.text, maxLines: 1, overflow: TextOverflow.ellipsis);
+    // Если это наше сообщение - добавляем статус
+    if (isMyMessage) {
+      final queueItem = MessageQueueService().findByCid(message.cid ?? 0);
+      final bool isPending = queueItem != null || message.id.startsWith('local_');
+      
+      return Row(
+        children: [
+          if (isPending)
+            Icon(Icons.access_time, size: 14, color: colors.onSurfaceVariant)
+          else
+            Icon(Icons.done, size: 14, color: colors.onSurfaceVariant),
+          const SizedBox(width: 4),
+          Expanded(child: messagePreview),
+        ],
+      );
+    }
+
+    return messagePreview;
   }
 
   Widget _buildSearchMessagePreview(Chat chat, String matchedText) {
