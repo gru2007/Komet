@@ -640,6 +640,7 @@ extension ApiServiceChats on ApiService {
       }
     }
 
+    await waitUntilOnline();
     print("Запрашиваем историю для чата $chatId с сервера.");
     final payload = {
       "chatId": chatId,
@@ -695,6 +696,7 @@ extension ApiServiceChats on ApiService {
     String fromMessageId,
     int count,
   ) async {
+    await waitUntilOnline();
     final payload = {
       "chatId": chatId,
       "from": int.parse(fromMessageId),

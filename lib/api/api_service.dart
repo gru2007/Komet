@@ -150,7 +150,9 @@ class ApiService {
 
   Future<void> waitUntilOnline() async {
     if (_isSessionOnline && _isSessionReady) return;
-    _onlineCompleter ??= Completer<void>();
+    if (_onlineCompleter == null || _onlineCompleter!.isCompleted) {
+      _onlineCompleter = Completer<void>();
+    }
     return _onlineCompleter!.future;
   }
 

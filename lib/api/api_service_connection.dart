@@ -6,7 +6,9 @@ extension ApiServiceConnection on ApiService {
     _isSessionOnline = false;
     _isSessionReady = false;
     _handshakeSent = false;
-    _onlineCompleter = Completer<void>();
+    if (_onlineCompleter?.isCompleted ?? false) {
+      _onlineCompleter = Completer<void>();
+    }
     _buffer = Uint8List(0);
 
     _socketSubscription?.cancel();
@@ -675,7 +677,9 @@ extension ApiServiceConnection on ApiService {
     _isSessionOnline = false;
     _isSessionReady = false;
     _handshakeSent = false;
-    _onlineCompleter = Completer<void>();
+    if (_onlineCompleter?.isCompleted ?? false) {
+      _onlineCompleter = Completer<void>();
+    }
     _chatsFetchedInThisSession = false;
 
     _currentUrlIndex = 0;
@@ -720,7 +724,9 @@ extension ApiServiceConnection on ApiService {
     _isSessionReady = false;
     _chatsFetchedInThisSession = false;
     _currentUrlIndex = 0;
-    _onlineCompleter = Completer<void>();
+    if (_onlineCompleter?.isCompleted ?? false) {
+      _onlineCompleter = Completer<void>();
+    }
 
     _messageQueue.clear();
     _presenceData.clear();
@@ -756,7 +762,9 @@ extension ApiServiceConnection on ApiService {
       _handshakeSent = false;
       _chatsFetchedInThisSession = false;
       _currentUrlIndex = 0;
-      _onlineCompleter = Completer<void>();
+      if (_onlineCompleter?.isCompleted ?? false) {
+        _onlineCompleter = Completer<void>();
+      }
       _seq = 0;
 
       _lastChatsPayload = null;
@@ -785,7 +793,9 @@ extension ApiServiceConnection on ApiService {
     _isSessionOnline = false;
     _isSessionReady = false;
     _handshakeSent = false;
-    _onlineCompleter = Completer<void>();
+    if (_onlineCompleter?.isCompleted ?? false) {
+      _onlineCompleter = Completer<void>();
+    }
     _chatsFetchedInThisSession = false;
     _stopHealthMonitoring();
     _updateConnectionState(
