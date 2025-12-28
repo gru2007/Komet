@@ -20,6 +20,8 @@ import 'package:gwid/services/cache_service.dart';
 import 'package:gwid/services/chat_cache_service.dart';
 import 'package:gwid/services/profile_cache_service.dart';
 import 'package:gwid/utils/spoofing_service.dart';
+import 'package:gwid/utils/log_utils.dart';
+import 'package:gwid/utils/fresh_mode_helper.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';

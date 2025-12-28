@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:es_compression/lz4.dart';
+import 'package:gwid/utils/fresh_mode_helper.dart';
 
 class CacheService {
   static final CacheService _instance = CacheService._internal();
@@ -39,7 +40,11 @@ class CacheService {
   }
 
   Future<void> initialize() async {
-    _prefs = await SharedPreferences.getInstance();
+    _prefs = await FreshModeHelper.getSharedPreferences();
+    if (FreshModeHelper.isEnabled) {
+      _cacheDirectory = null;
+      return;
+    }
     _cacheDirectory = await getApplicationCacheDirectory();
 
     await _createCacheDirectories();
@@ -80,6 +85,8 @@ class CacheService {
   }
 
   Future<T?> get<T>(String key, {Duration? ttl}) async {
+    if (FreshModeHelper.shouldSkipLoad()) return null;
+    
     if (_memoryCache.containsKey(key)) {
       final timestamp = _cacheTimestamps[key];
       if (timestamp != null && !_isExpired(timestamp, ttl ?? _defaultTTL)) {
@@ -117,6 +124,8 @@ class CacheService {
   }
 
   Future<void> set<T>(String key, T value, {Duration? ttl}) async {
+    if (FreshModeHelper.shouldSkipSave()) return;
+    
     final timestamp = DateTime.now();
 
     _memoryCache[key] = value;

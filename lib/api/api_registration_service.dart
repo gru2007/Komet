@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:msgpack_dart/msgpack_dart.dart' as msgpack;
 import 'package:uuid/uuid.dart';
+import 'package:gwid/utils/log_utils.dart';
 
 
 typedef Lz4DecompressFunction =
@@ -212,7 +213,7 @@ class RegistrationService {
       final payload = _unpackPacketPayload(payloadBytes, compFlag != 0);
 
       print('📦 Разобранный payload (после LZ4 и msgpack):');
-      print(_formatPayload(payload));
+      print(truncatePayloadForLog(_formatPayload(payload)));
       print('═══════════════════════════════════════════════════════════');
       print('');
 
@@ -260,7 +261,7 @@ class RegistrationService {
       '📋 Заголовок: ver=$ver, cmd=$cmd, seq=$seq, opcode=$opcode, payloadLen=$payloadLen',
     );
     print('📦 Payload (JSON):');
-    print(_formatPayload(payload));
+    print(truncatePayloadForLog(_formatPayload(payload)));
     print('📦 Payload (msgpack hex, ${payloadBytes.length} байт):');
     print(_bytesToHex(payloadBytes));
     print('📦 Полный пакет (hex, ${packet.length} байт):');
@@ -714,10 +715,10 @@ class RegistrationService {
 
     print('🤝 Отправляем handshake (opcode=6)...');
     print('📦 Handshake payload:');
-    print(_formatPayload(handshakePayload));
+    print(truncatePayloadForLog(_formatPayload(handshakePayload)));
     final handshakeResponse = await _sendMessage(6, handshakePayload);
     print('📨 Ответ от handshake:');
-    print(_formatPayload(handshakeResponse));
+    print(truncatePayloadForLog(_formatPayload(handshakeResponse)));
 
     
     if (handshakeResponse is Map) {
@@ -731,11 +732,11 @@ class RegistrationService {
     final authPayload = {"type": "START_AUTH", "phone": phoneNumber};
     print('🚀 Отправляем START_AUTH (opcode=17)...');
     print('📦 START_AUTH payload:');
-    print(_formatPayload(authPayload));
+    print(truncatePayloadForLog(_formatPayload(authPayload)));
     final response = await _sendMessage(17, authPayload);
 
     print('📨 Ответ от START_AUTH:');
-    print(_formatPayload(response));
+    print(truncatePayloadForLog(_formatPayload(response)));
 
     
     if (response is Map) {
@@ -783,11 +784,11 @@ class RegistrationService {
 
     print('🔍 Проверяем код (opcode=18)...');
     print('📦 CHECK_CODE payload:');
-    print(_formatPayload(verifyPayload));
+    print(truncatePayloadForLog(_formatPayload(verifyPayload)));
     final response = await _sendMessage(18, verifyPayload);
 
     print('📨 Ответ от CHECK_CODE:');
-    print(_formatPayload(response));
+    print(truncatePayloadForLog(_formatPayload(response)));
 
     
     if (response is Map) {
@@ -844,11 +845,11 @@ class RegistrationService {
 
     print('🎉 Завершаем регистрацию (opcode=23)...');
     print('📦 REGISTER payload:');
-    print(_formatPayload(registerPayload));
+    print(truncatePayloadForLog(_formatPayload(registerPayload)));
     final response = await _sendMessage(23, registerPayload);
 
     print('📨 Ответ от REGISTER:');
-    print(_formatPayload(response));
+    print(truncatePayloadForLog(_formatPayload(response)));
 
     
     if (response is Map) {

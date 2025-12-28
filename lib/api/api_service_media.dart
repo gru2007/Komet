@@ -20,7 +20,7 @@ extension ApiServiceMedia on ApiService {
       }
 
       final int seq = await _sendMessage(16, payload);
-      _log('➡️ SEND: opcode=16, payload=$payload');
+      _log('➡️ SEND: opcode=16, payload=${truncatePayloadObjectForLog(payload)}');
 
       
       final response = await messages.firstWhere(
@@ -178,7 +178,7 @@ extension ApiServiceMedia on ApiService {
       };
 
       final int seq16 = await _sendMessage(16, payload);
-      _log('➡️ SEND: opcode=16 (PRESET_AVATAR), payload=$payload');
+      _log('➡️ SEND: opcode=16 (PRESET_AVATAR), payload=${truncatePayloadObjectForLog(payload)}');
 
       final resp16 = await messages.firstWhere(
         (msg) => msg['seq'] == seq16 && msg['opcode'] == 16,

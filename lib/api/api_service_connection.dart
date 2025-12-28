@@ -252,7 +252,7 @@ extension ApiServiceConnection on ApiService {
       final decoded = jsonDecode(jsonString) as Map<String, dynamic>;
       final opcode = decoded['opcode'];
       final payload = decoded['payload'];
-      _log('➡️ SEND: opcode=$opcode, payload=$payload');
+      _log('➡️ SEND: opcode=$opcode, payload=${truncatePayloadObjectForLog(payload)}');
       await _sendMessage(opcode, payload);
     } catch (_) {
       _log('➡️ SEND (raw): $jsonString');
@@ -306,7 +306,7 @@ extension ApiServiceConnection on ApiService {
 
     _log('📤 ОТПРАВКА: ver=10, cmd=0, seq=$seq, opcode=$opcode');
     if (opcode != 19) {
-      _log('📤 PAYLOAD: $payload');
+      _log('📤 PAYLOAD: ${truncatePayloadObjectForLog(payload)}');
     }
     _log('📤 Размер пакета: ${packet.length} байт');
 
@@ -376,7 +376,7 @@ extension ApiServiceConnection on ApiService {
       final cmdType = (cmd == 0x100 || cmd == 256) ? 'OK' : (cmd == 0x300 || cmd == 768) ? 'ERROR' : 'UNKNOWN($cmd)';
       _log('📥 ПОЛУЧЕНО: ver=$ver, cmd=$cmd ($cmdType), seq=$seq, opcode=$opcode');
       if (opcode != 19) {
-        _log('📥 PAYLOAD: $payload');
+        _log('📥 PAYLOAD: ${truncatePayloadObjectForLog(payload)}');
       }
 
       if (opcode == 2) {
@@ -385,7 +385,7 @@ extension ApiServiceConnection on ApiService {
 
       if (cmd == 0x300 || cmd == 768) {
         print('❌ ОШИБКА СЕРВЕРА: opcode=$opcode, seq=$seq');
-        print('❌ Детали ошибки: $payload');
+        print('❌ Детали ошибки: ${truncatePayloadObjectForLog(payload)}');
       }
 
           if (decodedMessage is Map &&

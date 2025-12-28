@@ -6,6 +6,7 @@ import 'package:path/path.dart' as path;
 import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:es_compression/lz4.dart';
+import 'package:gwid/utils/fresh_mode_helper.dart';
 
 class ImageCacheService {
   ImageCacheService._privateConstructor();
@@ -23,6 +24,10 @@ class ImageCacheService {
   bool _lz4Available = false;
 
   Future<void> initialize() async {
+    if (FreshModeHelper.isEnabled) {
+      _cacheDirectory = Directory.systemTemp;
+      return;
+    }
     final appDir = await getApplicationDocumentsDirectory();
     _cacheDirectory = Directory(path.join(appDir.path, _cacheDirectoryName));
 

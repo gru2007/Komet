@@ -64,7 +64,9 @@ extension ApiServiceChats on ApiService {
             "[_sendAuthRequestAfterHandshake] ✅ Профиль и ID пользователя найдены. ID: ${contactProfile['id']}. ЗАПУСКАЕМ АНАЛИТИКУ.",
           );
           _userId = contactProfile['id'];
-          await prefs.setString('userId', _userId.toString());
+          if (!FreshModeHelper.shouldSkipSave()) {
+            await prefs.setString('userId', _userId.toString());
+          }
           _sessionId = DateTime.now().millisecondsSinceEpoch;
           _lastActionTime = _sessionId;
 
@@ -168,7 +170,7 @@ extension ApiServiceChats on ApiService {
       if (participantIds != null) "participantIds": participantIds,
     };
     _sendMessage(272, payload);
-    print('Обновляем группу $chatId: $payload');
+    print('Обновляем группу $chatId: ${truncatePayloadObjectForLog(payload)}');
   }
 
   void createGroupWithMessage(String name, List<int> participantIds) {
@@ -242,7 +244,7 @@ extension ApiServiceChats on ApiService {
   }) async {
     final payload = {"chatId": chatId, "revokePrivateLink": revokePrivateLink};
 
-    print('Создаем пригласительную ссылку для группы $chatId: $payload');
+    print('Создаем пригласительную ссылку для группы $chatId: ${truncatePayloadObjectForLog(payload)}');
 
     final int seq = await _sendMessage(55, payload);
 

@@ -8,8 +8,10 @@ extension ApiServiceAuth on ApiService {
     _lastChatsAt = null;
     _chatsFetchedInThisSession = false;
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('authToken');
+    if (!FreshModeHelper.shouldSkipSave()) {
+      final prefs = await FreshModeHelper.getSharedPreferences();
+      await prefs.remove('authToken');
+    }
 
     clearAllCaches();
     _connectionStatusController.add("disconnected");
@@ -58,7 +60,7 @@ extension ApiServiceAuth on ApiService {
     final payload = {'trackId': trackId, 'password': password};
 
     _sendMessage(115, payload);
-    print('Пароль отправлен с payload: $payload');
+    print('Пароль отправлен с payload: ${truncatePayloadObjectForLog(payload)}');
   }
 
   Map<String, String?> getPasswordAuthData() {
@@ -81,7 +83,7 @@ extension ApiServiceAuth on ApiService {
     final payload = {'password': password, 'hint': hint};
 
     _sendMessage(116, payload);
-    print('Запрос на установку пароля отправлен с payload: $payload');
+    print('Запрос на установку пароля отправлен с payload: ${truncatePayloadObjectForLog(payload)}');
   }
 
   Future<void> saveToken(
@@ -106,10 +108,12 @@ extension ApiServiceAuth on ApiService {
     authToken = token;
     this.userId = userId;
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('authToken', token);
-    if (userId != null) {
-      await prefs.setString('userId', userId);
+    if (!FreshModeHelper.shouldSkipSave()) {
+      final prefs = await FreshModeHelper.getSharedPreferences();
+      await prefs.setString('authToken', token);
+      if (userId != null) {
+        await prefs.setString('userId', userId);
+      }
     }
 
     _messageQueue.clear();
@@ -148,6 +152,8 @@ extension ApiServiceAuth on ApiService {
   }
 
   Future<bool> hasToken() async {
+    if (FreshModeHelper.isEnabled) return false;
+    
     if (authToken == null) {
       final accountManager = AccountManager();
       await accountManager.initialize();
@@ -161,7 +167,7 @@ extension ApiServiceAuth on ApiService {
         
         
       } else {
-        final prefs = await SharedPreferences.getInstance();
+        final prefs = await FreshModeHelper.getSharedPreferences();
         authToken = prefs.getString('authToken');
         userId = prefs.getString('userId');
         

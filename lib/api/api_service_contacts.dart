@@ -197,7 +197,7 @@ extension ApiServiceContacts on ApiService {
       }
 
       if (response['cmd'] == 1 && response['payload'] != null) {
-        print('Успешно присоединились: ${response['payload']}');
+        print('Успешно присоединились: ${truncatePayloadObjectForLog(response['payload'])}');
         return response['payload'] as Map<String, dynamic>;
       } else {
         print('Неожиданный ответ на joinGroupByLink: $response');
@@ -218,7 +218,7 @@ extension ApiServiceContacts on ApiService {
     final payload = {'phone': phone};
 
     _sendMessage(46, payload);
-    print('Запрос на поиск контакта отправлен с payload: $payload');
+    print('Запрос на поиск контакта отправлен с payload: ${truncatePayloadObjectForLog(payload)}');
   }
 
   Future<void> searchChannels(String query) async {
@@ -227,7 +227,7 @@ extension ApiServiceContacts on ApiService {
     final payload = {'contactIds': []};
 
     _sendMessage(32, payload);
-    print('Запрос на поиск каналов отправлен с payload: $payload');
+    print('Запрос на поиск каналов отправлен с payload: ${truncatePayloadObjectForLog(payload)}');
   }
 
   Future<void> enterChannel(String link) async {
@@ -236,7 +236,7 @@ extension ApiServiceContacts on ApiService {
     final payload = {'link': link};
 
     _sendMessage(89, payload);
-    print('Запрос на вход в канал отправлен с payload: $payload');
+    print('Запрос на вход в канал отправлен с payload: ${truncatePayloadObjectForLog(payload)}');
   }
 
   Future<void> subscribeToChannel(String link) async {
@@ -245,7 +245,7 @@ extension ApiServiceContacts on ApiService {
     final payload = {'link': link};
 
     _sendMessage(57, payload);
-    print('Запрос на подписку на канал отправлен с payload: $payload');
+    print('Запрос на подписку на канал отправлен с payload: ${truncatePayloadObjectForLog(payload)}');
   }
 
   Future<int?> getChatIdByUserId(int userId) async {

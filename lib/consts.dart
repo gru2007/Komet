@@ -29,6 +29,14 @@ class AppLimits {
 
   /// Максимальное количество недавних эмодзи в панели вот этой вот как ее
   static const int maxRecentEmoji = 20;
+
+  static const int maxLogPayloadLength = 30;
+}
+
+class AppSettings {
+  AppSettings._();
+// у меня блять кеш не чиститься на линухе // А БЛЯЯЯ Я ДЕБИЛ ЭТО СЕРЕГА НЕ ДОБАВИЛ В НОТИФИКАТЕ
+  static const bool startFresh = false;
 }
 
 class AppAnimationValues {

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:gwid/utils/log_utils.dart';
 
 
 enum LogLevel { debug, info, warning, error, critical }
@@ -66,7 +67,7 @@ class ConnectionLogger {
       final emoji = _getEmojiForLevel(level);
       final timestamp = entry.timestamp.toIso8601String().substring(11, 23);
       final categoryStr = category != null ? '[$category]' : '';
-      final dataStr = data != null ? ' | Data: ${jsonEncode(data)}' : '';
+      final dataStr = data != null ? ' | Data: ${truncatePayloadForLog(jsonEncode(data))}' : '';
       final errorStr = error != null ? ' | Error: $error' : '';
 
       print('$emoji [$timestamp] $categoryStr $message$dataStr$errorStr');
@@ -294,7 +295,7 @@ class LogEntry {
   String toString() {
     final emoji = _getEmojiForLevel(level);
     final timestamp = this.timestamp.toIso8601String().substring(11, 23);
-    final dataStr = data != null ? ' | Data: ${jsonEncode(data)}' : '';
+    final dataStr = data != null ? ' | Data: ${truncatePayloadForLog(jsonEncode(data))}' : '';
     final errorStr = error != null ? ' | Error: $error' : '';
 
     return '$emoji [$timestamp] [$category] $message$dataStr$errorStr';

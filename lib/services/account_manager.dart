@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gwid/models/account.dart';
 import 'package:gwid/models/profile.dart';
 import 'package:uuid/uuid.dart';
+import 'package:gwid/utils/fresh_mode_helper.dart';
 
 class AccountManager {
   static final AccountManager _instance = AccountManager._internal();
@@ -24,8 +25,12 @@ class AccountManager {
   }
 
   Future<void> _loadAccounts() async {
+    if (FreshModeHelper.shouldSkipLoad()) {
+      _accounts = [];
+      return;
+    }
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await FreshModeHelper.getSharedPreferences();
       final accountsJson = prefs.getString(_accountsKey);
       if (accountsJson != null) {
         final List<dynamic> accountsList = jsonDecode(accountsJson);
@@ -40,8 +45,12 @@ class AccountManager {
   }
 
   Future<void> _loadCurrentAccount() async {
+    if (FreshModeHelper.shouldSkipLoad()) {
+      _currentAccount = null;
+      return;
+    }
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await FreshModeHelper.getSharedPreferences();
       final currentAccountId = prefs.getString(_currentAccountIdKey);
 
       if (currentAccountId != null) {
@@ -64,8 +73,9 @@ class AccountManager {
   }
 
   Future<void> _saveAccounts() async {
+    if (FreshModeHelper.shouldSkipSave()) return;
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await FreshModeHelper.getSharedPreferences();
       final accountsJson = jsonEncode(
         _accounts.map((account) => account.toJson()).toList(),
       );
@@ -76,8 +86,9 @@ class AccountManager {
   }
 
   Future<void> _saveCurrentAccountId(String accountId) async {
+    if (FreshModeHelper.shouldSkipSave()) return;
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await FreshModeHelper.getSharedPreferences();
       await prefs.setString(_currentAccountIdKey, accountId);
     } catch (e) {
       print('Ошибка сохранения текущего аккаунта: $e');

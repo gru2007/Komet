@@ -55,10 +55,15 @@ class NotificationService {
       requestSoundPermission: true,
     );
 
+    const linuxSettings = LinuxInitializationSettings(
+      defaultActionName: 'Open notification',
+    );
+
     const initializationSettings = InitializationSettings(
       android: androidSettings,
       iOS: iosSettings,
       macOS: macosSettings,
+      linux: linuxSettings,
     );
 
     await _flutterLocalNotificationsPlugin.initialize(

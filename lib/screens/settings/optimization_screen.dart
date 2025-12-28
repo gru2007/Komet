@@ -50,9 +50,9 @@ class OptimizationScreen extends StatelessWidget {
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.timeline),
-                  title: const Text("Ограничение FPS"),
+                  title: const Text("Да ниче он бля не делает"),
                   subtitle: Text(
-                    "Максимум кадров в секунду для анимаций: ${theme.maxFrameRate}",
+                    "Оно визуал😭😭",
                   ),
                 ),
                 Slider(
