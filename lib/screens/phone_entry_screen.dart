@@ -6,14 +6,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:gwid/api/api_service.dart';
 import 'package:gwid/screens/otp_screen.dart';
 import 'package:gwid/utils/proxy_service.dart';
-import 'package:gwid/screens/registration_screen.dart';
 import 'package:gwid/screens/settings/auth_settings_screen.dart';
 import 'package:gwid/screens/token_auth_screen.dart';
 import 'package:gwid/screens/tos_screen.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:platform_info/platform_info.dart';
 import 'package:gwid/app_urls.dart';
 
 class Country {
@@ -40,7 +38,7 @@ class PhoneEntryScreen extends StatefulWidget {
 }
 
 class _PhoneEntryScreenState extends State<PhoneEntryScreen>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   final TextEditingController _phoneController = TextEditingController();
 
   static const List<Country> _countries = [
@@ -117,13 +115,12 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen>
   bool _hasCustomAnonymity = false;
   bool _hasProxyConfigured = false;
   StreamSubscription? _apiSubscription;
-  bool _showContent = false;
   bool _isTosAccepted = false;
   String _customPrefix = '';
 
   late final AnimationController _animationController;
-  late final Animation<Alignment> _topAlignmentAnimation;
-  late final Animation<Alignment> _bottomAlignmentAnimation;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<Offset> _slideAnimation;
 
   @override
   void initState() {
@@ -131,40 +128,28 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen>
 
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 15),
+      duration: const Duration(milliseconds: 600),
     );
 
-    _topAlignmentAnimation =
-        AlignmentTween(
-          begin: Alignment.topLeft,
-          end: Alignment.topRight,
-        ).animate(
-          CurvedAnimation(
-            parent: _animationController,
-            curve: Curves.easeInOut,
-          ),
-        );
-    _bottomAlignmentAnimation =
-        AlignmentTween(
-          begin: Alignment.bottomRight,
-          end: Alignment.bottomLeft,
-        ).animate(
-          CurvedAnimation(
-            parent: _animationController,
-            curve: Curves.easeInOut,
-          ),
-        );
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOut,
+    );
 
-    _animationController.repeat(reverse: true);
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
 
     _initializeMaskFormatter();
     _checkAnonymitySettings();
     _checkProxySettings();
     _phoneController.addListener(_onPhoneChanged);
 
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) setState(() => _showContent = true);
-    });
+    _animationController.forward();
 
     _apiSubscription = ApiService.instance.messages.listen((message) {
       if (message['opcode'] == 17 && mounted) {
@@ -390,273 +375,172 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen>
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
-      body: Stack(
-        children: [
-          AnimatedBuilder(
-            animation: _animationController,
-            builder: (context, child) {
-              return Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: _topAlignmentAnimation.value,
-                    end: _bottomAlignmentAnimation.value,
-                    colors: [
-                      Color.lerp(colors.surface, colors.primary, 0.2)!,
-                      Color.lerp(colors.surface, colors.tertiary, 0.15)!,
-                      colors.surface,
-                      Color.lerp(colors.surface, colors.secondary, 0.15)!,
-                      Color.lerp(colors.surface, colors.primary, 0.25)!,
-                    ],
-                    stops: const [0.0, 0.25, 0.5, 0.75, 1.0],
-                  ),
-                ),
-              );
-            },
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color.lerp(colors.surface, colors.primary, 0.05)!,
+              colors.surface,
+              Color.lerp(colors.surface, colors.tertiary, 0.05)!,
+            ],
           ),
-          SafeArea(
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 340),
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 700),
-                      curve: Curves.easeOut,
-                      opacity: _showContent ? 1.0 : 0.0,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const SizedBox(height: 48),
-                          Center(
-                            child: Container(
-                              padding: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: colors.primary.withOpacity(0.1),
-                              ),
-                              child: const Image(
-                                image: AssetImage(
-                                  'assets/images/komet_512.png',
+        ),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 32),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: colors.primaryContainer.withOpacity(0.5),
+                          ),
+                          child: const Image(
+                            image: AssetImage('assets/images/komet_512.png'),
+                            width: 64,
+                            height: 64,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          'Komet',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.manrope(
+                            textStyle: textTheme.headlineLarge,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Введите номер телефона для входа',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.manrope(
+                            textStyle: textTheme.titleMedium,
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: SlideTransition(
+                        position: _slideAnimation,
+                        child: ListView(
+                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                          children: [
+                            const SizedBox(height: 8),
+                            _PhoneInputCard(
+                              phoneController: _phoneController,
+                              maskFormatter: _maskFormatter,
+                              selectedCountry: _selectedCountry,
+                              countries: _countries,
+                              onCountryChanged: _onCountryChanged,
+                              customPrefix: _customPrefix,
+                            ),
+                            const SizedBox(height: 16),
+                            _TosCheckbox(
+                              isTosAccepted: _isTosAccepted,
+                              onChanged: (value) {
+                                setState(() => _isTosAccepted = value ?? false);
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            FilledButton(
+                              onPressed: _isButtonEnabled && _isTosAccepted
+                                  ? _requestOtp
+                                  : null,
+                              style: FilledButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
-                                width: 75,
-                                height: 75,
+                              ),
+                              child: Text(
+                                'Далее',
+                                style: GoogleFonts.manrope(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 24),
-                          Text(
-                            'Komet',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.manrope(
-                              textStyle: textTheme.headlineLarge,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Введите номер телефона для входа',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.manrope(
-                              textStyle: textTheme.titleMedium,
-                              color: colors.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(height: 48),
-                          _PhoneInput(
-                            phoneController: _phoneController,
-                            maskFormatter: _maskFormatter,
-                            selectedCountry: _selectedCountry,
-                            countries: _countries,
-                            onCountryChanged: _onCountryChanged,
-                            customPrefix: _customPrefix,
-                          ),
-
-                          // Кнопка реги убрана Sosiте
-                          // if (Platform.instance.android ||
-                          //     Platform.instance.windows) ...[
-                          //   const SizedBox(height: 16),
-                          //   OutlinedButton(
-                          //     onPressed: _isTosAccepted
-                          //         ? () {
-                          //             Navigator.of(context).push(
-                          //               MaterialPageRoute(
-                          //                 builder: (context) =>
-                          //                     const RegistrationScreen(),
-                          //               ),
-                          //             );
-                          //           }
-                          //         : null,
-                          //     style: OutlinedButton.styleFrom(
-                          //       padding: const EdgeInsets.symmetric(
-                          //         vertical: 16,
-                          //       ),
-                          //     ),
-                          //     child: Text(
-                          //       'Зарегистрироваться',
-                          //       style: GoogleFonts.manrope(
-                          //         fontWeight: FontWeight.bold,
-                          //       ),
-                          //     ),
-                          //   ),
-                          // ],
-                          const SizedBox(height: 16),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Checkbox(
-                                value: _isTosAccepted,
-                                onChanged: (bool? value) {
-                                  setState(() {
-                                    _isTosAccepted = value ?? false;
-                                  });
-                                },
-                                visualDensity: VisualDensity.compact,
-                              ),
-                              Expanded(
-                                child: Text.rich(
-                                  TextSpan(
-                                    style: GoogleFonts.manrope(
-                                      textStyle: textTheme.bodySmall,
-                                      color: colors.onSurfaceVariant,
-                                    ),
-                                    children: [
-                                      const TextSpan(text: 'Я принимаю '),
-                                      TextSpan(
-                                        text: 'Пользовательское соглашение',
-                                        style: TextStyle(
-                                          color: colors.primary,
-                                          decoration: TextDecoration.underline,
-                                          decorationColor: colors.primary,
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              onPressed: _isTosAccepted
+                                  ? () => Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              const TokenAuthScreen(),
                                         ),
-                                        recognizer: TapGestureRecognizer()
-                                          ..onTap = () {
-                                            Navigator.of(context).push(
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    const TosScreen(),
-                                              ),
-                                            );
-                                          },
-                                      ),
-                                    ],
-                                  ),
+                                      )
+                                  : null,
+                              icon: const Icon(Icons.vpn_key_outlined),
+                              label: Text(
+                                'Альтернативные способы входа',
+                                style: GoogleFonts.manrope(
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          FilledButton(
-                            onPressed: _isButtonEnabled && _isTosAccepted
-                                ? _requestOtp
-                                : null,
-                            style: FilledButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                            ),
-                            child: Text(
-                              'Далее',
-                              style: GoogleFonts.manrope(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          OutlinedButton.icon(
-                            onPressed: _isTosAccepted
-                                ? () => Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          const TokenAuthScreen(),
-                                    ),
-                                  )
-                                : null,
-                            icon: const Icon(Icons.vpn_key_outlined),
-                            label: Text(
-                              'Альтернативные способы входа',
-                              style: GoogleFonts.manrope(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          _SettingsButton(
-                            hasCustomAnonymity: _hasCustomAnonymity,
-                            hasProxyConfigured: _hasProxyConfigured,
-                            onRefresh: () {
-                              _checkAnonymitySettings();
-                              _checkProxySettings();
-                            },
-                          ),
-                          const SizedBox(height: 24),
-                          Text.rich(
-                            textAlign: TextAlign.center,
-                            TextSpan(
-                              style: GoogleFonts.manrope(
-                                textStyle: textTheme.bodySmall,
-                                color: colors.onSurfaceVariant.withOpacity(0.8),
-                              ),
-                              children: [
-                                const TextSpan(
-                                  text:
-                                      'Используя Komet, вы принимаете на себя всю ответственность за использование стороннего клиента.\n',
+                              style: OutlinedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
-                                TextSpan(
-                                  text: '@TeamKomet',
-                                  style: TextStyle(
-                                    color: colors.primary,
-                                    decoration: TextDecoration.underline,
-                                    decorationColor: colors.primary,
-                                  ),
-                                  recognizer: TapGestureRecognizer()
-                                    ..onTap = () async {
-                                      final Uri url = Uri.parse(
-                                        AppUrls.telegramChannel,
-                                      );
-                                      if (!await launchUrl(url)) {
-                                        debugPrint('Could not launch $url');
-                                      }
-                                    },
-                                ),
-                              ],
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
+                            const SizedBox(height: 24),
+                            _SettingsButton(
+                              hasCustomAnonymity: _hasCustomAnonymity,
+                              hasProxyConfigured: _hasProxyConfigured,
+                              onRefresh: () {
+                                _checkAnonymitySettings();
+                                _checkProxySettings();
+                              },
+                            ),
+                            const SizedBox(height: 24),
+                            _FooterText(),
+                            const SizedBox(height: 24),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ),
+              if (_isLoading)
+                Container(
+                  color: Colors.black.withOpacity(0.5),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Отправляем код...',
+                          style: GoogleFonts.manrope(
+                            textStyle: textTheme.titleMedium,
+                            color: colors.onPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
           ),
-          if (_isLoading)
-            Container(
-              color: colors.scrim.withOpacity(0.7),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        colors.onPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Отправляем код...',
-                      style: textTheme.titleMedium?.copyWith(
-                        color: colors.onPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -670,7 +554,7 @@ class _PhoneEntryScreenState extends State<PhoneEntryScreen>
   }
 }
 
-class _PhoneInput extends StatelessWidget {
+class _PhoneInputCard extends StatelessWidget {
   final TextEditingController phoneController;
   final MaskTextInputFormatter maskFormatter;
   final Country selectedCountry;
@@ -678,7 +562,7 @@ class _PhoneInput extends StatelessWidget {
   final ValueChanged<Country?> onCountryChanged;
   final String customPrefix;
 
-  const _PhoneInput({
+  const _PhoneInputCard({
     required this.phoneController,
     required this.maskFormatter,
     required this.selectedCountry,
@@ -689,27 +573,82 @@ class _PhoneInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
-      controller: phoneController,
-      inputFormatters: [maskFormatter],
-      keyboardType: TextInputType.number,
-      style: GoogleFonts.manrope(
-        textStyle: Theme.of(context).textTheme.titleMedium,
-        fontWeight: FontWeight.w600,
-      ),
-      decoration: InputDecoration(
-        hintText: maskFormatter.getMask()?.replaceAll('#', '0'),
-        prefixIcon: _CountryPicker(
-          selectedCountry: selectedCountry,
-          countries: countries,
-          onCountryChanged: onCountryChanged,
-          customPrefix: customPrefix,
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            colors.surfaceContainerHighest,
+            colors.surfaceContainer,
+          ],
         ),
-        border: const OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(12)),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: colors.outline.withOpacity(0.2),
+          width: 1,
         ),
       ),
-      autofocus: true,
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.phone_outlined,
+                  color: colors.onSurfaceVariant,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  'Номер телефона',
+                  style: GoogleFonts.manrope(
+                    textStyle: textTheme.titleLarge,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          TextFormField(
+            controller: phoneController,
+            inputFormatters: [maskFormatter],
+            keyboardType: TextInputType.number,
+            style: GoogleFonts.manrope(
+              textStyle: textTheme.titleMedium,
+              fontWeight: FontWeight.w600,
+            ),
+            decoration: InputDecoration(
+              hintText: maskFormatter.getMask()?.replaceAll('#', '0'),
+              prefixIcon: _CountryPicker(
+                selectedCountry: selectedCountry,
+                countries: countries,
+                onCountryChanged: onCountryChanged,
+                customPrefix: customPrefix,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              filled: true,
+              fillColor: colors.surfaceContainerHighest,
+            ),
+            autofocus: true,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -788,6 +727,73 @@ class _CountryPicker extends StatelessWidget {
   }
 }
 
+class _TosCheckbox extends StatelessWidget {
+  final bool isTosAccepted;
+  final ValueChanged<bool?> onChanged;
+
+  const _TosCheckbox({
+    required this.isTosAccepted,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colors.outline.withOpacity(0.2),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Checkbox(
+            value: isTosAccepted,
+            onChanged: onChanged,
+            visualDensity: VisualDensity.compact,
+          ),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: GoogleFonts.manrope(
+                  textStyle: textTheme.bodySmall,
+                  color: colors.onSurfaceVariant,
+                ),
+                children: [
+                  const TextSpan(text: 'Я принимаю '),
+                  TextSpan(
+                    text: 'Пользовательское соглашение',
+                    style: TextStyle(
+                      color: colors.primary,
+                      decoration: TextDecoration.underline,
+                      decorationColor: colors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    recognizer: TapGestureRecognizer()
+                      ..onTap = () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const TosScreen(),
+                          ),
+                        );
+                      },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SettingsButton extends StatelessWidget {
   final bool hasCustomAnonymity;
   final bool hasProxyConfigured;
@@ -806,81 +812,85 @@ class _SettingsButton extends StatelessWidget {
 
     final hasAnySettings = hasCustomAnonymity || hasProxyConfigured;
 
-    return Card(
-      elevation: 0,
-      color: hasAnySettings
-          ? colors.primaryContainer.withOpacity(0.3)
-          : colors.surfaceContainerHighest.withOpacity(0.5),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: hasAnySettings
-              ? colors.primary.withOpacity(0.3)
-              : colors.outline.withOpacity(0.3),
-          width: hasAnySettings ? 2 : 1,
-        ),
-      ),
+    return Material(
+      color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
         onTap: () async {
           await Navigator.of(context).push(
             MaterialPageRoute(builder: (context) => const AuthSettingsScreen()),
           );
           onRefresh();
         },
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: hasAnySettings
+                  ? [
+                      Color.lerp(
+                        colors.primaryContainer,
+                        colors.primary,
+                        0.2,
+                      )!,
+                      colors.primaryContainer,
+                    ]
+                  : [
+                      colors.surfaceContainerHighest,
+                      colors.surfaceContainer,
+                    ],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: hasAnySettings
+                  ? colors.primary.withOpacity(0.3)
+                  : colors.outline.withOpacity(0.2),
+              width: hasAnySettings ? 2 : 1,
+            ),
+          ),
+          padding: const EdgeInsets.all(24),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: hasAnySettings
                           ? colors.primary.withOpacity(0.15)
                           : colors.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
                       Icons.tune_outlined,
                       color: hasAnySettings
                           ? colors.primary
                           : colors.onSurfaceVariant,
-                      size: 24,
+                      size: 28,
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Настройки',
-                          style: GoogleFonts.manrope(
-                            textStyle: textTheme.titleMedium,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          hasAnySettings
-                              ? 'Настроены дополнительные параметры'
-                              : 'Прокси и анонимность',
-                          style: GoogleFonts.manrope(
-                            textStyle: textTheme.bodySmall,
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.arrow_forward_ios,
-                    color: colors.onSurfaceVariant,
-                    size: 16,
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Настройки',
+                style: GoogleFonts.manrope(
+                  textStyle: textTheme.titleLarge,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                hasAnySettings
+                    ? 'Настроены дополнительные параметры'
+                    : 'Прокси и анонимность',
+                style: GoogleFonts.manrope(
+                  textStyle: textTheme.bodyMedium,
+                  color: colors.onSurfaceVariant,
+                  height: 1.4,
+                ),
               ),
               if (hasAnySettings) ...[
                 const SizedBox(height: 16),
@@ -888,7 +898,7 @@ class _SettingsButton extends StatelessWidget {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: colors.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -896,14 +906,14 @@ class _SettingsButton extends StatelessWidget {
                       if (hasCustomAnonymity) ...[
                         Icon(
                           Icons.verified_user,
-                          size: 16,
+                          size: 18,
                           color: colors.primary,
                         ),
                         const SizedBox(width: 6),
                         Text(
                           'Анонимность',
                           style: GoogleFonts.manrope(
-                            textStyle: textTheme.labelSmall,
+                            textStyle: textTheme.labelMedium,
                             color: colors.primary,
                             fontWeight: FontWeight.bold,
                           ),
@@ -922,12 +932,12 @@ class _SettingsButton extends StatelessWidget {
                         const SizedBox(width: 12),
                       ],
                       if (hasProxyConfigured) ...[
-                        Icon(Icons.vpn_key, size: 16, color: colors.primary),
+                        Icon(Icons.vpn_key, size: 18, color: colors.primary),
                         const SizedBox(width: 6),
                         Text(
                           'Прокси',
                           style: GoogleFonts.manrope(
-                            textStyle: textTheme.labelSmall,
+                            textStyle: textTheme.labelMedium,
                             color: colors.primary,
                             fontWeight: FontWeight.bold,
                           ),
@@ -937,6 +947,29 @@ class _SettingsButton extends StatelessWidget {
                   ),
                 ),
               ],
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Text(
+                    'Настроить',
+                    style: GoogleFonts.manrope(
+                      textStyle: textTheme.labelLarge,
+                      color: hasAnySettings
+                          ? colors.primary
+                          : colors.onSurfaceVariant,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.arrow_forward,
+                    color: hasAnySettings
+                        ? colors.primary
+                        : colors.onSurfaceVariant,
+                    size: 18,
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -944,3 +977,44 @@ class _SettingsButton extends StatelessWidget {
     );
   }
 }
+
+class _FooterText extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Text.rich(
+      textAlign: TextAlign.center,
+      TextSpan(
+        style: GoogleFonts.manrope(
+          textStyle: textTheme.bodySmall,
+          color: colors.onSurfaceVariant.withOpacity(0.7),
+        ),
+        children: [
+          const TextSpan(
+            text:
+                'Используя Komet, вы принимаете на себя всю ответственность за использование стороннего клиента.\n',
+          ),
+          TextSpan(
+            text: '@TeamKomet',
+            style: TextStyle(
+              color: colors.primary,
+              decoration: TextDecoration.underline,
+              decorationColor: colors.primary,
+              fontWeight: FontWeight.w600,
+            ),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () async {
+                final Uri url = Uri.parse(AppUrls.telegramChannel);
+                if (!await launchUrl(url)) {
+                  debugPrint('Could not launch $url');
+                }
+              },
+          ),
+        ],
+      ),
+    );
+  }
+}
+

@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:pinput/pinput.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:gwid/api/api_service.dart';
 import 'package:gwid/models/profile.dart';
 import 'package:gwid/screens/home_screen.dart';
@@ -23,16 +25,41 @@ class OTPScreen extends StatefulWidget {
   State<OTPScreen> createState() => _OTPScreenState();
 }
 
-class _OTPScreenState extends State<OTPScreen> {
+class _OTPScreenState extends State<OTPScreen>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _pinController = TextEditingController();
   final FocusNode _pinFocusNode = FocusNode();
   StreamSubscription? _apiSubscription;
   bool _isLoading = false;
   bool _isNavigating = false;
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
 
   @override
   void initState() {
     super.initState();
+
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOut,
+    );
+
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    _animationController.forward();
+
     _apiSubscription = ApiService.instance.messages.listen((message) {
       if (message['type'] == 'password_required' && mounted && !_isNavigating) {
         _isNavigating = true;
@@ -229,68 +256,262 @@ class _OTPScreenState extends State<OTPScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     final defaultPinTheme = PinTheme(
       width: 56,
       height: 60,
-      textStyle: TextStyle(fontSize: 22, color: colors.onSurface),
+      textStyle: GoogleFonts.manrope(
+        fontSize: 22,
+        color: colors.onSurface,
+        fontWeight: FontWeight.w600,
+      ),
       decoration: BoxDecoration(
         color: colors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colors.outline.withOpacity(0.2),
+          width: 1,
+        ),
       ),
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Подтверждение')),
-      body: Stack(
-        children: [
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color.lerp(colors.surface, colors.primary, 0.05)!,
+              colors.surface,
+              Color.lerp(colors.surface, colors.tertiary, 0.05)!,
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Column(
                 children: [
-                  Text(
-                    'Код отправлен на номер',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.phoneNumber,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: IconButton.styleFrom(
+                            backgroundColor: colors.surfaceContainerHighest,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Подтверждение',
+                                style: GoogleFonts.manrope(
+                                  textStyle: textTheme.headlineSmall,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Введите код из SMS',
+                                style: GoogleFonts.manrope(
+                                  textStyle: textTheme.bodyMedium,
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 30),
-                  Pinput(
-                    length: 6,
-                    controller: _pinController,
-                    focusNode: _pinFocusNode,
-                    autofocus: true,
-                    androidSmsAutofillMethod: AndroidSmsAutofillMethod.smsUserConsentApi,
-                    defaultPinTheme: defaultPinTheme,
-                    focusedPinTheme: defaultPinTheme.copyWith(
-                      decoration: defaultPinTheme.decoration!.copyWith(
-                        border: Border.all(color: colors.primary, width: 2),
+                  Expanded(
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: SlideTransition(
+                        position: _slideAnimation,
+                        child: ListView(
+                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                          children: [
+                            const SizedBox(height: 20),
+                            Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    colors.surfaceContainerHighest,
+                                    colors.surfaceContainer,
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: colors.outline.withOpacity(0.2),
+                                  width: 1,
+                                ),
+                              ),
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: colors.primaryContainer
+                                              .withOpacity(0.5),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(
+                                          Icons.mail_outline,
+                                          color: colors.primary,
+                                          size: 28,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Код отправлен',
+                                    style: GoogleFonts.manrope(
+                                      textStyle: textTheme.titleLarge,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Мы отправили 6-значный код на номер:',
+                                    style: GoogleFonts.manrope(
+                                      textStyle: textTheme.bodyMedium,
+                                      color: colors.onSurfaceVariant,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    widget.phoneNumber,
+                                    style: GoogleFonts.manrope(
+                                      textStyle: textTheme.titleMedium,
+                                      fontWeight: FontWeight.bold,
+                                      color: colors.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 32),
+                                  Center(
+                                    child: Pinput(
+                                      length: 6,
+                                      controller: _pinController,
+                                      focusNode: _pinFocusNode,
+                                      autofocus: true,
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
+                                      androidSmsAutofillMethod:
+                                          AndroidSmsAutofillMethod
+                                              .smsUserConsentApi,
+                                      defaultPinTheme: defaultPinTheme,
+                                      focusedPinTheme: defaultPinTheme.copyWith(
+                                        decoration: defaultPinTheme.decoration!
+                                            .copyWith(
+                                          border: Border.all(
+                                            color: colors.primary,
+                                            width: 2,
+                                          ),
+                                        ),
+                                      ),
+                                      errorPinTheme: defaultPinTheme.copyWith(
+                                        decoration: defaultPinTheme.decoration!
+                                            .copyWith(
+                                          border: Border.all(
+                                            color: colors.error,
+                                            width: 2,
+                                          ),
+                                        ),
+                                      ),
+                                      onCompleted: (pin) => _verifyCode(pin),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: colors.surfaceContainerHighest
+                                    .withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: colors.outline.withOpacity(0.2),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    color: colors.primary,
+                                    size: 24,
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Text(
+                                      'Код действителен в течение 10 минут. Если код не пришёл, проверьте правильность номера.',
+                                      style: GoogleFonts.manrope(
+                                        textStyle: textTheme.bodySmall,
+                                        color: colors.onSurfaceVariant,
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                          ],
+                        ),
                       ),
                     ),
-                    onCompleted: (pin) => _verifyCode(pin),
                   ),
                 ],
               ),
-            ),
+              if (_isLoading)
+                Container(
+                  color: Colors.black.withOpacity(0.5),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Проверяем код...',
+                          style: GoogleFonts.manrope(
+                            textStyle: textTheme.titleMedium,
+                            color: colors.onPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
           ),
-          if (_isLoading)
-            Container(
-              color: Colors.black.withOpacity(0.5),
-              child: const Center(child: CircularProgressIndicator()),
-            ),
-        ],
+        ),
       ),
     );
   }
 
   @override
   void dispose() {
+    _animationController.dispose();
     _pinController.dispose();
     _pinFocusNode.dispose();
     _apiSubscription?.cancel();

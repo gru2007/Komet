@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'package:gwid/api/api_service.dart';
 import 'package:gwid/models/profile.dart';
@@ -14,6 +15,7 @@ import 'package:gwid/services/whitelist_service.dart';
 import 'package:gwid/utils/proxy_service.dart';
 import 'package:gwid/utils/proxy_settings.dart';
 import 'package:gwid/screens/settings/qr_scanner_screen.dart';
+import 'package:gwid/screens/settings/session_spoofing_screen.dart';
 
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:crypto/crypto.dart' as crypto;
@@ -25,13 +27,42 @@ class TokenAuthScreen extends StatefulWidget {
   State<TokenAuthScreen> createState() => _TokenAuthScreenState();
 }
 
-class _TokenAuthScreenState extends State<TokenAuthScreen> {
+class _TokenAuthScreenState extends State<TokenAuthScreen>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _tokenController = TextEditingController();
   bool _isLoading = false;
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOut,
+    );
+
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
+
+    _animationController.forward();
+  }
 
   @override
   void dispose() {
     _tokenController.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
@@ -322,134 +353,429 @@ class _TokenAuthScreenState extends State<TokenAuthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Другие способы входа')),
-      body: Stack(
-        children: [
-          ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _AuthCard(
-                icon: Icons.qr_code_scanner_rounded,
-                title: 'Вход по QR-коду',
-                subtitle:
-                    'Отсканируйте QR-код с другого устройства, чтобы быстро войти.',
-                buttonLabel: 'Сканировать QR-код',
-                onPressed: _showQrSourceSelection,
-              ),
-
-              const SizedBox(height: 20),
-
-              _AuthCard(
-                icon: Icons.file_open_outlined,
-                title: 'Вход по файлу сессии',
-                subtitle:
-                    'Загрузите ранее экспортированный .json или .ksession файл для восстановления сессии.',
-                buttonLabel: 'Загрузить файл',
-                onPressed: _loadSessionFile,
-                isOutlined: true,
-              ),
-
-              const SizedBox(height: 20),
-
-              _AuthCard(
-                icon: Icons.vpn_key_outlined,
-                title: 'Вход по токену',
-                subtitle: 'Введите токен авторизации (AUTH_TOKEN) вручную.',
-                buttonLabel: 'Войти с токеном',
-                onPressed: _loginWithToken,
-                isOutlined: true,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: TextField(
-                    controller: _tokenController,
-                    decoration: const InputDecoration(
-                      labelText: 'Токен',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-              ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color.lerp(colors.surface, colors.primary, 0.05)!,
+              colors.surface,
+              Color.lerp(colors.surface, colors.tertiary, 0.05)!,
             ],
           ),
-          if (_isLoading)
-            Container(
-              color: Colors.black.withOpacity(0.5),
-              child: const Center(child: CircularProgressIndicator()),
-            ),
-        ],
+        ),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: IconButton.styleFrom(
+                            backgroundColor: colors.surfaceContainerHighest,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Другие способы входа',
+                                style: GoogleFonts.manrope(
+                                  textStyle: textTheme.headlineSmall,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Выберите удобный способ авторизации',
+                                style: GoogleFonts.manrope(
+                                  textStyle: textTheme.bodyMedium,
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: SlideTransition(
+                        position: _slideAnimation,
+                        child: ListView(
+                          padding: const EdgeInsets.all(24.0),
+                          children: [
+                            _AuthMethodCard(
+                              icon: Icons.devices_other_outlined,
+                              title: 'Подмена данных сессии',
+                              description:
+                                  'Настройте тип устройства и параметры сессии для корректной работы с токеном.',
+                              buttonLabel: 'Настроить',
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const SessionSpoofingScreen(),
+                                  ),
+                                );
+                              },
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  colors.surfaceContainerHighest,
+                                  colors.surfaceContainer,
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            _AuthMethodCard(
+                              icon: Icons.qr_code_scanner_rounded,
+                              title: 'Вход по QR-коду',
+                              description:
+                                  'Отсканируйте QR-код с другого устройства, чтобы быстро войти.',
+                              buttonLabel: 'Сканировать',
+                              onPressed: _showQrSourceSelection,
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Color.lerp(
+                                    colors.primaryContainer,
+                                    colors.primary,
+                                    0.2,
+                                  )!,
+                                  colors.primaryContainer,
+                                ],
+                              ),
+                              hasWarning: true,
+                            ),
+                            const SizedBox(height: 16),
+                            _AuthMethodCard(
+                              icon: Icons.file_open_outlined,
+                              title: 'Вход по файлу сессии',
+                              description:
+                                  'Загрузите ранее экспортированный .json или .ksession файл для восстановления сессии.',
+                              buttonLabel: 'Загрузить файл',
+                              onPressed: _loadSessionFile,
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  colors.surfaceContainerHighest,
+                                  colors.surfaceContainer,
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            _TokenAuthCard(
+                              controller: _tokenController,
+                              onPressed: _loginWithToken,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (_isLoading)
+                Container(
+                  color: Colors.black.withOpacity(0.5),
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-class _AuthCard extends StatelessWidget {
+class _AuthMethodCard extends StatelessWidget {
   final IconData icon;
   final String title;
-  final String subtitle;
+  final String description;
   final String buttonLabel;
   final VoidCallback onPressed;
-  final bool isOutlined;
-  final Widget? child;
+  final Gradient gradient;
+  final bool hasWarning;
 
-  const _AuthCard({
+  const _AuthMethodCard({
     required this.icon,
     required this.title,
-    required this.subtitle,
+    required this.description,
     required this.buttonLabel,
     required this.onPressed,
-    this.isOutlined = false,
-    this.child,
+    required this.gradient,
+    this.hasWarning = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    return Card(
-      elevation: isOutlined ? 0 : 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: isOutlined
-            ? BorderSide(
-                color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
-              )
-            : BorderSide.none,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  icon,
-                  size: 28,
-                  color: Theme.of(context).colorScheme.primary,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: colors.outline.withOpacity(0.2),
+              width: 1,
+            ),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      icon,
+                      color: colors.onSurfaceVariant,
+                      size: 28,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: GoogleFonts.manrope(
+                  textStyle: textTheme.titleLarge,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  title,
-                  style: textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                description,
+                style: GoogleFonts.manrope(
+                  textStyle: textTheme.bodyMedium,
+                  color: colors.onSurfaceVariant,
+                  height: 1.4,
+                ),
+              ),
+              if (hasWarning) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colors.secondaryContainer.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 20,
+                        color: colors.onSecondaryContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Токены привязаны к типу устройства. Перед входом убедитесь, что в настройках подмены сессии выбран правильный тип устройства (Android, iOS или Desktop), с которого был получен токен.',
+                          style: GoogleFonts.manrope(
+                            textStyle: TextStyle(
+                              fontSize: 13,
+                              color: colors.onSecondaryContainer,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              style: textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Text(
+                    buttonLabel,
+                    style: GoogleFonts.manrope(
+                      textStyle: textTheme.labelLarge,
+                      color: colors.onSurfaceVariant,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.arrow_forward,
+                    color: colors.onSurfaceVariant,
+                    size: 18,
+                  ),
+                ],
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TokenAuthCard extends StatelessWidget {
+  final TextEditingController controller;
+  final VoidCallback onPressed;
+
+  const _TokenAuthCard({
+    required this.controller,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: null,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                colors.surfaceContainerHighest,
+                colors.surfaceContainer,
+              ],
             ),
-            if (child != null) ...[const SizedBox(height: 20), child!],
-            const SizedBox(height: 20),
-            isOutlined
-                ? OutlinedButton(onPressed: onPressed, child: Text(buttonLabel))
-                : FilledButton(onPressed: onPressed, child: Text(buttonLabel)),
-          ],
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: colors.outline.withOpacity(0.2),
+              width: 1,
+            ),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.vpn_key_outlined,
+                      color: colors.onSurfaceVariant,
+                      size: 28,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Вход по токену',
+                style: GoogleFonts.manrope(
+                  textStyle: textTheme.titleLarge,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Введите токен авторизации (AUTH_TOKEN) вручную.',
+                style: GoogleFonts.manrope(
+                  textStyle: textTheme.bodyMedium,
+                  color: colors.onSurfaceVariant,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colors.secondaryContainer.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 20,
+                      color: colors.onSecondaryContainer,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Токены привязаны к типу устройства. Перед входом убедитесь, что в настройках подмены сессии выбран правильный тип устройства (Android, iOS или Desktop), с которого был получен токен.',
+                        style: GoogleFonts.manrope(
+                          textStyle: TextStyle(
+                            fontSize: 13,
+                            color: colors.onSecondaryContainer,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                decoration: InputDecoration(
+                  labelText: 'Токен',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  filled: true,
+                  fillColor: colors.surfaceContainerHighest,
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: onPressed,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Войти с токеном',
+                      style: GoogleFonts.manrope(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

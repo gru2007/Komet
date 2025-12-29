@@ -117,13 +117,15 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
 
   Future<void> _applyGeneratedData() async {
     final filteredPresets = devicePresets
-        .where((p) => p.deviceType != 'WEB')
+        .where((p) => p.deviceType != 'WEB' && p.deviceType == _selectedDeviceType)
         .toList();
 
     if (filteredPresets.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Нет доступных пресетов устройств.')),
+          SnackBar(
+            content: Text('Нет доступных пресетов для типа устройства $_selectedDeviceType.'),
+          ),
         );
       }
       return;
@@ -319,6 +321,12 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
     }
   }
 
+  void _generateNewDeviceId() {
+    setState(() {
+      _deviceIdController.text = _uuid.v4();
+    });
+  }
+
   @override
   void dispose() {
     _userAgentController.dispose();
@@ -349,6 +357,8 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
                   _buildInfoCard(),
                   const SizedBox(height: 16),
                   _buildSpoofingMethodCard(),
+                  const SizedBox(height: 16),
+                  _buildDeviceTypeCard(),
                   const SizedBox(height: 24),
                   _buildMainDataCard(),
                   const SizedBox(height: 16),
@@ -451,6 +461,46 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
             ),
             const SizedBox(height: 12),
             descriptionWidget,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeviceTypeCard() {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Тип устройства",
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            _buildDescriptionTile(
+              icon: Icons.info_outline,
+              color: theme.colorScheme.primary,
+              text:
+                  'Выберите тип устройства для генерации пресетов. При нажатии "Сгенерировать" будут использоваться только пресеты выбранного типа.',
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _selectedDeviceType,
+              decoration: _inputDecoration(
+                'Тип устройства',
+                Icons.devices_other_outlined,
+              ),
+              items: const [
+                DropdownMenuItem(value: 'ANDROID', child: Text('ANDROID')),
+                DropdownMenuItem(value: 'IOS', child: Text('IOS')),
+                DropdownMenuItem(value: 'DESKTOP', child: Text('DESKTOP')),
+              ],
+              onChanged: (v) =>
+                  v != null ? setState(() => _selectedDeviceType = v) : null,
+            ),
           ],
         ),
       ),
@@ -567,7 +617,14 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
             _buildSectionHeader(context, "Идентификаторы"),
             TextField(
               controller: _deviceIdController,
-              decoration: _inputDecoration('ID Устройства', Icons.tag_outlined),
+              decoration: _inputDecoration('ID Устройства', Icons.tag_outlined)
+                  .copyWith(
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.autorenew_outlined),
+                  tooltip: 'Сгенерировать новый ID',
+                  onPressed: _generateNewDeviceId,
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -594,21 +651,6 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
                             onPressed: _handleVersionCheck,
                           ),
                   ),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _selectedDeviceType,
-              decoration: _inputDecoration(
-                'Тип устройства',
-                Icons.devices_other_outlined,
-              ),
-              items: const [
-                DropdownMenuItem(value: 'ANDROID', child: Text('ANDROID')),
-                DropdownMenuItem(value: 'IOS', child: Text('IOS')),
-                DropdownMenuItem(value: 'DESKTOP', child: Text('DESKTOP')),
-              ],
-              onChanged: (v) =>
-                  v != null ? setState(() => _selectedDeviceType = v) : null,
             ),
           ],
         ),
