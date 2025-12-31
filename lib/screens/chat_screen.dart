@@ -110,10 +110,26 @@ class _ChatScreenState extends State<ChatScreen> {
   final Set<int> _loadingContactIds = {};
 
   int _initialUnreadCount = 0;
+  int? _lastPeerReadMessageId;
+  String? _lastPeerReadMessageIdStr;
 
   final Set<String> _sendingReactions = {};
   StreamSubscription<String>? _connectionStatusSub;
   String _connectionStatus = 'connecting';
+
+  int? _parseMessageId(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value);
+    return int.tryParse(value.toString());
+  }
+
+  int? _parseChatId(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value);
+    return int.tryParse(value.toString());
+  }
 
   Future<void> _onAttachPressed() async {
     if (Platform.isAndroid || Platform.isIOS) {
@@ -1101,48 +1117,50 @@ class _ChatScreenState extends State<ChatScreen> {
       final cmd = message['cmd'];
       final payload = message['payload'];
 
-      if (payload == null) return;
+      if (payload is! Map<String, dynamic>) return;
 
       final dynamic incomingChatId = payload['chatId'];
       final int? chatIdNormalized = incomingChatId is int
           ? incomingChatId
           : int.tryParse(incomingChatId?.toString() ?? '');
 
+      if (chatIdNormalized == null || chatIdNormalized != widget.chatId) {
+        return;
+      }
+
       if (opcode == 64 && (cmd == 0x100 || cmd == 256)) {
-        if (chatIdNormalized == widget.chatId) {
-          final newMessage = Message.fromJson(payload['message']);
-          
-          // Удаляем из очереди по id сообщения
-          final messageId = newMessage.id;
-          if (messageId.isNotEmpty && !messageId.startsWith('local_')) {
-            // Ищем в очереди по chatId и cid, если есть
-            final queueService = MessageQueueService();
-            if (newMessage.cid != null) {
-              final queueItem = queueService.findByCid(newMessage.cid!);
-              if (queueItem != null) {
-                queueService.removeFromQueue(queueItem.id);
-              }
+        final messageMap = payload['message'];
+        if (messageMap is! Map<String, dynamic>) return;
+
+        final newMessage = Message.fromJson(messageMap);
+        
+        // Удаляем из очереди по id сообщения
+        final messageId = newMessage.id;
+        if (messageId.isNotEmpty && !messageId.startsWith('local_')) {
+          final queueService = MessageQueueService();
+          if (newMessage.cid != null) {
+            final queueItem = queueService.findByCid(newMessage.cid!);
+            if (queueItem != null) {
+              queueService.removeFromQueue(queueItem.id);
             }
           }
-          
-          Future.microtask(() {
-            if (mounted) {
-              _updateMessage(newMessage);
-            }
-          });
         }
+        
+        Future.microtask(() {
+          if (mounted) {
+            _updateMessage(newMessage);
+          }
+        });
       } else if (opcode == 128) {
-        final newMessage = Message.fromJson(payload['message']);
+        final messageMap = payload['message'];
+        if (messageMap is! Map<String, dynamic>) return;
+
+        final newMessage = Message.fromJson(messageMap);
 
         if (newMessage.status == 'REMOVED') {
-          if (chatIdNormalized == widget.chatId) {
-            _removeMessages([newMessage.id]);
-          } else if (chatIdNormalized != null) {
-            unawaited(ChatCacheService().removeMessageFromCache(chatIdNormalized, newMessage.id));
-          }
+          _removeMessages([newMessage.id]);
         } else {
-          if (chatIdNormalized == widget.chatId) {
-            unawaited(ChatCacheService().addMessageToCache(widget.chatId, newMessage));
+          unawaited(ChatCacheService().addMessageToCache(widget.chatId, newMessage));
           Future.microtask(() {
             if (!mounted) return;
             final hasSameId = _messages.any((m) => m.id == newMessage.id);
@@ -1155,55 +1173,39 @@ class _ChatScreenState extends State<ChatScreen> {
               _addMessage(newMessage);
             }
           });
-        } else if (chatIdNormalized != null) {
-          final chatJson = payload['chat'] as Map<String, dynamic>?;
-          ApiService.instance.updateChatInListLocally(chatIdNormalized, {
-              'id': newMessage.id,
-              'sender': newMessage.senderId,
-              'text': newMessage.text,
-              'time': newMessage.time,
-              'status': newMessage.status,
-              'attaches': newMessage.attaches,
-              'cid': newMessage.cid,
-              'reactionInfo': newMessage.reactionInfo,
-              'link': newMessage.link,
-          }, chatJson);
-        }
         }
       } else if (opcode == 129) {
-        if (chatIdNormalized == widget.chatId) {}
       } else if (opcode == 132) {
-        if (chatIdNormalized == widget.chatId) {
-          final dynamic contactIdAny =
-              payload['contactId'] ?? payload['userId'];
-          if (contactIdAny != null) {
-            final int? cid = contactIdAny is int
-                ? contactIdAny
-                : int.tryParse(contactIdAny.toString());
-            if (cid != null) {
-              final currentTime = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-              final isOnline = payload['online'] == true;
-              final userPresence = {
-                'seen': currentTime,
-                'on': isOnline ? 'ON' : 'OFF',
-              };
-              ApiService.instance.updatePresenceData({
-                cid.toString(): userPresence,
-              });
+        final dynamic contactIdAny =
+            payload['contactId'] ?? payload['userId'];
+        if (contactIdAny != null) {
+          final int? cid = contactIdAny is int
+              ? contactIdAny
+              : int.tryParse(contactIdAny.toString());
+          if (cid != null) {
+            final currentTime = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+            final isOnline = payload['online'] == true;
+            final userPresence = {
+              'seen': currentTime,
+              'on': isOnline ? 'ON' : 'OFF',
+            };
+            ApiService.instance.updatePresenceData({
+              cid.toString(): userPresence,
+            });
 
-            }
           }
         }
       } else if (opcode == 67) {
-        if (chatIdNormalized == widget.chatId) {
-          final editedMessage = Message.fromJson(payload['message']);
+        final messageMap = payload['message'];
+        if (messageMap is! Map<String, dynamic>) return;
 
-          Future.microtask(() {
-            if (mounted) {
-              _updateMessage(editedMessage);
-            }
-          });
-        }
+        final editedMessage = Message.fromJson(messageMap);
+
+        Future.microtask(() {
+          if (mounted) {
+            _updateMessage(editedMessage);
+          }
+        });
       } else if (opcode == 178) {
         if (cmd == 0x100 || cmd == 256) {
           if (_sendingReactions.isNotEmpty) {
@@ -1217,7 +1219,7 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
 
-        if (cmd == 0 && chatIdNormalized == widget.chatId) {
+        if (cmd == 0) {
           final messageId = payload['messageId'] as String?;
           final reactionInfo = payload['reactionInfo'] as Map<String, dynamic>?;
           if (messageId != null && reactionInfo != null) {
@@ -1229,19 +1231,52 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
       } else if (opcode == 179) {
-        if (chatIdNormalized == widget.chatId) {
-          final messageId = payload['messageId'] as String?;
-          final reactionInfo = payload['reactionInfo'] as Map<String, dynamic>?;
-          if (messageId != null) {
-            Future.microtask(() {
-              if (mounted) {
-                _updateMessageReaction(messageId, reactionInfo ?? {});
-              }
-            });
-          }
+        final messageId = payload['messageId'] as String?;
+        final reactionInfo = payload['reactionInfo'] as Map<String, dynamic>?;
+        if (messageId != null) {
+          Future.microtask(() {
+            if (mounted) {
+              _updateMessageReaction(messageId, reactionInfo ?? {});
+            }
+          });
         }
       } else if (opcode == 50) {
-        if (chatIdNormalized == widget.chatId) {}
+        final dynamic type = payload['type'];
+        if (type == 'READ_MESSAGE') {
+          final int? receiptChatId = _parseChatId(payload['chatId']);
+          if (receiptChatId == null || receiptChatId != widget.chatId) {
+            return;
+          }
+
+          final readerId = payload['userId'] ??
+              payload['contactId'] ??
+              payload['uid'] ??
+              payload['sender'];
+          final int? readerIdInt = _parseMessageId(readerId);
+
+          if (readerIdInt != null && _actualMyId != null && readerIdInt == _actualMyId) {
+            return;
+          }
+
+          final dynamic rawMessageId = payload['messageId'] ?? payload['id'];
+          final int? messageId = _parseMessageId(rawMessageId);
+          final String? messageIdStr = rawMessageId?.toString();
+
+          if (messageId != null) {
+            if (_lastPeerReadMessageId == null || messageId > _lastPeerReadMessageId!) {
+              setState(() {
+                _lastPeerReadMessageId = messageId;
+                _lastPeerReadMessageIdStr = messageIdStr;
+              });
+            }
+          } else if (messageIdStr != null && messageIdStr.isNotEmpty) {
+            if (_lastPeerReadMessageIdStr == null || messageIdStr.compareTo(_lastPeerReadMessageIdStr!) >= 0) {
+              setState(() {
+                _lastPeerReadMessageIdStr = messageIdStr;
+              });
+            }
+          }
+        }
       }
     });
   }
@@ -3487,6 +3522,18 @@ class _ChatScreenState extends State<ChatScreen> {
                                         readStatus = MessageReadStatus.sending;
                                       } else {
                                         readStatus = MessageReadStatus.sent;
+                                      }
+
+                                      final int? numericMessageId =
+                                          _parseMessageId(messageId);
+                                      if (numericMessageId != null &&
+                                          _lastPeerReadMessageId != null &&
+                                          numericMessageId <= _lastPeerReadMessageId!) {
+                                        readStatus = MessageReadStatus.read;
+                                      } else if (numericMessageId == null &&
+                                          _lastPeerReadMessageIdStr != null &&
+                                          messageId == _lastPeerReadMessageIdStr) {
+                                        readStatus = MessageReadStatus.read;
                                       }
                                     }
 
@@ -6198,6 +6245,7 @@ class _ContactPresenceSubtitleState extends State<_ContactPresenceSubtitle> {
       try {
         final int? opcode = msg['opcode'];
         final payload = msg['payload'];
+        if (payload is! Map<String, dynamic>) return;
         if (opcode == 129) {
           final dynamic incomingChatId = payload['chatId'];
           final int? cid = incomingChatId is int

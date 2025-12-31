@@ -1119,14 +1119,12 @@ void onStart(ServiceInstance service) async {
   Timer.periodic(const Duration(minutes: 5), (timer) async {
     if (service is AndroidServiceInstance) {
       if (await service.isForegroundService()) {
-        if (Platform.isAndroid) {
-          await NotificationService.updateForegroundServiceNotification();
-        } else {
-          service.setForegroundNotificationInfo(
-            title: "Komet",
-            content: "Активно",
-          );
-        }
+        // В фоновом изоляте MethodChannel недоступен, поэтому обновляем
+        // foreground-уведомление напрямую через service API.
+        service.setForegroundNotificationInfo(
+          title: "Komet",
+          content: "Активно",
+        );
       }
     }
 
