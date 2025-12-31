@@ -1227,7 +1227,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (hasCache) {
       if (!mounted) return;
       _messages.clear();
-      _messages.addAll(cachedMessages);
+      _messages.addAll(_hydrateLinksSequentially(cachedMessages));
 
       if (_messages.isNotEmpty) {
         _oldestLoadedTime = _messages.first.time;
@@ -1278,7 +1278,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final bool hasServerData = allMessages.isNotEmpty;
 
-      final List<Message> mergedMessages;
+      List<Message> mergedMessages;
       if (hasServerData) {
         // Объединяем кеш и новые сообщения, убирая дубликаты
         final Map<String, Message> messagesMap = {};
@@ -1316,6 +1316,8 @@ class _ChatScreenState extends State<ChatScreen> {
           print('Используем кеш, так как сервер не ответил');
         }
       }
+
+      mergedMessages = _hydrateLinksSequentially(mergedMessages);
 
       final Set<int> senderIds = {};
       for (final message in mergedMessages) {
@@ -1458,7 +1460,12 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
 
-      _messages.insertAll(0, newMessages);
+      final hydratedOlder = _hydrateLinksSequentially(
+        newMessages,
+        initialKnown: _buildKnownMessagesMap(),
+      );
+
+      _messages.insertAll(0, hydratedOlder);
       _oldestLoadedTime = _messages.first.time;
 
       _hasMore = olderMessages.length >= 30;
@@ -1676,27 +1683,31 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _addMessage(Message message, {bool forceScroll = false}) {
-    if (_messages.any((m) => m.id == message.id)) {
+    final normalizedMessage =
+        _hydrateLinkFromKnown(message, _buildKnownMessagesMap());
+
+    if (_messages.any((m) => m.id == normalizedMessage.id)) {
       return;
     }
 
-    final allMessages = [..._messages, message]..sort((a, b) => a.time.compareTo(b.time));
+    final allMessages = [..._messages, normalizedMessage]
+      ..sort((a, b) => a.time.compareTo(b.time));
     unawaited(ChatCacheService().cacheChatMessages(widget.chatId, allMessages));
 
     final wasAtBottom = _isUserAtBottom;
 
-    final isMyMessage = message.senderId == _actualMyId;
+    final isMyMessage = normalizedMessage.senderId == _actualMyId;
 
     final lastMessage = _messages.isNotEmpty ? _messages.last : null;
-    _messages.add(message);
+    _messages.add(normalizedMessage);
 
-    final hasPhoto = message.attaches.any((a) => a['_type'] == 'PHOTO');
+    final hasPhoto = normalizedMessage.attaches.any((a) => a['_type'] == 'PHOTO');
     if (hasPhoto) {
       _updateCachedPhotos();
     }
 
     final currentDate = DateTime.fromMillisecondsSinceEpoch(
-      message.time,
+      normalizedMessage.time,
     ).toLocal();
     final lastDate = lastMessage != null
         ? DateTime.fromMillisecondsSinceEpoch(lastMessage.time).toLocal()
@@ -1879,9 +1890,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (index != -1 && index < _messages.length) {
       final oldMessage = _messages[index];
-      final finalMessage = updatedMessage.link != null
-          ? updatedMessage
-          : updatedMessage.copyWith(link: oldMessage.link);
+      final hydratedUpdate =
+          _hydrateLinkFromKnown(updatedMessage, _buildKnownMessagesMap());
+      final finalMessage = hydratedUpdate.link != null
+          ? hydratedUpdate
+          : hydratedUpdate.copyWith(link: oldMessage.link);
 
       final oldHasPhoto = oldMessage.attaches.any((a) => a['_type'] == 'PHOTO');
       final newHasPhoto = finalMessage.attaches.any(
@@ -1914,7 +1927,6 @@ class _ChatScreenState extends State<ChatScreen> {
           isLastInGroup: oldItem.isLastInGroup,
           isGrouped: oldItem.isGrouped,
         );
-
 
         if (mounted) {
           setState(() {});
@@ -2072,6 +2084,74 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Map<String, dynamic> _mapMessageForLink(Message message) {
+    final parsedId = int.tryParse(message.id);
+    return {
+      'sender': message.senderId,
+      'id': parsedId ?? message.id,
+      'time': message.time,
+      'text': message.text,
+      'type': 'USER',
+      'cid': message.cid,
+      'attaches': message.attaches,
+      'elements': message.elements,
+    };
+  }
+
+  Map<String, Message> _buildKnownMessagesMap() {
+    final map = <String, Message>{};
+    for (final msg in _messages) {
+      map[msg.id] = msg;
+      final cidKey = msg.cid?.toString();
+      if (cidKey != null) {
+        map[cidKey] = msg;
+      }
+    }
+    return map;
+  }
+
+  Message _hydrateLinkFromKnown(
+    Message message,
+    Map<String, Message> knownMessages,
+  ) {
+    final link = message.link;
+    if (link == null || link['message'] != null) return message;
+
+    final dynamic linkMessageId = link['messageId'];
+    if (linkMessageId == null) return message;
+
+    final messageKey = linkMessageId.toString();
+    final referenced = knownMessages[messageKey];
+    if (referenced == null) return message;
+
+    final updatedLink = Map<String, dynamic>.from(link);
+    updatedLink['message'] = _mapMessageForLink(referenced);
+    return message.copyWith(link: updatedLink);
+  }
+
+  List<Message> _hydrateLinksSequentially(
+    List<Message> messages, {
+    Map<String, Message>? initialKnown,
+  }) {
+    final known = initialKnown != null
+        ? Map<String, Message>.from(initialKnown)
+        : <String, Message>{};
+    final result = <Message>[];
+
+    for (final message in messages) {
+      final hydrated = _hydrateLinkFromKnown(message, known);
+      result.add(hydrated);
+
+      known[hydrated.id] = hydrated;
+      final cidKey = hydrated.cid?.toString();
+      if (cidKey != null) {
+        known[cidKey] = hydrated;
+      }
+    }
+
+    return result;
+  }
+
   Future<void> _sendMessage() async {
     final originalText = _textController.text.trim();
     if (originalText.isNotEmpty) {
@@ -2130,10 +2210,10 @@ class _ChatScreenState extends State<ChatScreen> {
         'link': _replyingToMessage != null
             ? {
                 'type': 'REPLY',
-                'messageId': _replyingToMessage!.id,
+                'messageId': int.tryParse(_replyingToMessage!.id) ?? _replyingToMessage!.id,
                 'message': {
                   'sender': _replyingToMessage!.senderId,
-                  'id': _replyingToMessage!.id,
+                  'id': int.tryParse(_replyingToMessage!.id) ?? _replyingToMessage!.id,
                   'time': _replyingToMessage!.time,
                   'text': _replyingToMessage!.text,
                   'type': 'USER',
@@ -2155,6 +2235,7 @@ class _ChatScreenState extends State<ChatScreen> {
         widget.chatId,
         textToSend,
         replyToMessageId: _replyingToMessage?.id,
+        replyToMessage: _replyingToMessage,
         cid: tempCid,
         elements: tempElements,
       );
@@ -2270,8 +2351,26 @@ class _ChatScreenState extends State<ChatScreen> {
     _showForwardDialog(message);
   }
 
+  Future<Map<String, dynamic>?> _loadChatsIfNeeded() async {
+    try {
+      final result = await ApiService.instance.getChatsAndContacts(force: false);
+      if (result['chats'] == null || (result['chats'] as List).isEmpty) {
+        // force refresh if cache is empty
+        return await ApiService.instance.getChatsAndContacts(force: true);
+      }
+      return result;
+    } catch (e) {
+      print('❌ Не удалось загрузить список чатов для пересылки: $e');
+      return null;
+    }
+  }
+
   void _showForwardDialog(Message message) async {
-    final chatData = ApiService.instance.lastChatsPayload;
+    Map<String, dynamic>? chatData = ApiService.instance.lastChatsPayload;
+    if (chatData == null || chatData['chats'] == null) {
+      chatData = await _loadChatsIfNeeded();
+    }
+
     if (chatData == null || chatData['chats'] == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -2281,6 +2380,8 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       return;
     }
+
+    print('📨 Forward: найдено ${chatData['chats']?.length ?? 0} чатов');
 
     final chats = chatData['chats'] as List<dynamic>;
 
@@ -2509,7 +2610,13 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _performForward(Message message, int targetChatId) {
-    ApiService.instance.forwardMessage(targetChatId, message.id, widget.chatId);
+    ApiService.instance.forwardMessage(
+      targetChatId,
+      message,
+      widget.chatId,
+      sourceChatName: widget.contact.name,
+      sourceChatIconUrl: widget.contact.photoBaseUrl,
+    );
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(

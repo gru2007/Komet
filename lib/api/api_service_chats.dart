@@ -1108,13 +1108,39 @@ extension ApiServiceChats on ApiService {
     };
   }
 
+  Map<String, dynamic> _mapMessageForLink(Message message) {
+    final parsedId = int.tryParse(message.id);
+    return {
+      'sender': message.senderId,
+      'id': parsedId ?? message.id,
+      'time': message.time,
+      'text': message.text,
+      'type': 'USER',
+      'cid': message.cid,
+      'attaches': message.attaches,
+      'elements': message.elements,
+    };
+  }
+
   void sendMessage(
     int chatId,
     String text, {
     String? replyToMessageId,
+    Message? replyToMessage,
     int? cid,
     List<Map<String, dynamic>>? elements,
   }) {
+    Map<String, dynamic>? replyLink;
+    if (replyToMessageId != null) {
+      final parsedReplyId = int.tryParse(replyToMessageId);
+      replyLink = {
+        "type": "REPLY",
+        "messageId": parsedReplyId ?? replyToMessageId,
+        if (replyToMessage != null) "message": _mapMessageForLink(replyToMessage),
+        "chatId": chatId,
+      };
+    }
+
     final int clientMessageId = cid ?? DateTime.now().millisecondsSinceEpoch;
     final payload = {
       "chatId": chatId,
@@ -1123,8 +1149,7 @@ extension ApiServiceChats on ApiService {
         "cid": clientMessageId,
         "elements": elements ?? [],
         "attaches": [],
-        if (replyToMessageId != null)
-          "link": {"type": "REPLY", "messageId": replyToMessageId},
+        if (replyLink != null) "link": replyLink,
       },
       "notify": true,
     };
@@ -1141,8 +1166,7 @@ extension ApiServiceChats on ApiService {
       'type': 'USER',
       'cid': clientMessageId,
       'attaches': [],
-      if (replyToMessageId != null)
-        'link': {'type': 'REPLY', 'messageId': replyToMessageId},
+      if (replyLink != null) 'link': replyLink,
     };
     
     _emitLocal({
@@ -1183,17 +1207,27 @@ extension ApiServiceChats on ApiService {
     }
   }
 
-  void forwardMessage(int targetChatId, String messageId, int sourceChatId) {
+  void forwardMessage(
+    int targetChatId,
+    Message message,
+    int sourceChatId, {
+    String? sourceChatName,
+    String? sourceChatIconUrl,
+  }) {
     final int clientMessageId = DateTime.now().millisecondsSinceEpoch;
+    final linkPayload = {
+      "type": "FORWARD",
+      "messageId": int.tryParse(message.id) ?? 0,
+      "chatId": sourceChatId,
+      "message": _mapMessageForLink(message),
+      if (sourceChatName != null) "chatName": sourceChatName,
+      if (sourceChatIconUrl != null) "chatIconUrl": sourceChatIconUrl,
+    };
     final payload = {
       "chatId": targetChatId,
       "message": {
         "cid": clientMessageId,
-        "link": {
-          "type": "FORWARD",
-          "messageId": int.tryParse(messageId) ?? 0,
-          "chatId": sourceChatId,
-        },
+        "link": linkPayload,
         "attaches": [],
       },
       "notify": true,

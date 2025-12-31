@@ -2740,29 +2740,9 @@ class ChatMessageBubble extends StatelessWidget {
 
     final sizeStr = _formatFileSize(fileSize);
 
-    return GestureDetector(
-      onTap: () async {
-        final prefs = await SharedPreferences.getInstance();
-        final fileIdMap = prefs.getStringList('file_id_to_path_map') ?? [];
-        final fileIdString = fileId?.toString();
-
-        bool isDownloaded = false;
-        String? filePath;
-
-        if (fileIdString != null) {
-          for (final mapping in fileIdMap) {
-            if (mapping.startsWith('$fileIdString:')) {
-              filePath = mapping.substring(fileIdString.length + 1);
-              final file = io.File(filePath);
-              if (await file.exists()) {
-                isDownloaded = true;
-                break;
-              }
-            }
-          }
-        }
-
-        if (!isDownloaded) {
+    if (fileId == null) {
+      return GestureDetector(
+        onTap: () async {
           await _handleFileDownload(
             context,
             fileId,
@@ -2771,196 +2751,85 @@ class ChatMessageBubble extends StatelessWidget {
             chatId,
             preview: preview,
           );
-          await Future.delayed(const Duration(seconds: 1));
-          if (fileIdString != null) {
-            final updatedFileIdMap =
-                prefs.getStringList('file_id_to_path_map') ?? [];
-            for (final mapping in updatedFileIdMap) {
-              if (mapping.startsWith('$fileIdString:')) {
-                filePath = mapping.substring(fileIdString.length + 1);
-                final file = io.File(filePath);
-                if (await file.exists()) {
-                  isDownloaded = true;
-                  break;
-                }
-              }
-            }
-          }
-        }
-
-        if (isDownloaded && filePath != null) {
-          final track = MusicTrack(
-            id:
-                fileId?.toString() ??
-                DateTime.now().millisecondsSinceEpoch.toString(),
-            title: title,
-            artist: artist,
-            album: album,
-            albumArtUrl: albumArtUrl,
-            duration: duration,
-            filePath: filePath,
-            fileId: fileId,
-            token: token,
-            chatId: chatId,
-          );
-
-          final musicMetadataJson = prefs.getString('music_metadata') ?? '{}';
-          final musicMetadata =
-              jsonDecode(musicMetadataJson) as Map<String, dynamic>;
-          musicMetadata[fileIdString ?? ''] = track.toJson();
-          await prefs.setString('music_metadata', jsonEncode(musicMetadata));
-        }
-      },
-      child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width < 400 ? MediaQuery.of(context).size.width * 0.7 : 300.0),
-        decoration: BoxDecoration(
-          color: textColor.withOpacity(0.05),
-          borderRadius: borderRadius,
-          border: Border.all(color: textColor.withOpacity(0.1), width: 1),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  width: 56,
-                  height: 56,
-                  color: textColor.withOpacity(0.1),
-                  child: albumArtUrl != null
-                      ? Image.network(
-                          albumArtUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Icon(
+        },
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width < 400
+                ? MediaQuery.of(context).size.width * 0.7
+                : 300.0,
+          ),
+          decoration: BoxDecoration(
+            color: textColor.withOpacity(0.05),
+            borderRadius: borderRadius,
+            border: Border.all(color: textColor.withOpacity(0.1), width: 1),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    color: textColor.withOpacity(0.1),
+                    child: albumArtUrl != null
+                        ? Image.network(
+                            albumArtUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Icon(
+                              Icons.music_note,
+                              color: textColor.withOpacity(0.8),
+                              size: 24,
+                            ),
+                          )
+                        : Icon(
                             Icons.music_note,
                             color: textColor.withOpacity(0.8),
                             size: 24,
                           ),
-                        )
-                      : Icon(
-                          Icons.music_note,
-                          color: textColor.withOpacity(0.8),
-                          size: 24,
-                        ),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Flexible(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: textColor,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      artist,
-                      style: TextStyle(
-                        color: textColor.withOpacity(0.7),
-                        fontSize: 12,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (album != null) ...[
-                      const SizedBox(height: 2),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                       Text(
-                        album,
+                        title,
                         style: TextStyle(
-                          color: textColor.withOpacity(0.6),
-                          fontSize: 11,
+                          color: textColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                    ],
-                    const SizedBox(height: 4),
-                    if (fileId != null)
-                      ValueListenableBuilder<double>(
-                        valueListenable: FileDownloadProgressService()
-                            .getProgress(fileId.toString()),
-                        builder: (context, progress, child) {
-                          if (progress < 0) {
-                            return Row(
-                              children: [
-                                if (durationText.isNotEmpty) ...[
-                                  Text(
-                                    durationText,
-                                    style: TextStyle(
-                                      color: textColor.withOpacity(0.6),
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '•',
-                                    style: TextStyle(
-                                      color: textColor.withOpacity(0.6),
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                                Text(
-                                  sizeStr,
-                                  style: TextStyle(
-                                    color: textColor.withOpacity(0.6),
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            );
-                          } else if (progress < 1.0) {
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                LinearProgressIndicator(
-                                  value: progress,
-                                  minHeight: 3,
-                                  backgroundColor: textColor.withOpacity(0.1),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${(progress * 100).toStringAsFixed(0)}%',
-                                  style: TextStyle(
-                                    color: textColor.withOpacity(0.6),
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            );
-                          } else {
-                            return Row(
-                              children: [
-                                Icon(
-                                  Icons.check_circle,
-                                  size: 12,
-                                  color: Colors.green.withOpacity(0.8),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Загружено',
-                                  style: TextStyle(
-                                    color: Colors.green.withOpacity(0.8),
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-                        },
-                      )
-                    else ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        artist,
+                        style: TextStyle(
+                          color: textColor.withOpacity(0.7),
+                          fontSize: 12,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (album != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          album,
+                          style: TextStyle(
+                            color: textColor.withOpacity(0.6),
+                            fontSize: 11,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      const SizedBox(height: 4),
                       Row(
                         children: [
                           if (durationText.isNotEmpty) ...[
@@ -2990,173 +2859,285 @@ class ChatMessageBubble extends StatelessWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      FutureBuilder<bool>(
-                        future: fileId != null
-                            ? _isMusicTrackRegistered(fileId)
-                            : Future.value(false),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const SizedBox.shrink();
-                          }
-                          if (snapshot.data == true) {
-                            return Text(
-                              'прослушать в \"Музыка\"',
-                              style: TextStyle(
-                                color: Colors.green.shade400,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
-                            );
-                          }
-                          return const SizedBox.shrink();
-                        },
-                      ),
                     ],
+                  ),
+                ),
+                Icon(
+                  Icons.download_outlined,
+                  color: textColor.withOpacity(0.6),
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final progressNotifier =
+        FileDownloadProgressService().getProgress(fileId.toString());
+
+    return ValueListenableBuilder<double>(
+      valueListenable: progressNotifier,
+      builder: (context, progress, _) {
+        final bool isDownloading = progress >= 0 && progress < 1.0;
+
+        Future<void> handleTap() async {
+          if (isDownloading) return;
+
+          final prefs = await SharedPreferences.getInstance();
+          final fileIdMap = prefs.getStringList('file_id_to_path_map') ?? [];
+          final fileIdString = fileId.toString();
+
+          bool isDownloaded = false;
+          String? filePath;
+
+          for (final mapping in fileIdMap) {
+            if (mapping.startsWith('$fileIdString:')) {
+              filePath = mapping.substring(fileIdString.length + 1);
+              final file = io.File(filePath);
+              if (await file.exists()) {
+                isDownloaded = true;
+                break;
+              }
+            }
+          }
+
+          if (!isDownloaded) {
+            await _handleFileDownload(
+              context,
+              fileId,
+              token,
+              fileName,
+              chatId,
+              preview: preview,
+            );
+            await Future.delayed(const Duration(seconds: 1));
+            final updatedFileIdMap =
+                prefs.getStringList('file_id_to_path_map') ?? [];
+            for (final mapping in updatedFileIdMap) {
+              if (mapping.startsWith('$fileIdString:')) {
+                filePath = mapping.substring(fileIdString.length + 1);
+                final file = io.File(filePath);
+                if (await file.exists()) {
+                  isDownloaded = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (isDownloaded && filePath != null) {
+            final track = MusicTrack(
+              id: fileId.toString(),
+              title: title,
+              artist: artist,
+              album: album,
+              albumArtUrl: albumArtUrl,
+              duration: duration,
+              filePath: filePath,
+              fileId: fileId,
+              token: token,
+              chatId: chatId,
+            );
+
+            final musicMetadataJson = prefs.getString('music_metadata') ?? '{}';
+            final musicMetadata =
+                jsonDecode(musicMetadataJson) as Map<String, dynamic>;
+            musicMetadata[fileIdString] = track.toJson();
+            await prefs.setString('music_metadata', jsonEncode(musicMetadata));
+          }
+        }
+
+        return GestureDetector(
+          onTap: isDownloading ? null : handleTap,
+          child: AbsorbPointer(
+            absorbing: isDownloading,
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width < 400
+                    ? MediaQuery.of(context).size.width * 0.7
+                    : 300.0,
+              ),
+              decoration: BoxDecoration(
+                color: textColor.withOpacity(0.05),
+                borderRadius: borderRadius,
+                border: Border.all(color: textColor.withOpacity(0.1), width: 1),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: 56,
+                        height: 56,
+                        color: textColor.withOpacity(0.1),
+                        child: albumArtUrl != null
+                            ? Image.network(
+                                albumArtUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => Icon(
+                                  Icons.music_note,
+                                  color: textColor.withOpacity(0.8),
+                                  size: 24,
+                                ),
+                              )
+                            : Icon(
+                                Icons.music_note,
+                                color: textColor.withOpacity(0.8),
+                                size: 24,
+                              ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            title,
+                            style: TextStyle(
+                              color: textColor,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            artist,
+                            style: TextStyle(
+                              color: textColor.withOpacity(0.7),
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (album != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              album,
+                              style: TextStyle(
+                                color: textColor.withOpacity(0.6),
+                                fontSize: 11,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                          const SizedBox(height: 4),
+                          if (progress < 0)
+                            Row(
+                              children: [
+                                if (durationText.isNotEmpty) ...[
+                                  Text(
+                                    durationText,
+                                    style: TextStyle(
+                                      color: textColor.withOpacity(0.6),
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '•',
+                                    style: TextStyle(
+                                      color: textColor.withOpacity(0.6),
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                                Text(
+                                  sizeStr,
+                                  style: TextStyle(
+                                    color: textColor.withOpacity(0.6),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            )
+                          else if (isDownloading)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                LinearProgressIndicator(
+                                  value: progress,
+                                  minHeight: 3,
+                                  backgroundColor:
+                                      textColor.withOpacity(0.1),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${(progress * 100).toStringAsFixed(0)}%',
+                                  style: TextStyle(
+                                    color: textColor.withOpacity(0.6),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            )
+                          else
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  size: 12,
+                                  color: Colors.green.withOpacity(0.8),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Загружено',
+                                  style: TextStyle(
+                                    color: Colors.green.withOpacity(0.8),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                    isDownloading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : IconButton(
+                            onPressed: handleTap,
+                            icon: Icon(
+                              Icons.download_outlined,
+                              color: textColor.withOpacity(0.6),
+                              size: 20,
+                            ),
+                          ),
                   ],
                 ),
               ),
-              if (fileId != null)
-                ValueListenableBuilder<double>(
-                  valueListenable: FileDownloadProgressService().getProgress(
-                    fileId.toString(),
-                  ),
-                  builder: (context, progress, child) {
-                    if (progress >= 0 && progress < 1.0) {
-                      return const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      );
-                    }
-                    return IconButton(
-                      onPressed: () async {
-                        final prefs = await SharedPreferences.getInstance();
-                        final fileIdMap =
-                            prefs.getStringList('file_id_to_path_map') ?? [];
-                        final fileIdString = fileId.toString();
-
-                        bool isDownloaded = false;
-                        String? filePath;
-
-                        for (final mapping in fileIdMap) {
-                          if (mapping.startsWith('$fileIdString:')) {
-                            filePath = mapping.substring(
-                              fileIdString.length + 1,
-                            );
-                            final file = io.File(filePath);
-                            if (await file.exists()) {
-                              isDownloaded = true;
-                              break;
-                            }
-                          }
-                        }
-
-                        if (!isDownloaded) {
-                          await _handleFileDownload(
-                            context,
-                            fileId,
-                            token,
-                            fileName,
-                            chatId,
-                            preview: preview,
-                          );
-                          await Future.delayed(const Duration(seconds: 1));
-                          final updatedFileIdMap =
-                              prefs.getStringList('file_id_to_path_map') ?? [];
-                          for (final mapping in updatedFileIdMap) {
-                            if (mapping.startsWith('$fileIdString:')) {
-                              filePath = mapping.substring(
-                                fileIdString.length + 1,
-                              );
-                              final file = io.File(filePath);
-                              if (await file.exists()) {
-                                isDownloaded = true;
-                                break;
-                              }
-                            }
-                          }
-                        }
-
-                        if (isDownloaded && filePath != null) {
-                          final track = MusicTrack(
-                            id: fileId.toString(),
-                            title: title,
-                            artist: artist,
-                            album: album,
-                            albumArtUrl: albumArtUrl,
-                            duration: duration,
-                            filePath: filePath,
-                            fileId: fileId,
-                            token: token,
-                            chatId: chatId,
-                          );
-
-                          final musicMetadataJson =
-                              prefs.getString('music_metadata') ?? '{}';
-                          final musicMetadata =
-                              jsonDecode(musicMetadataJson)
-                                  as Map<String, dynamic>;
-                          musicMetadata[fileIdString] = track.toJson();
-                          await prefs.setString(
-                            'music_metadata',
-                            jsonEncode(musicMetadata),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.download_outlined),
-                      style: IconButton.styleFrom(
-                        backgroundColor: textColor.withOpacity(0.1),
-                        foregroundColor: textColor,
-                      ),
-                    );
-                  },
-                )
-              else
-                IconButton(
-                  onPressed: () async {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Не удалось загрузить файл'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.download_outlined),
-                  style: IconButton.styleFrom(
-                    backgroundColor: textColor.withOpacity(0.1),
-                    foregroundColor: textColor,
-                  ),
-                ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   String _getFileExtension(String fileName) {
-    final parts = fileName.split('.');
-    if (parts.length > 1) {
-      return parts.last.toLowerCase();
+    final dotIndex = fileName.lastIndexOf('.');
+    if (dotIndex == -1 || dotIndex == fileName.length - 1) {
+      return '';
     }
-    return '';
+    return fileName.substring(dotIndex + 1).toLowerCase();
   }
 
   IconData _getFileIcon(String extension) {
-    switch (extension) {
-      case 'pdf':
-        return Icons.picture_as_pdf;
-      case 'doc':
-      case 'docx':
-        return Icons.description;
-      case 'xls':
-      case 'xlsx':
-        return Icons.table_chart;
+    switch (extension.toLowerCase()) {
       case 'txt':
+      case 'log':
         return Icons.text_snippet;
       case 'zip':
       case 'rar':
