@@ -2466,6 +2466,8 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       print('❌ Не удалось загрузить список чатов для пересылки: $e');
       return null;
+    }
+  }
   void _retrySendMessage(Message message) {
     final cid = message.cid ?? DateTime.now().millisecondsSinceEpoch;
     ApiService.instance.sendMessage(
@@ -3719,8 +3721,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                           : null,
                                       allPhotos: _cachedAllPhotos,
                                       onGoToMessage: _scrollToMessage,
-                                      onRetrySend: () => _retrySendMessage(item.message),
-                                      onCancelSend: () => _cancelSendMessage(item.message),
                                     );
 
                                     Widget finalMessageWidget = RepaintBoundary(
