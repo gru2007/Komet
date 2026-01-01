@@ -388,11 +388,27 @@ extension ApiServiceConnection on ApiService {
 
           if (decodedMessage is Map &&
               decodedMessage['opcode'] == 97 &&
-              (decodedMessage['cmd'] == 0x100 || decodedMessage['cmd'] == 256) &&
-              decodedMessage['payload'] != null &&
-              decodedMessage['payload']['token'] != null) {
-            _handleSessionTerminated();
-            return;
+              (decodedMessage['cmd'] == 0x100 || decodedMessage['cmd'] == 256)) {
+            final payload = decodedMessage['payload'];
+
+            if (payload is Map<String, dynamic>) {
+              final terminatedTokens = <String>{};
+
+              final payloadToken = payload['token'];
+              if (payloadToken is String) {
+                terminatedTokens.add(payloadToken);
+              }
+
+              final payloadTokens = payload['tokens'];
+              if (payloadTokens is List) {
+                terminatedTokens.addAll(payloadTokens.whereType<String>());
+              }
+
+              if (terminatedTokens.contains(authToken)) {
+                _handleSessionTerminated();
+                return;
+              }
+            }
           }
 
           if (decodedMessage is Map &&
