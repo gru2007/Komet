@@ -223,7 +223,7 @@ extension ApiServiceAuth on ApiService {
       StreamSubscription? tempSubscription;
       
       tempSubscription = messages.listen((message) {
-        if (message['type'] == 'invalid_token') {
+        if (message != null && message['type'] == 'invalid_token') {
           invalidTokenDetected = true;
           tempSubscription?.cancel();
         }
@@ -262,8 +262,12 @@ extension ApiServiceAuth on ApiService {
         // Restore previous account
         if (previousAccountId != null) {
           print("Восстанавливаем предыдущий аккаунт: $previousAccountId");
-          disconnect();
+          
+          // First restore in AccountManager
           await accountManager.switchAccount(previousAccountId);
+          
+          // Then restore in ApiService
+          disconnect();
           authToken = previousToken;
           userId = previousUserId;
           

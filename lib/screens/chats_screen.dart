@@ -324,7 +324,6 @@ class _ChatsScreenState extends State<ChatsScreen>
     // Don't show dialog if we're in the middle of switching accounts
     // The account switcher will handle the error
     if (_isSwitchingAccounts) {
-      print('Пропускаем диалог недействительного токена - переключение аккаунтов');
       return;
     }
     
@@ -1627,9 +1626,12 @@ class _ChatsScreenState extends State<ChatsScreen>
                                                 if (mounted) {
                                                   final errorMessage = e.toString();
                                                   // Check if this is an invalid token error
-                                                  if (errorMessage.contains('invalid_token') ||
-                                                      errorMessage.contains('недействительн') ||
-                                                      errorMessage.contains('FAIL_WRONG_PASSWORD')) {
+                                                  const invalidTokenKeywords = ['invalid_token', 'FAIL_WRONG_PASSWORD'];
+                                                  final isInvalidToken = invalidTokenKeywords.any(
+                                                    (keyword) => errorMessage.contains(keyword)
+                                                  ) || errorMessage.contains('недействительн');
+                                                  
+                                                  if (isInvalidToken) {
                                                     ScaffoldMessenger.of(
                                                       context,
                                                     ).showSnackBar(
@@ -1639,7 +1641,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                                                         ),
                                                         backgroundColor:
                                                             colors.error,
-                                                        duration: Duration(seconds: 4),
+                                                        duration: const Duration(seconds: 4),
                                                       ),
                                                     );
                                                   } else {
