@@ -159,7 +159,11 @@ class NotificationService {
         return null;
       case 'sendReplyFromNotification':
         final args = call.arguments as Map<dynamic, dynamic>;
-        final chatId = args['chatId'] as int?;
+        // Handle both int and Long from Android
+        final chatIdDynamic = args['chatId'];
+        final chatId = chatIdDynamic is int 
+            ? chatIdDynamic 
+            : (chatIdDynamic is num ? chatIdDynamic.toInt() : null);
         final text = args['text'] as String?;
 
         print(
