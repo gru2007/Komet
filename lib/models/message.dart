@@ -11,6 +11,7 @@ class Message {
   final Map<String, dynamic>? link;
   final List<Map<String, dynamic>> elements;
   final bool isDeleted;
+  final String? originalText;
 
   Message({
     required this.id,
@@ -25,6 +26,7 @@ class Message {
     this.link,
     this.elements = const [],
     this.isDeleted = false,
+    this.originalText,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
@@ -65,6 +67,7 @@ class Message {
               .toList() ??
           const [],
       isDeleted: json['isDeleted'] ?? false,
+      originalText: json['originalText'] as String?,
     );
   }
 
@@ -81,6 +84,7 @@ class Message {
     Map<String, dynamic>? link,
     List<Map<String, dynamic>>? elements,
     bool? isDeleted,
+    String? originalText,
   }) {
     return Message(
       id: id ?? this.id,
@@ -95,6 +99,7 @@ class Message {
       link: link ?? this.link,
       elements: elements ?? this.elements,
       isDeleted: isDeleted ?? this.isDeleted,
+      originalText: originalText ?? this.originalText,
     );
   }
 

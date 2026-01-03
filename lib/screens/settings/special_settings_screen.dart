@@ -19,6 +19,7 @@ class _SpecialSettingsScreenState extends State<SpecialSettingsScreen>
   late Animation<Offset> _slideAnimation;
   late bool _showSecondsValue;
   late bool _showDeletedMessagesValue;
+  late bool _viewRedactHistoryValue;
 
   @override
   void initState() {
@@ -45,6 +46,7 @@ class _SpecialSettingsScreenState extends State<SpecialSettingsScreen>
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     _showSecondsValue = themeProvider.showSeconds;
     _showDeletedMessagesValue = themeProvider.showDeletedMessages;
+    _viewRedactHistoryValue = themeProvider.viewRedactHistory;
 
     _animationController.forward();
   }
@@ -364,6 +366,54 @@ class _SpecialSettingsScreenState extends State<SpecialSettingsScreen>
                         _showDeletedMessagesValue = value;
                       });
                       themeProvider.setShowDeletedMessages(value);
+                    },
+                    activeThumbColor: colors.primary,
+                    activeTrackColor: colors.primary.withValues(alpha: 0.5),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: colors.primaryContainer.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.edit_outlined, color: colors.primary, size: 24),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'View redact history',
+                          style: GoogleFonts.manrope(
+                            textStyle: textTheme.titleMedium,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Показывать историю редактирования сообщений с иконкой карандашика',
+                          style: GoogleFonts.manrope(
+                            textStyle: textTheme.bodySmall,
+                            color: colors.onSurfaceVariant,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: _viewRedactHistoryValue,
+                    onChanged: (bool value) {
+                      setState(() {
+                        _viewRedactHistoryValue = value;
+                      });
+                      themeProvider.setViewRedactHistory(value);
                     },
                     activeThumbColor: colors.primary,
                     activeTrackColor: colors.primary.withValues(alpha: 0.5),

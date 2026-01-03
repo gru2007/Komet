@@ -1443,6 +1443,23 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
 
+        if (themeProvider.viewRedactHistory && hasCache) {
+          for (final cachedMsg in _messages) {
+            final serverMsg = messagesMap[cachedMsg.id];
+            if (serverMsg != null) {
+              if (cachedMsg.originalText != null && serverMsg.originalText == null) {
+                messagesMap[cachedMsg.id] = serverMsg.copyWith(originalText: cachedMsg.originalText);
+              }
+              else if (cachedMsg.text != serverMsg.text &&
+                       cachedMsg.text.isNotEmpty &&
+                       (serverMsg.isEdited || serverMsg.updateTime != null) &&
+                       serverMsg.originalText == null) {
+                messagesMap[cachedMsg.id] = serverMsg.copyWith(originalText: cachedMsg.text);
+              }
+            }
+          }
+        }
+
         final cidMap = <int, Message>{};
         for (final msg in messagesMap.values) {
           final cid = msg.cid;
@@ -2055,14 +2072,32 @@ class _ChatScreenState extends State<ChatScreen> {
           ? hydratedUpdate
           : hydratedUpdate.copyWith(link: oldMessage.link);
 
+      final finalMessageWithOriginalText = (() {
+        if (finalMessage.originalText != null) {
+          return finalMessage;
+        } else if (oldMessage.originalText != null) {
+          return finalMessage.copyWith(originalText: oldMessage.originalText);
+        } else if ((finalMessage.isEdited || finalMessage.updateTime != null) &&
+                   finalMessage.text != oldMessage.text) {
+          return finalMessage.copyWith(originalText: oldMessage.text);
+        } else {
+          return finalMessage;
+        }
+      })();
+
+
       final oldHasPhoto = oldMessage.attaches.any((a) => a['_type'] == 'PHOTO');
-      final newHasPhoto = finalMessage.attaches.any(
+      final newHasPhoto = finalMessageWithOriginalText.attaches.any(
         (a) => a['_type'] == 'PHOTO',
       );
 
-      _messages[index] = finalMessage;
+      _messages[index] = finalMessageWithOriginalText;
 
       unawaited(ChatCacheService().cacheChatMessages(widget.chatId, _messages));
+
+      if (mounted) {
+        setState(() {});
+      }
 
       if (oldHasPhoto != newHasPhoto) {
         _updateCachedPhotos();
@@ -3486,9 +3521,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                           }
                                         }
                                       }
-                                      final stableKey = item.message.cid != null
-                                          ? 'cid_${item.message.cid}'
-                                          : item.message.id;
+                                      final stableKey = '${item.message.id}_${item.message.updateTime ?? item.message.time}_${item.message.originalText ?? ''}_${DateTime.now().millisecondsSinceEpoch}';
 
                                       final hasPhoto = item.message.attaches
                                           .any((a) => a['_type'] == 'PHOTO');
@@ -3528,7 +3561,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       }
 
                                       final bubble = ChatMessageBubble(
-                                        key: ValueKey(stableKey),
+                                        key: message.originalText != null ? ValueKey(stableKey) : UniqueKey(),
                                         message: item.message,
                                         isMe: isMe,
                                         readStatus: readStatus,

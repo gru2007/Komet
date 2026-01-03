@@ -143,6 +143,7 @@ class CustomThemePreset {
   UIMode uiMode;
   bool showSeconds;
   bool showDeletedMessages;
+  bool viewRedactHistory;
   double messageBubbleOpacity;
   String messageStyle;
   double messageBackgroundBlur;
@@ -221,6 +222,7 @@ class CustomThemePreset {
     this.uiMode = UIMode.both,
     this.showSeconds = false,
     this.showDeletedMessages = false,
+    this.viewRedactHistory = false,
     this.messageBubbleOpacity = 0.12,
     this.messageStyle = 'glass',
     this.messageBackgroundBlur = 0.0,
@@ -305,6 +307,7 @@ class CustomThemePreset {
     UIMode? uiMode,
     bool? showSeconds,
     bool? showDeletedMessages,
+    bool? viewRedactHistory,
     double? messageBubbleOpacity,
     String? messageStyle,
     double? messageBackgroundBlur,
@@ -385,6 +388,7 @@ class CustomThemePreset {
       uiMode: uiMode ?? this.uiMode,
       showSeconds: showSeconds ?? this.showSeconds,
       showDeletedMessages: showDeletedMessages ?? this.showDeletedMessages,
+      viewRedactHistory: viewRedactHistory ?? this.viewRedactHistory,
       messageBubbleOpacity: messageBubbleOpacity ?? this.messageBubbleOpacity,
       messageStyle: messageStyle ?? this.messageStyle,
       messageBackgroundBlur:
@@ -478,6 +482,7 @@ class CustomThemePreset {
       'uiMode': uiMode.index,
       'showSeconds': showSeconds,
       'showDeletedMessages': showDeletedMessages,
+      'viewRedactHistory': viewRedactHistory,
       'messageBubbleOpacity': messageBubbleOpacity,
       'messageStyle': messageStyle,
       'messageBackgroundBlur': messageBackgroundBlur,
@@ -573,6 +578,7 @@ class CustomThemePreset {
       uiMode: UIMode.values[json['uiMode'] as int? ?? 0],
       showSeconds: json['showSeconds'] as bool? ?? false,
       showDeletedMessages: json['showDeletedMessages'] as bool? ?? false,
+      viewRedactHistory: json['viewRedactHistory'] as bool? ?? false,
       messageBubbleOpacity: (json['messageBubbleOpacity'] as double? ?? 0.12)
           .clamp(0.0, 1.0),
       messageStyle: json['messageStyle'] as String? ?? 'glass',
@@ -701,6 +707,7 @@ class ThemeProvider with ChangeNotifier {
   Timer? _useGlassPanelsSaveTimer;
   Timer? _materialYouSaveTimer;
   Timer? _showDeletedMessagesSaveTimer;
+  Timer? _viewRedactHistorySaveTimer;
   bool _showSeconds = false;
 
   Color? _myBubbleColorLight;
@@ -768,6 +775,7 @@ class ThemeProvider with ChangeNotifier {
   UIMode get uiMode => _activeTheme.uiMode;
   bool get showSeconds => _showSeconds;
   bool get showDeletedMessages => _activeTheme.showDeletedMessages;
+  bool get viewRedactHistory => _activeTheme.viewRedactHistory;
   double get messageBubbleOpacity => _activeTheme.messageBubbleOpacity;
   String get messageStyle => _activeTheme.messageStyle;
   double get messageBackgroundBlur => _activeTheme.messageBackgroundBlur;
@@ -1408,6 +1416,14 @@ class ThemeProvider with ChangeNotifier {
     _activeTheme = _activeTheme.copyWith(showDeletedMessages: value);
     _showDeletedMessagesSaveTimer?.cancel();
     _showDeletedMessagesSaveTimer = Timer(const Duration(milliseconds: 300), () async {
+      await _saveActiveTheme();
+    });
+  }
+
+  Future<void> setViewRedactHistory(bool value) async {
+    _activeTheme = _activeTheme.copyWith(viewRedactHistory: value);
+    _viewRedactHistorySaveTimer?.cancel();
+    _viewRedactHistorySaveTimer = Timer(const Duration(milliseconds: 300), () async {
       await _saveActiveTheme();
     });
   }
