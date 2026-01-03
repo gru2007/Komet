@@ -20,7 +20,6 @@ import 'package:gwid/screens/chat_screen.dart';
 import 'package:gwid/services/avatar_cache_service.dart';
 import 'package:gwid/widgets/user_profile_panel.dart';
 import 'package:gwid/api/api_service.dart';
-import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:open_file/open_file.dart';
 import 'package:gwid/widgets/full_screen_video_player.dart';
@@ -66,8 +65,14 @@ class DomainLinkifier extends Linkifier {
             }
 
             final url = text.substring(match.start, match.end);
-            final fullUrl = url.startsWith('http') ? url : 'https://$url';
-            list.add(LinkableElement(url, fullUrl));
+            // Пропускаем, если URL уже содержит протокол (обработается UrlLinkifier)
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+              final fullUrl = 'https://$url';
+              list.add(LinkableElement(url, fullUrl));
+            } else {
+              // Если уже содержит протокол, добавляем как обычный текст
+              list.add(TextElement(url));
+            }
 
             lastIndex = match.end;
           }

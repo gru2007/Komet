@@ -3031,18 +3031,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _toggleNotifications() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Уведомления для этого чата выключены')),
-    );
-    setState(() {});
-  }
-
   void _showNotificationSettings() {
-    // Определяем название чата
     String chatName;
     if (widget.isGroupChat || widget.isChannel) {
-      // Для групп/каналов ищем в списке чатов
       final chats = ApiService.instance.lastChatsPayload?['chats'] as List?;
       if (chats != null) {
         final chat = chats.firstWhere(
@@ -4038,8 +4029,6 @@ class _ChatScreenState extends State<ChatScreen> {
               _showUnblockDialog();
             } else if (value == 'wallpaper') {
               _showWallpaperDialog();
-            } else if (value == 'toggle_notifications') {
-              _toggleNotifications();
             } else if (value == 'notification_settings') {
               _showNotificationSettings();
             } else if (value == 'clear_history') {
@@ -4169,16 +4158,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
               ],
-              PopupMenuItem(
-                value: 'toggle_notifications',
-                child: Row(
-                  children: [
-                    Icon(Icons.notifications),
-                    SizedBox(width: 8),
-                    Text('Выкл. уведомления'),
-                  ],
-                ),
-              ),
               const PopupMenuItem(
                 value: 'notification_settings',
                 child: Row(

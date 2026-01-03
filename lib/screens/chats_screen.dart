@@ -125,7 +125,6 @@ class _ChatsScreenState extends State<ChatsScreen>
       try {
         await ApiService.instance.waitUntilOnline();
         final result = await ApiService.instance.getChatsAndContacts();
-        await _loadChatDrafts();
         return result;
       } catch (e) {
         print('Ошибка получения чатов: $e');
@@ -151,7 +150,6 @@ class _ChatsScreenState extends State<ChatsScreen>
     _searchFocusNode.addListener(_onSearchFocusChanged);
 
     _listenForUpdates();
-    _loadChatDrafts();
 
     _connectionStateSubscription = ApiService.instance.connectionStatus.listen((
       status,
@@ -415,6 +413,9 @@ class _ChatsScreenState extends State<ChatsScreen>
             .toList();
         _contacts.clear();
         for (final contactJson in contacts) {
+
+
+        _loadChatDrafts();
           final contact = Contact.fromJson(
             (contactJson as Map).cast<String, dynamic>(),
           );
@@ -1274,6 +1275,8 @@ class _ChatsScreenState extends State<ChatsScreen>
                     .toList();
                 _chatsLoaded = true;
                 _listenForUpdates();
+            
+                _loadChatDrafts();
                 final contacts = contactListJson.map(
                   (json) => Contact.fromJson(json as Map<String, dynamic>),
                 );
