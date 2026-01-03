@@ -678,7 +678,7 @@ class NotificationService {
             final firstName = nameData['firstName'] as String? ?? '';
             final lastName = nameData['lastName'] as String? ?? '';
             myName = '$firstName $lastName'.trim();
-            if (myName!.isEmpty) {
+            if (myName?.isEmpty == true) {
               myName = null;
             }
           }

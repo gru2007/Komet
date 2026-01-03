@@ -1,6 +1,20 @@
 part of 'api_service.dart';
 
 extension ApiServiceAuth on ApiService {
+  /// Reset session completely for full reconnection
+  void _resetSession() {
+    _messageQueue.clear();
+    _lastChatsPayload = null;
+    _chatsFetchedInThisSession = false;
+    _isSessionOnline = false;
+    _isSessionReady = false;
+    _handshakeSent = false;
+    _sessionId = DateTime.now().millisecondsSinceEpoch;
+    _lastActionTime = _sessionId;
+    _actionId = 1;
+    _isColdStartSent = false;
+  }
+
   Future<void> _clearAuthToken() async {
     print("Очищаем токен авторизации...");
     authToken = null;
@@ -214,16 +228,7 @@ extension ApiServiceAuth on ApiService {
       userId = currentAccount.userId;
 
       // Reset session completely for full reconnection
-      _messageQueue.clear();
-      _lastChatsPayload = null;
-      _chatsFetchedInThisSession = false;
-      _isSessionOnline = false;
-      _isSessionReady = false;
-      _handshakeSent = false;
-      _sessionId = DateTime.now().millisecondsSinceEpoch;
-      _lastActionTime = _sessionId;
-      _actionId = 1;
-      _isColdStartSent = false;
+      _resetSession();
 
       // Listen for invalid_token messages during account switch
       bool invalidTokenDetected = false;
@@ -279,16 +284,7 @@ extension ApiServiceAuth on ApiService {
           userId = previousUserId;
           
           // Reset session completely for full reconnection
-          _messageQueue.clear();
-          _lastChatsPayload = null;
-          _chatsFetchedInThisSession = false;
-          _isSessionOnline = false;
-          _isSessionReady = false;
-          _handshakeSent = false;
-          _sessionId = DateTime.now().millisecondsSinceEpoch;
-          _lastActionTime = _sessionId;
-          _actionId = 1;
-          _isColdStartSent = false;
+          _resetSession();
           
           // Try to reconnect to previous account
           try {
