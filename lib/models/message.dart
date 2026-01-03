@@ -3,8 +3,8 @@ class Message {
   final String text;
   final int time;
   final int senderId;
-  final String? status;
-  final int? updateTime;
+  final String? status; 
+  final int? updateTime; 
   final List<Map<String, dynamic>> attaches;
   final int? cid;
   final Map<String, dynamic>? reactionInfo;
@@ -50,7 +50,7 @@ class Message {
           'local_${DateTime.now().millisecondsSinceEpoch}',
       text: json['text'] ?? '',
       time: time,
-      senderId: senderId,
+      senderId: senderId, 
       status: json['status'],
       updateTime: json['updateTime'],
       attaches:
@@ -113,7 +113,7 @@ class Message {
     if (isDeleted) return false;
     if (senderId != currentUserId) return false;
     if (attaches.isNotEmpty) {
-      return false;
+      return false; 
     }
 
     final now = DateTime.now().millisecondsSinceEpoch;
