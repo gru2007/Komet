@@ -27,8 +27,10 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
   final _localeController = TextEditingController();
   final _deviceIdController = TextEditingController();
   final _appVersionController = TextEditingController();
+  final _buildNumberController = TextEditingController();
 
   String _selectedDeviceType = 'ANDROID';
+  String _selectedArch = 'arm64-v8a';
   SpoofingMethod _selectedMethod = SpoofingMethod.partial;
   bool _isCheckingVersion = false;
   bool _isLoading = true;
@@ -59,6 +61,9 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
       _deviceIdController.text = prefs.getString('spoof_deviceid') ?? '';
       _appVersionController.text =
           prefs.getString('spoof_appversion') ?? '25.21.3';
+      _selectedArch = prefs.getString('spoof_arch') ?? 'arm64-v8a';
+      _buildNumberController.text =
+          prefs.getInt('spoof_buildnumber')?.toString() ?? '6498';
 
       String savedType = prefs.getString('spoof_devicetype') ?? 'ANDROID';
       if (savedType == 'WEB') {
@@ -115,12 +120,18 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
           '${androidInfo.manufacturer} ${androidInfo.model}';
       _osVersionController.text = 'Android ${androidInfo.version.release}';
       _selectedDeviceType = 'ANDROID';
+      _selectedArch = androidInfo.supportedAbis.isNotEmpty 
+          ? androidInfo.supportedAbis.first 
+          : 'arm64-v8a';
+      _buildNumberController.text = '6498';
     } else if (Platform.isIOS) {
       final iosInfo = await deviceInfo.iosInfo;
       _deviceNameController.text = iosInfo.name;
       _osVersionController.text =
           '${iosInfo.systemName} ${iosInfo.systemVersion}';
       _selectedDeviceType = 'IOS';
+      _selectedArch = 'arm64';
+      _buildNumberController.text = '6498';
     } else {
       await _applyGeneratedData();
     }
@@ -159,6 +170,16 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
       _deviceIdController.text = _generateDeviceId();
 
       _selectedDeviceType = preset.deviceType;
+      
+      // Set arch based on device type
+      if (preset.deviceType == 'ANDROID') {
+        _selectedArch = 'arm64-v8a';
+      } else if (preset.deviceType == 'IOS') {
+        _selectedArch = 'arm64';
+      } else {
+        _selectedArch = 'x86_64';
+      }
+      _buildNumberController.text = '6498';
 
       if (_selectedMethod == SpoofingMethod.full) {
         _timezoneController.text = preset.timezone;
@@ -198,6 +219,8 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
       'locale': prefs.getString('spoof_locale') ?? '',
       'device_id': prefs.getString('spoof_deviceid') ?? '',
       'device_type': prefs.getString('spoof_devicetype') ?? 'ANDROID',
+      'arch': prefs.getString('spoof_arch') ?? '',
+      'build_number': prefs.getInt('spoof_buildnumber')?.toString() ?? '',
     };
 
     final newValues = {
@@ -208,6 +231,8 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
       'locale': _localeController.text,
       'device_id': _deviceIdController.text,
       'device_type': _selectedDeviceType,
+      'arch': _selectedArch,
+      'build_number': _buildNumberController.text,
     };
 
     final oldAppVersion = prefs.getString('spoof_appversion') ?? '25.21.3';
@@ -295,6 +320,8 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
     await prefs.setString('spoof_deviceid', _deviceIdController.text);
     await prefs.setString('spoof_devicetype', _selectedDeviceType);
     await prefs.setString('spoof_appversion', _appVersionController.text);
+    await prefs.setString('spoof_arch', _selectedArch);
+    await prefs.setInt('spoof_buildnumber', int.tryParse(_buildNumberController.text) ?? 6498);
   }
 
   Future<void> _handleVersionCheck() async {
@@ -347,6 +374,7 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
     _localeController.dispose();
     _deviceIdController.dispose();
     _appVersionController.dispose();
+    _buildNumberController.dispose();
     super.dispose();
   }
 
@@ -660,6 +688,35 @@ class _SessionSpoofingScreenState extends State<SessionSpoofingScreen> {
                             onPressed: _handleVersionCheck,
                           ),
                   ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _buildNumberController,
+              keyboardType: TextInputType.number,
+              decoration: _inputDecoration(
+                'Build Number',
+                Icons.numbers_outlined,
+              ),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _selectedArch,
+              decoration: _inputDecoration(
+                'Архитектура',
+                Icons.memory_outlined,
+              ),
+              items: const [
+                DropdownMenuItem(value: 'arm64-v8a', child: Text('arm64-v8a (64-bit ARM)')),
+                DropdownMenuItem(value: 'armeabi-v7a', child: Text('armeabi-v7a (32-bit ARM)')),
+                DropdownMenuItem(value: 'x86', child: Text('x86 (32-bit Intel)')),
+                DropdownMenuItem(value: 'x86_64', child: Text('x86_64 (64-bit Intel)')),
+                DropdownMenuItem(value: 'arm64', child: Text('arm64 (iOS/Desktop)')),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _selectedArch = value);
+                }
+              },
             ),
           ],
         ),
