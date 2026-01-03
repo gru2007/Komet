@@ -963,31 +963,6 @@ class ChatMessageBubble extends StatelessWidget {
       messageContentChildren,
     );
 
-    if (message.isDeleted && themeProvider.showDeletedMessages) {
-      messageContent = Stack(
-        clipBehavior: Clip.none,
-        children: [
-          messageContent,
-          Positioned(
-            top: 8,
-            right: 8,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.error.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.delete_outline,
-                color: Theme.of(context).colorScheme.error,
-                size: 14,
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
     if (onReaction != null || (isMe && (onEdit != null || onDelete != null))) {
       if (isMobile) {
         messageContent = _LongPressContextMenuWrapper(
@@ -1027,6 +1002,21 @@ class ChatMessageBubble extends StatelessWidget {
               ),
             ],
             Flexible(child: messageContent),
+            if (message.isDeleted && themeProvider.showDeletedMessages) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.error.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.delete_outline,
+                  color: Theme.of(context).colorScheme.error,
+                  size: 16,
+                ),
+              ),
+            ],
           ],
         ),
       ],
@@ -1361,6 +1351,21 @@ class ChatMessageBubble extends StatelessWidget {
                 ),
               ],
             ),
+            if (message.isDeleted && Provider.of<ThemeProvider>(context).showDeletedMessages) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.error.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.delete_outline,
+                  color: Theme.of(context).colorScheme.error,
+                  size: 16,
+                ),
+              ),
+            ],
           ],
         ),
       ],
@@ -1444,6 +1449,21 @@ class ChatMessageBubble extends StatelessWidget {
                   ),
                 ],
               ),
+              if (message.isDeleted && Provider.of<ThemeProvider>(context).showDeletedMessages) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.error.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.delete_outline,
+                    color: Theme.of(context).colorScheme.error,
+                    size: 16,
+                  ),
+                ),
+              ],
             ],
           ),
         ],
@@ -1619,6 +1639,21 @@ class ChatMessageBubble extends StatelessWidget {
                   ],
                 ),
               ),
+              if (message.isDeleted && Provider.of<ThemeProvider>(context).showDeletedMessages) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.error.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.delete_outline,
+                    color: Theme.of(context).colorScheme.error,
+                    size: 16,
+                  ),
+                ),
+              ],
             ],
           ),
         ],
@@ -1785,6 +1820,21 @@ class ChatMessageBubble extends StatelessWidget {
                         ],
                       ),
                     ),
+                    if (message.isDeleted && Provider.of<ThemeProvider>(context).showDeletedMessages) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.error.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.delete_outline,
+                          color: Theme.of(context).colorScheme.error,
+                          size: 16,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -1929,6 +1979,21 @@ class ChatMessageBubble extends StatelessWidget {
                   ],
                 ),
               ),
+              if (message.isDeleted && Provider.of<ThemeProvider>(context).showDeletedMessages) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.error.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.delete_outline,
+                    color: Theme.of(context).colorScheme.error,
+                    size: 16,
+                  ),
+                ),
+              ],
             ],
           ),
         ],
