@@ -20,6 +20,9 @@ class MainActivity : FlutterActivity() {
         notificationHelper = NotificationHelper(this)
 
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).also { channel ->
+            // Регистрируем MethodChannel в NotificationReplyReceiver для обработки inline reply
+            NotificationReplyReceiver.setMethodChannel(channel)
+            
             channel.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "showMessageNotification" -> {
