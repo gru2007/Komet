@@ -278,6 +278,8 @@ class _ChatsScreenState extends State<ChatsScreen>
       setState(() {
         _allChats[chatIndex] = updatedChat;
       });
+      // Вызываем filterChats для обновления отображения
+      _filterChats();
     }
   }
 
