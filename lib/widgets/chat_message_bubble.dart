@@ -4869,7 +4869,8 @@ class ChatMessageBubble extends StatelessWidget {
               child: GalaxyAnimatedText(text: seg.text),
             );
           case KometSegmentType.pulse:
-            final hexStr = seg.color!.value
+            final hexStr = seg.color!
+                .toARGB32()
                 .toRadixString(16)
                 .padLeft(8, '0')
                 .substring(2)
