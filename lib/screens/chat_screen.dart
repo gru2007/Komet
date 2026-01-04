@@ -7723,10 +7723,21 @@ class _ControlMessageChip extends StatelessWidget {
 
       case 'title':
         final newTitle = controlAttach['title'] ?? '';
+
         if (newTitle.isEmpty) {
-          return '$senderDisplayName изменил(а) название группы';
+          if (message.senderId == myId) {
+            return '$senderDisplayName изменили название группы';
+          } else {
+            return '$senderDisplayName изменил(а) название группы';
+          }
         }
-        return '$senderDisplayName изменил(а) название группы на "$newTitle"';
+
+        if (message.senderId == myId) {
+            return '$senderDisplayName изменили название группы на "$newTitle"';
+        } else {
+          return '$senderDisplayName изменил(а) название группы на "$newTitle"';
+        }
+
 
       case 'avatar':
       case 'photo':
@@ -7821,10 +7832,10 @@ class _ControlMessageChip extends StatelessWidget {
         final eventTypeStr = eventType?.toString() ?? 'неизвестное';
 
         if (eventTypeStr.toLowerCase() == 'system') {
-          return 'Стартовое событие, не обращайте внимания.';
+          return controlAttach["message"];
         }
         if (eventTypeStr == 'joinByLink') {
-          return 'Кто-то присоединился(ась) по пригласительной ссылке...';
+          return '$senderName присоединился(ась) по пригласительной ссылке...';
         }
 
         return 'Событие: $eventTypeStr';
