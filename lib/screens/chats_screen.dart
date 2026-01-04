@@ -3926,7 +3926,7 @@ class _ChatsScreenState extends State<ChatsScreen>
               imageUrl: photoUrl,
               fit: BoxFit.cover,
               placeholder: (context, url) => Container(
-                color: Theme.of(context).colorScheme.surfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 child: Icon(
                   Icons.photo,
                   size: 12,
@@ -3934,7 +3934,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                 ),
               ),
               errorWidget: (context, url, error) => Container(
-                color: Theme.of(context).colorScheme.surfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 child: Icon(
                   Icons.photo,
                   size: 12,
@@ -3980,7 +3980,9 @@ class _ChatsScreenState extends State<ChatsScreen>
                     imageUrl: photoUrl,
                     fit: BoxFit.cover,
                     placeholder: (context, url) => Container(
-                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       child: Icon(
                         Icons.person,
                         size: 12,
@@ -3988,7 +3990,9 @@ class _ChatsScreenState extends State<ChatsScreen>
                       ),
                     ),
                     errorWidget: (context, url, error) => Container(
-                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       child: Icon(
                         Icons.person,
                         size: 12,
@@ -3997,7 +4001,9 @@ class _ChatsScreenState extends State<ChatsScreen>
                     ),
                   )
                 : Container(
-                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     child: Icon(
                       Icons.person,
                       size: 12,
@@ -4039,7 +4045,7 @@ class _ChatsScreenState extends State<ChatsScreen>
               imageUrl: photoUrl,
               fit: BoxFit.cover,
               placeholder: (context, url) => Container(
-                color: Theme.of(context).colorScheme.surfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 child: Icon(
                   Icons.photo,
                   size: 12,
@@ -4047,7 +4053,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                 ),
               ),
               errorWidget: (context, url, error) => Container(
-                color: Theme.of(context).colorScheme.surfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 child: Icon(
                   Icons.photo,
                   size: 12,
