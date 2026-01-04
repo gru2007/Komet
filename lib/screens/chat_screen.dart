@@ -104,6 +104,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final ItemPositionsListener _itemPositionsListener =
       ItemPositionsListener.create();
   final ValueNotifier<bool> _showScrollToBottomNotifier = ValueNotifier(false);
+  final ValueNotifier<Message?> _pinnedMessageNotifier = ValueNotifier(null);
 
   bool _isUserAtBottom = true;
   bool _isScrollingToBottom = false;
@@ -120,8 +121,11 @@ class _ChatScreenState extends State<ChatScreen> {
   int? _lastPeerReadMessageId;
   String? _lastPeerReadMessageIdStr;
 
+
+  Map<String, dynamic>? _cachedCurrentGroupChat;
+
   final Set<String> _sendingReactions = {};
-  final Map<int, String> _pendingReactionSeqs = {}; // seq -> messageId
+  final Map<int, String> _pendingReactionSeqs = {};
   StreamSubscription<String>? _connectionStatusSub;
   String _connectionStatus = 'connecting';
 
@@ -506,7 +510,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
 
     Future.delayed(const Duration(milliseconds: 400), () {
-      //ЕБУЧЕЕ БУДУЩЕЕ АЛО НЕТУ ЕГО У МЕНЯ
       if (mounted) {
         _isScrollingToBottom = false;
         final positions = _itemPositionsListener.itemPositions.value;
@@ -1123,7 +1126,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _loadHistoryAndListen() {
     _paginateInitialLoad();
 
-    // Слушаем переподключение для перезагрузки чата
+
     ApiService.instance.reconnectionComplete.listen((_) {
       if (mounted && ApiService.instance.currentActiveChatId == widget.chatId) {
         print('Переподключение: перезагружаем чат ${widget.chatId}');
@@ -1147,7 +1150,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ? incomingChatId
           : int.tryParse(incomingChatId?.toString() ?? '');
 
-      // Для реакций (opcode=178) chatId может отсутствовать в payload
+    
       final shouldCheckChatId =
           opcode != 178 || (opcode == 178 && payload.containsKey('chatId'));
 
@@ -1162,7 +1165,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
         final newMessage = Message.fromJson(messageMap);
 
-        // Удаляем из очереди по id сообщения
+   
         final messageId = newMessage.id;
         if (messageId.isNotEmpty && !messageId.startsWith('local_')) {
           final queueService = MessageQueueService();
@@ -1251,7 +1254,7 @@ class _ChatScreenState extends State<ChatScreen> {
             _pendingReactionSeqs.remove(seq);
             _updateMessageReaction(messageId, payload['reactionInfo'] ?? {});
           } else {
-            // Fallback: clear all sending reactions
+        
             if (_sendingReactions.isNotEmpty) {
               _sendingReactions.clear();
               _buildChatItems();
@@ -1341,10 +1344,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   int get _optPage => _ultraOptimize ? 10 : (_optimize ? 50 : _pageSize);
 
+
   Future<void> _paginateInitialLoad() async {
     setState(() => _isLoadingHistory = true);
 
-    // Добавляем временный запрос загрузки чата в очередь
     final loadChatQueueItem = QueueItem(
       id: 'load_chat_${widget.chatId}',
       type: QueueItemType.loadChat,
@@ -1401,7 +1404,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
-    // Всегда пытаемся загрузить данные с сервера
     List<Message> allMessages = [];
     try {
       allMessages = await ApiService.instance
@@ -1413,8 +1415,6 @@ class _ChatScreenState extends State<ChatScreen> {
               return <Message>[];
             },
           );
-
-      // Удаляем запрос загрузки чата из очереди после успешной загрузки
       if (allMessages.isNotEmpty) {
         MessageQueueService().removeFromQueue('load_chat_${widget.chatId}');
       }
@@ -1425,7 +1425,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       List<Message> mergedMessages;
       if (hasServerData) {
-        // Объединяем кеш и новые сообщения, убирая дубликаты
+    
         final Map<String, Message> messagesMap = {};
 
         final Set<String> serverMessageIds = {};
@@ -1438,7 +1438,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
         if (themeProvider.showDeletedMessages && hasCache) {
           for (final cachedMsg in _messages) {
-            // Не помечаем локальные неотправленные сообщения как удаленные
+     
             if (!serverMessageIds.contains(cachedMsg.id) && 
                 !cachedMsg.id.startsWith('local_')) {
               messagesMap[cachedMsg.id] = cachedMsg.copyWith(isDeleted: true);
@@ -1524,8 +1524,6 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
 
-      // Сохраняем объединенные сообщения в кеш (включая локальные)
-      // Только если есть сообщения для сохранения
       if (mergedMessages.isNotEmpty) {
         await chatCacheService.cacheChatMessages(widget.chatId, mergedMessages);
       }
@@ -1813,9 +1811,8 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     if (mounted) {
-      setState(() {
-        _pinnedMessage = latestPinned;
-      });
+      _pinnedMessage = latestPinned;
+      _pinnedMessageNotifier.value = latestPinned;
     }
   }
 
@@ -1931,6 +1928,7 @@ class _ChatScreenState extends State<ChatScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           setState(() {});
+          _invalidateCache();
           if ((wasAtBottom || isMyMessage || forceScroll) &&
               _itemScrollController.isAttached) {
             _itemScrollController.jumpTo(index: 0);
@@ -2099,6 +2097,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (mounted) {
         setState(() {});
+        _invalidateCache();
       }
 
       if (oldHasPhoto != newHasPhoto) {
@@ -2158,7 +2157,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final showDeletedMessages = themeProvider.showDeletedMessages;
 
     for (final messageId in deletedMessageIds) {
-      // Пропускаем сообщения, которые уже в процессе удаления
       if (_deletingMessageIds.contains(messageId)) {
         continue;
       }
@@ -2169,19 +2167,16 @@ class _ChatScreenState extends State<ChatScreen> {
         final isMyMessage = message.senderId == _actualMyId;
 
         if (isMyMessage) {
-          // Если это наше сообщение - удаляем его независимо от настроек
+    
           _removeMessages([messageId]);
-        } else {
-          // Если это чужое сообщение - применяем логику showDeletedMessages
-          if (showDeletedMessages) {
-            // Помечаем как удаленное
+        } else {         
+          if (showDeletedMessages) {    
             _messages[messageIndex] = message.copyWith(isDeleted: true);
             _buildChatItems();
             if (mounted) {
               setState(() {});
             }
-          } else {
-            // Удаляем из списка
+          } else {        
             _removeMessages([messageId]);
           }
         }
@@ -2644,7 +2639,6 @@ class _ChatScreenState extends State<ChatScreen> {
         force: false,
       );
       if (result['chats'] == null || (result['chats'] as List).isEmpty) {
-        // force refresh if cache is empty
         return await ApiService.instance.getChatsAndContacts(force: true);
       }
       return result;
@@ -3058,7 +3052,6 @@ class _ChatScreenState extends State<ChatScreen> {
         chatName = 'Чат';
       }
     } else {
-      // Для личных чатов используем имя контакта
       chatName = widget.contact.name;
     }
 
@@ -3137,18 +3130,29 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Map<String, dynamic>? _getCurrentGroupChat() {
+   
+    if (_cachedCurrentGroupChat != null) {
+      return _cachedCurrentGroupChat;
+    }
+
     final chatData = ApiService.instance.lastChatsPayload;
     if (chatData == null || chatData['chats'] == null) return null;
 
     final chats = chatData['chats'] as List<dynamic>;
     try {
-      return chats.firstWhere(
+      _cachedCurrentGroupChat = chats.firstWhere(
         (chat) => chat['id'] == widget.chatId,
         orElse: () => null,
       );
+      return _cachedCurrentGroupChat;
     } catch (e) {
       return null;
     }
+  }
+
+
+  void _invalidateCache() {
+    _cachedCurrentGroupChat = null;
   }
 
   bool _isCurrentUserAdmin() {
@@ -3300,7 +3304,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = context.watch<ThemeProvider>();
+    final theme = context.read<ThemeProvider>();
 
     return Scaffold(
       extendBodyBehindAppBar: theme.useGlassPanels,
@@ -3337,25 +3341,29 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: FadeTransition(opacity: animation, child: child),
                     );
                   },
-                  child: _pinnedMessage != null
-                      ? SafeArea(
-                          key: ValueKey(_pinnedMessage!.id),
-                          child: InkWell(
-                            onTap: _scrollToPinnedMessage,
-                            child: PinnedMessageWidget(
-                              pinnedMessage: _pinnedMessage!,
+                  child: ValueListenableBuilder<Message?>(
+                    valueListenable: _pinnedMessageNotifier,
+                    builder: (context, pinnedMessage, _) {
+                      return pinnedMessage != null
+                          ? SafeArea(
+                              key: ValueKey(pinnedMessage.id),
+                              child: InkWell(
+                                onTap: _scrollToPinnedMessage,
+                                child: PinnedMessageWidget(
+                                  pinnedMessage: pinnedMessage,
                               contacts: _contactDetailsCache,
                               myId: _actualMyId ?? 0,
                               onTap: _scrollToPinnedMessage,
                               onClose: () {
-                                setState(() {
-                                  _pinnedMessage = null;
-                                });
+                                _pinnedMessage = null;
+                                _pinnedMessageNotifier.value = null;
                               },
                             ),
                           ),
                         )
-                      : const SizedBox.shrink(key: ValueKey('empty')),
+                      : const SizedBox.shrink(key: ValueKey('empty'));
+                    },
+                  ),
                 ),
                 Expanded(
                   child: Stack(
@@ -3453,7 +3461,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                       final bool isMe =
                                           item.message.senderId == _actualMyId;
 
-                                      // Расчет прав на удаление сообщений для всех
                                       final bool canDeleteForAll = isMe || (widget.isGroupChat && _isCurrentUserAdmin());
 
                                       MessageReadStatus? readStatus;
@@ -3633,7 +3640,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                             : null,
                                         onDeleteForMe: isMe
                                             ? () async {
-                                                // Для "удалить для меня" удаляем сообщение из списка с анимацией
+                                         
                                                 _removeMessages([
                                                   item.message.id,
                                                 ]);
@@ -3789,8 +3796,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                         );
                                       }
 
-                                      if (shouldAnimateNew &&
-                                          context.read<ThemeProvider>().messageTransition != TransitionOption.systemDefault) {
+                                      if (shouldAnimateNew) {
                                         return _NewMessageAnimation(
                                           key: ValueKey('anim_$stableKey'),
                                           child: finalMessageWidget,
@@ -3932,7 +3938,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   AppBar _buildAppBar() {
-    final theme = context.watch<ThemeProvider>();
+    final theme = context.read<ThemeProvider>();
 
     if (_isSearching) {
       return AppBar(
@@ -4860,7 +4866,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ),
                               ],
                             ),
-                            // Индикатор подключения
+                      
                             StreamBuilder<bool>(
                               stream: Stream.periodic(
                                 const Duration(milliseconds: 500),
@@ -4896,7 +4902,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           ],
                         ),
                       ),
-                      // Индикатор подключения (альтернативный вариант)
+      
                       StreamBuilder<bool>(
                         stream: Stream.periodic(
                           const Duration(milliseconds: 500),
@@ -5218,7 +5224,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                           }
                                         },
                                 ),
-                                // Индикатор подключения
+                         
                                 StreamBuilder<bool>(
                                   stream: Stream.periodic(
                                     const Duration(milliseconds: 500),
@@ -5256,7 +5262,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               ],
                             ),
                           ),
-                          // Индикатор подключения (альтернативный вариант)
+                     
                           StreamBuilder<bool>(
                             stream: Stream.periodic(
                               const Duration(milliseconds: 500),
@@ -5288,7 +5294,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               );
                             },
                           ),
-                          // Индикатор подключения
+                     
                           if (!ApiService.instance.isOnline ||
                               !ApiService.instance.isSessionReady)
                             Padding(
@@ -5774,7 +5780,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    // Очищаем временную очередь для этого чата при выходе
     MessageQueueService().clearTemporaryQueue(chatId: widget.chatId);
 
     if (ApiService.instance.currentActiveChatId == widget.chatId) {
@@ -5789,6 +5794,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _textFocusNode.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _pinnedMessageNotifier.dispose();
+    _showScrollToBottomNotifier.dispose();
     super.dispose();
   }
 
@@ -5862,7 +5869,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_currentResultIndex == -1) return;
 
     if (!mounted || !_itemScrollController.isAttached)
-      return; //блять а как оно без этого работало шо за свинарник
+      return;
 
     final targetMessage = _searchResults[_currentResultIndex];
 
@@ -7286,7 +7293,7 @@ class _ContactProfileDialogState extends State<ContactProfileDialog> {
             chatId: chatId!,
             pinnedMessage: null,
             contact: widget.contact,
-            myId: widget.myId ?? 0, // Fallback to 0 if myId is null
+            myId: widget.myId ?? 0,
             isGroupChat: false,
             isChannel: widget.isChannel,
           ),

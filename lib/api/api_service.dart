@@ -286,13 +286,13 @@ class ApiService {
   }
 
   String generateRandomDeviceId() {
-    // Generate 16-character hex string (like f8268babd84e35a5)
+
     final random = Random();
     final bytes = List<int>.generate(8, (_) => random.nextInt(256));
     return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
-  /// Clears session-based values that should be regenerated on each app launch
+ 
   static Future<void> clearSessionValues() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('session_mt_instanceid');
@@ -369,7 +369,7 @@ class ApiService {
     }
 
     final availablePresets = devicePresets
-        .where((p) => p.deviceType == 'ANDROID') // Только Android устройства
+        .where((p) => p.deviceType == 'ANDROID')
         .toList();
 
     if (availablePresets.isEmpty) {

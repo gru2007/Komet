@@ -91,6 +91,8 @@ class _ChatsScreenState extends State<ChatsScreen>
   String? _selectedFolderId;
   late TabController _folderTabController;
 
+  int _currentFolderIndex = 0;
+
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   late AnimationController _searchAnimationController;
@@ -278,7 +280,6 @@ class _ChatsScreenState extends State<ChatsScreen>
       setState(() {
         _allChats[chatIndex] = updatedChat;
       });
-      // Вызываем filterChats для обновления отображения
       _filterChats();
     }
   }
@@ -321,8 +322,7 @@ class _ChatsScreenState extends State<ChatsScreen>
   }
 
   void _showTokenExpiredDialog(String message) {
-    // Don't show dialog if we're in the middle of switching accounts
-    // The account switcher will handle the error
+
     if (_isSwitchingAccounts) {
       return;
     }
@@ -921,7 +921,7 @@ class _ChatsScreenState extends State<ChatsScreen>
         continue;
       }
 
-      // Поиск по каналам
+    
       if (chat.type == 'CHANNEL') {
         final channelTitle = chat.title ?? '';
         final channelDescription = chat.description ?? '';
@@ -932,7 +932,7 @@ class _ChatsScreenState extends State<ChatsScreen>
           results.add(
             SearchResult(
               chat: chat,
-              contact: null, // Для каналов contact = null
+              contact: null,
               matchedText: channelTitle.isNotEmpty ? channelTitle : 'Канал',
               matchType: channelTitle.toLowerCase().contains(query) ? 'name' : 'description',
             ),
@@ -941,7 +941,7 @@ class _ChatsScreenState extends State<ChatsScreen>
         continue;
       }
 
-      // Поиск по группам
+  
       if (_isGroupChat(chat)) {
         final groupTitle = chat.title ?? '';
         final groupDescription = chat.description ?? '';
@@ -952,7 +952,7 @@ class _ChatsScreenState extends State<ChatsScreen>
           results.add(
             SearchResult(
               chat: chat,
-              contact: null, // Для групп contact = null
+              contact: null, 
               matchedText: groupTitle.isNotEmpty ? groupTitle : 'Группа',
               matchType: groupTitle.toLowerCase().contains(query) ? 'name' : 'description',
             ),
@@ -961,7 +961,6 @@ class _ChatsScreenState extends State<ChatsScreen>
         continue;
       }
 
-      // Поиск по личным чатам (контактам)
       final otherParticipantId = chat.participantIds.firstWhere(
         (id) => id != chat.ownerId,
         orElse: () => 0,
@@ -1647,7 +1646,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                                                 if (mounted) {
                                                   setState(() {
                                                     _isAccountsExpanded = false;
-                                                    // Clear old account's data
+                                             
                                                     _allChats.clear();
                                                     _filteredChats.clear();
                                                     _contacts.clear();
@@ -1679,7 +1678,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                                               } catch (e) {
                                                 if (mounted) {
                                                   final errorMessage = e.toString();
-                                                  // Check if this is an invalid token error
+                                             
                                                   const invalidTokenKeywords = ['invalid_token', 'FAIL_WRONG_PASSWORD'];
                                                   final isInvalidToken = invalidTokenKeywords.any(
                                                     (keyword) => errorMessage.contains(keyword)
@@ -2050,7 +2049,6 @@ class _ChatsScreenState extends State<ChatsScreen>
     final bool isGroupChat = _isGroupChat(chat);
     final bool isChannel = chat.type == 'CHANNEL';
 
-    // Для каналов и групп создаем временный контакт
     Contact? contactToUse = contact;
     if (contact == null && (isChannel || isGroupChat)) {
       contactToUse = Contact(
@@ -3399,7 +3397,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                 ),
               IconButton(
                 icon: Icon(
-                  Icons.download, //ахуеть линтер ошибок не дал ! ! !
+                  Icons.download,
                   color: Colors.white,
                 ),
                 onPressed: () {
@@ -3691,7 +3689,6 @@ class _ChatsScreenState extends State<ChatsScreen>
         );
       }
 
-      // Попробуем дозагрузить контакт, чтобы позже показать имя.
       _loadMissingContact(originalSenderId);
 
       final senderName = forwardedMessage?['senderName'] as String?;
@@ -3866,7 +3863,7 @@ class _ChatsScreenState extends State<ChatsScreen>
       messagePreview = _buildMessagePreviewContent(message, chat, colors);
     }
 
-    // Если это наше сообщение - добавляем статус
+
     if (isMyMessage) {
       final queueItem = MessageQueueService().findByCid(message.cid ?? 0);
       final bool isPending =
@@ -3993,7 +3990,7 @@ class _ChatsScreenState extends State<ChatsScreen>
             style: TextStyle(
               color: Theme.of(
                 context,
-              ).colorScheme.onSurface, // Белый цвет вместо серого
+              ).colorScheme.onSurface, 
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -4075,7 +4072,7 @@ class _ChatsScreenState extends State<ChatsScreen>
         final photoUrl =
             attach['photoUrl'] as String? ?? attach['baseUrl'] as String?;
 
-        // Формируем отображаемое имя
+
         String displayName;
         if (name != null && name.isNotEmpty) {
           displayName = name;
@@ -4094,8 +4091,6 @@ class _ChatsScreenState extends State<ChatsScreen>
   }
 
   String _getAttachmentTypeText(List<Map<String, dynamic>> attaches) {
-    // Проверяем типы вложений в порядке приоритета
-    // Контакты обрабатываются отдельно с превью
     if (attaches.any((attach) => attach['_type'] == 'VIDEO')) {
       return 'Видео';
     }
@@ -4118,17 +4113,17 @@ class _ChatsScreenState extends State<ChatsScreen>
       return 'Кнопки';
     }
 
-    // Если есть другие типы или ничего не найдено
+
     return 'Вложение';
   }
 
   String _getSenderDisplayName(Chat chat, Message message) {
-    // Если это наша группа или канал, показываем имя отправителя
+
     final isGroupChat = _isGroupChat(chat);
     final isChannel = chat.type == 'CHANNEL';
 
     if (!isGroupChat && !isChannel) {
-      // В личных чатах не показываем имя отправителя
+    
       return '';
     }
 

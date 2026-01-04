@@ -157,14 +157,14 @@ extension ApiServiceConnection on ApiService {
       await prefs.setString('spoof_deviceid', deviceId);
     }
 
-    // Generate mt_instanceid and clientSessionId for each app launch
+   
     String mtInstanceId = prefs.getString('session_mt_instanceid') ?? '';
     int clientSessionId = prefs.getInt('session_client_session_id') ?? 0;
     
-    // If not set for this session, generate new ones
+
     if (mtInstanceId.isEmpty || clientSessionId == 0) {
       mtInstanceId = const Uuid().v4();
-      clientSessionId = Random().nextInt(100) + 1; // Random between 1-100
+      clientSessionId = Random().nextInt(100) + 1;
       await prefs.setString('session_mt_instanceid', mtInstanceId);
       await prefs.setInt('session_client_session_id', clientSessionId);
     }
@@ -744,9 +744,6 @@ extension ApiServiceConnection on ApiService {
         await _connectWithFallback();
       } catch (e) {
         print('Ошибка при автоматическом переподключении: $e');
-        // Если подключение не удалось, _reconnect будет вызван снова через Timer
-        // Но так как _connectWithFallback уже сбросил _isConnecting в false,
-        // мы можем просто вызвать _reconnect() еще раз, если сокет все еще не подключен.
         if (!_socketConnected) {
           _reconnect();
         }
@@ -772,11 +769,11 @@ extension ApiServiceConnection on ApiService {
       return;
     }
 
-    // Обрабатываем постоянную очередь (сообщения)
+
     final persistentItems = _queueService.getPersistentItems();
     print('Обработка постоянной очереди: ${persistentItems.length} элементов');
     for (var item in persistentItems) {
-      // Проверяем, не было ли это сообщение уже обработано
+ 
       if (_queueService.isMessageProcessed(item.id)) {
         print(
           'Сообщение ${item.id} уже было обработано, пропускаем и удаляем из очереди',
@@ -788,30 +785,30 @@ extension ApiServiceConnection on ApiService {
       print(
         'Отправляем из очереди: ${item.type.name}, opcode=${item.opcode}, cid=${item.cid}',
       );
-      // Отправляем сообщение
+
       unawaited(
         _sendMessage(item.opcode, item.payload)
             .then((_) {
               print(
                 'Сообщение из очереди успешно отправлено, удаляем из очереди: ${item.id}',
               );
-              // Отмечаем сообщение как обработанное ТОЛЬКО после успешной отправки
+             
               _queueService.markMessageAsProcessed(item.id);
               _queueService.removeFromQueue(item.id);
             })
             .catchError((e) {
               print('Ошибка отправки из очереди: $e, оставляем в очереди');
-              // НЕ отмечаем как обработанное при ошибке - попробуем снова позже
+            
             }),
       );
     }
 
-    // Обрабатываем временную очередь (загрузка чатов)
+ 
     final temporaryItems = _queueService.getTemporaryItems();
     print('Обработка временной очереди: ${temporaryItems.length} элементов');
     for (var item in temporaryItems) {
       if (item.type == QueueItemType.loadChat && item.chatId != null) {
-        // Проверяем, что пользователь все еще в этом чате
+   
         if (currentActiveChatId == item.chatId) {
           print('Отправляем запрос загрузки чата ${item.chatId} из очереди');
           unawaited(

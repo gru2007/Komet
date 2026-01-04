@@ -610,7 +610,6 @@ class RegistrationService {
     await connect();
 
     final mtInstanceId = _uuid.v4();
-    // Generate 16-character hex string deviceId (like f8268babd84e35a5)
     final deviceIdBytes = List<int>.generate(8, (_) => _random.nextInt(256));
     final deviceId = deviceIdBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     final possibleDeviceNames = <String>[
