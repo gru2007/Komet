@@ -43,6 +43,7 @@ import 'package:gwid/screens/chat/dialogs/read_settings_dialog.dart';
 import 'package:gwid/screens/chat/screens/calls_screen.dart';
 import 'package:gwid/screens/chat/screens/sferum_webview_panel.dart';
 import 'package:gwid/screens/chat/handlers/message_handler.dart';
+import 'package:gwid/screens/browser_screen.dart';
 
 class ChatsScreen extends StatefulWidget {
   final void Function(
@@ -1817,6 +1818,18 @@ class _ChatsScreenState extends State<ChatsScreen>
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => const MusicLibraryScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.public),
+                    title: const Text('Браузер'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const BrowserScreen(),
                         ),
                       );
                     },
