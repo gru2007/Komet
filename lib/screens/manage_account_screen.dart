@@ -127,7 +127,7 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Удалить аккаунт?'),
-        content: const Text('Учетная запись в MAX будет удалена через 30 дней'),
+        content: const Text('Учетная запись MAX, к которой подключается Komet, будет удалена через 30 дней'),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
           TextButton(
