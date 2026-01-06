@@ -1341,9 +1341,19 @@ void onStart(ServiceInstance service) async {
     service.stopSelf();
   });
 
-  // Периодический heartbeat для логов (уведомление обновляется только при старте
-  // через native NotificationHelper для сохранения правильной иконки)
+  // Периодическое обновление уведомления (менее часто для экономии батареи)
   Timer.periodic(const Duration(minutes: 5), (timer) async {
+    if (service is AndroidServiceInstance) {
+      if (await service.isForegroundService()) {
+        // В фоновом изоляте MethodChannel недоступен, поэтому обновляем
+        // foreground-уведомление напрямую через service API.
+        service.setForegroundNotificationInfo(
+          title: "Komet активен",
+          content: "",
+        );
+      }
+    }
+
     print("🔄 Фоновый сервис активен: ${DateTime.now()}");
   });
 }
