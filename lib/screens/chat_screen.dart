@@ -2782,7 +2782,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _showForwardDialog(Message message) async {
     print('🔄 _showForwardDialog вызван для сообщения: ${message.id}');
-    
+
     Map<String, dynamic>? chatData = ApiService.instance.lastChatsPayload;
     if (chatData == null || chatData['chats'] == null) {
       print('🔄 chatData пуст, загружаем...');
