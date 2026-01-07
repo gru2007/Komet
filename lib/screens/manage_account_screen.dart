@@ -308,7 +308,7 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
       // Запрашиваем свежие данные с сервера
       final result = await ApiService.instance.getChatsAndContacts(force: true);
       final profileJson = result['profile'];
-      
+
       if (profileJson != null && mounted) {
         _updateProfileFields(profileJson);
       }
