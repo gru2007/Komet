@@ -314,7 +314,7 @@ class MessageHandler {
 
   void _handleNewMessage(int chatId, Map<String, dynamic> payload) {
     print('🔔 [MessageHandler] _handleNewMessage вызван для chatId: $chatId');
-    
+
     if (allChats.isEmpty) {
       print('🔔 [MessageHandler] allChats пустой, выход');
       return;
