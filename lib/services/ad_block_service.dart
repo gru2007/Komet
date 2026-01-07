@@ -13,8 +13,8 @@ class AdBlockService {
 
   final Set<String> _blockedDomains = {};
   final Set<String> _customDomains = {};
-  final Map<String, bool> _hostCache = {}; // Кэш результатов проверки
-  final List<String> _cacheOrder = []; // Порядок для LRU
+  final Map<String, bool> _hostCache = {}; 
+  final List<String> _cacheOrder = []; 
   List<String> _hostsFilePaths = [];
   bool _isEnabled = true;
   bool _isInitialized = false;
@@ -31,14 +31,12 @@ class AdBlockService {
     final prefs = await SharedPreferences.getInstance();
     _isEnabled = prefs.getBool(_enabledKey) ?? true;
     
-    // Загружаем hosts-файлы
     final hostsJson = prefs.getString(_hostsFilesKey);
     if (hostsJson != null) {
       _hostsFilePaths = List<String>.from(jsonDecode(hostsJson));
       await _loadAllHostsFiles();
     }
     
-    // Загружаем пользовательские домены
     final customJson = prefs.getString(_customDomainsKey);
     if (customJson != null) {
       _customDomains.addAll(List<String>.from(jsonDecode(customJson)));
@@ -80,7 +78,6 @@ class AdBlockService {
     await _reloadAllDomains();
   }
 
-  /// Добавить пользовательский домен
   Future<bool> addCustomDomain(String domain) async {
     final normalized = _normalizeDomain(domain);
     if (normalized == null || _customDomains.contains(normalized)) {
@@ -93,36 +90,30 @@ class AdBlockService {
     return true;
   }
 
-  /// Удалить пользовательский домен
   Future<void> removeCustomDomain(String domain) async {
     _customDomains.remove(domain);
     await _saveCustomDomains();
     await _reloadAllDomains();
   }
 
-  /// Нормализация домена
   String? _normalizeDomain(String input) {
     var domain = input.trim().toLowerCase();
     
-    // Убираем протокол если есть
     if (domain.startsWith('http://')) {
       domain = domain.substring(7);
     } else if (domain.startsWith('https://')) {
       domain = domain.substring(8);
     }
     
-    // Убираем путь если есть
     final slashIndex = domain.indexOf('/');
     if (slashIndex != -1) {
       domain = domain.substring(0, slashIndex);
     }
     
-    // Убираем www если есть
     if (domain.startsWith('www.')) {
       domain = domain.substring(4);
     }
     
-    // Проверяем валидность
     if (domain.isEmpty || !domain.contains('.')) {
       return null;
     }
@@ -148,17 +139,14 @@ class AdBlockService {
     }
 
     try {
-      // Быстро извлекаем хост без полного парсинга URI
       final host = _extractHost(url);
       if (host == null || host.isEmpty) return false;
       
-      // Проверяем кэш
       final cached = _hostCache[host];
       if (cached != null) {
         return cached;
       }
       
-      // Проверяем и кэшируем результат
       final result = _checkHost(host);
       _addToCache(host, result);
       return result;
@@ -167,27 +155,22 @@ class AdBlockService {
     }
   }
 
-  /// Быстрое извлечение хоста из URL без Uri.parse
   String? _extractHost(String url) {
     var start = 0;
     
-    // Пропускаем протокол
     if (url.startsWith('https://')) {
       start = 8;
     } else if (url.startsWith('http://')) {
       start = 7;
     }
     
-    // Находим конец хоста
     var end = url.indexOf('/', start);
     if (end == -1) end = url.indexOf('?', start);
     if (end == -1) end = url.indexOf('#', start);
     if (end == -1) end = url.length;
     
-    // Извлекаем хост
     var host = url.substring(start, end).toLowerCase();
     
-    // Убираем порт если есть
     final colonIndex = host.indexOf(':');
     if (colonIndex != -1) {
       host = host.substring(0, colonIndex);
@@ -196,21 +179,17 @@ class AdBlockService {
     return host.isEmpty ? null : host;
   }
 
-  /// Проверка хоста в списке заблокированных
   bool _checkHost(String host) {
-    // Точное совпадение
     if (_blockedDomains.contains(host)) {
       return true;
     }
-    
-    // Проверяем без www
+
     if (host.startsWith('www.')) {
       if (_blockedDomains.contains(host.substring(4))) {
         return true;
       }
     }
     
-    // Проверяем поддомены (только если точек больше одной)
     var dotCount = 0;
     for (var i = 0; i < host.length; i++) {
       if (host[i] == '.') dotCount++;
@@ -230,10 +209,8 @@ class AdBlockService {
     return false;
   }
 
-  /// Добавление в кэш с LRU вытеснением
   void _addToCache(String host, bool blocked) {
     if (_cacheOrder.length >= _cacheMaxSize) {
-      // Удаляем старые записи
       final toRemove = _cacheOrder.take(50).toList();
       for (final key in toRemove) {
         _hostCache.remove(key);
@@ -244,7 +221,6 @@ class AdBlockService {
     _cacheOrder.add(host);
   }
 
-  /// Очистка кэша (вызывать при изменении списка доменов)
   void _clearCache() {
     _hostCache.clear();
     _cacheOrder.clear();
@@ -273,19 +249,15 @@ class AdBlockService {
       for (final line in lines) {
         final trimmed = line.trim();
         
-        // Пропускаем комментарии и пустые строки
         if (trimmed.isEmpty || trimmed.startsWith('#')) {
           continue;
         }
 
-        // Парсим строку hosts: "0.0.0.0 domain.com" или "127.0.0.1 domain.com"
         final parts = trimmed.split(RegExp(r'\s+'));
         if (parts.length >= 2) {
           final ip = parts[0];
           final domain = parts[1].toLowerCase();
           
-          // Добавляем только блокирующие записи (0.0.0.0 или 127.0.0.1)
-          // и игнорируем localhost
           if ((ip == '0.0.0.0' || ip == '127.0.0.1') && 
               domain != 'localhost' &&
               domain.contains('.')) {
@@ -298,7 +270,6 @@ class AdBlockService {
     }
   }
 
-  /// Получить имя файла из пути
   String getFileName(String filePath) {
     return filePath.split('/').last;
   }

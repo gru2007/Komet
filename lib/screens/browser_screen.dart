@@ -10,6 +10,32 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/ad_block_service.dart';
 
+class BrowserTab {
+  final String id;
+  String url;
+  String title;
+  InAppWebViewController? controller;
+  bool isLoading;
+  double progress;
+  int blockedAdsCount;
+  Uint8List? screenshot;
+  bool canGoBack;
+  bool canGoForward;
+  
+  BrowserTab({
+    required this.id,
+    required this.url,
+    this.title = 'Новая вкладка',
+    this.controller,
+    this.isLoading = true,
+    this.progress = 0,
+    this.blockedAdsCount = 0,
+    this.screenshot,
+    this.canGoBack = false,
+    this.canGoForward = false,
+  });
+}
+
 class BrowserScreen extends StatefulWidget {
   final String? initialUrl;
 
@@ -19,31 +45,71 @@ class BrowserScreen extends StatefulWidget {
   State<BrowserScreen> createState() => _BrowserScreenState();
 }
 
-class _BrowserScreenState extends State<BrowserScreen> {
+class _BrowserScreenState extends State<BrowserScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _urlController = TextEditingController();
   final FocusNode _urlFocusNode = FocusNode();
-  InAppWebViewController? _webViewController;
+  
+  final List<BrowserTab> _tabs = [];
+  int _currentTabIndex = 0;
+  bool _showTabBar = false;
+  
+  late AnimationController _tabsAnimationController;
+  late Animation<Offset> _tabsSlideAnimation;
+  late Animation<double> _tabsFadeAnimation;
 
-  bool _isLoading = true;
-  bool _canGoBack = false;
-  bool _canGoForward = false;
-  double _progress = 0;
-  String _currentUrl = '';
   bool _showBottomBar = true;
   bool _isEditingUrl = false;
   int _lastScrollY = 0;
   Timer? _scrollDebounceTimer;
   bool _isBottomBarAnimating = false;
-  int _blockedAdsCount = 0;
 
   static const String _defaultUrl = 'https://duckduckgo.com';
   static const String _defaultSearchEngine = 'https://duckduckgo.com/?q=';
+  
+  BrowserTab get _currentTab => _tabs[_currentTabIndex];
+  InAppWebViewController? get _webViewController => _currentTab.controller;
+  String get _currentUrl => _currentTab.url;
+  bool get _isLoading => _currentTab.isLoading;
+  double get _progress => _currentTab.progress;
+  int get _blockedAdsCount => _currentTab.blockedAdsCount;
+  bool get _canGoBack => _currentTab.canGoBack;
+  bool get _canGoForward => _currentTab.canGoForward;
 
   @override
   void initState() {
     super.initState();
-    _currentUrl = widget.initialUrl ?? _defaultUrl;
-    _urlController.text = _currentUrl;
+    
+    _tabsAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 280),
+      vsync: this,
+    );
+    
+    final slideCurve = CurvedAnimation(
+      parent: _tabsAnimationController,
+      curve: Curves.easeOutQuart,
+      reverseCurve: Curves.easeInQuart, 
+    );
+    
+    _tabsSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 1),
+      end: Offset.zero,
+    ).animate(slideCurve);
+    
+    _tabsFadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _tabsAnimationController,
+      curve: Curves.easeOutQuart,
+    ));
+    
+    final initialUrl = widget.initialUrl ?? _defaultUrl;
+    _tabs.add(BrowserTab(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      url: initialUrl,
+    ));
+    
+    _urlController.text = initialUrl;
     _initAdBlock();
 
     _urlFocusNode.addListener(() {
@@ -63,10 +129,85 @@ class _BrowserScreenState extends State<BrowserScreen> {
     await AdBlockService.instance.init();
     if (mounted) setState(() {});
   }
-
+  
+  Future<void> _captureTabScreenshot(BrowserTab tab) async {
+    if (tab.controller == null) return;
+    try {
+      final screenshot = await tab.controller!.takeScreenshot(
+        screenshotConfiguration: ScreenshotConfiguration(
+          compressFormat: CompressFormat.JPEG,
+          quality: 50,
+        ),
+      );
+      if (screenshot != null && mounted) {
+        setState(() {
+          tab.screenshot = screenshot;
+        });
+      }
+    } catch (e) {
+    }
+  }
+  
+  Future<void> _showTabsPanel() async {
+    setState(() {
+      _showTabBar = true;
+    });
+    _tabsAnimationController.forward();
+    _captureTabScreenshot(_currentTab);
+  }
+  
+  Future<void> _hideTabsPanel() async {
+    await _tabsAnimationController.reverse();
+    if (mounted) {
+      setState(() {
+        _showTabBar = false;
+      });
+    }
+  }
+  
+  void _createNewTab({String? url}) {
+    setState(() {
+      _tabs.add(BrowserTab(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        url: url ?? _defaultUrl,
+      ));
+      _currentTabIndex = _tabs.length - 1;
+      _urlController.text = _currentTab.url;
+    });
+    _hideTabsPanel();
+  }
+  
+  void _closeTab(int index) {
+    if (_tabs.length <= 1) {
+      Navigator.of(context).pop();
+      return;
+    }
+    
+    setState(() {
+      _tabs.removeAt(index);
+      if (_currentTabIndex >= _tabs.length) {
+        _currentTabIndex = _tabs.length - 1;
+      }
+      _urlController.text = _currentTab.url;
+    });
+  }
+  
+  void _switchTab(int index) {
+    if (index == _currentTabIndex) {
+      _hideTabsPanel();
+      return;
+    }
+    
+    setState(() {
+      _currentTabIndex = index;
+      _urlController.text = _currentTab.url;
+    });
+    _hideTabsPanel();
+  }
 
   @override
   void dispose() {
+    _tabsAnimationController.dispose();
     _scrollDebounceTimer?.cancel();
     _urlController.dispose();
     _urlFocusNode.dispose();
@@ -91,21 +232,34 @@ class _BrowserScreenState extends State<BrowserScreen> {
   Future<void> _loadUrl(String url) async {
     final formattedUrl = _formatUrl(url);
     _urlFocusNode.unfocus();
-    await _webViewController?.loadUrl(
-      urlRequest: URLRequest(url: WebUri(formattedUrl)),
-    );
+    
+    setState(() {
+      _currentTab.url = formattedUrl;
+    });
+    
+    try {
+      await _webViewController?.loadUrl(
+        urlRequest: URLRequest(url: WebUri(formattedUrl)),
+      );
+    } catch (e) {
+    }
   }
 
   Future<void> _updateNavigationState() async {
-    if (_webViewController != null) {
-      final canGoBack = await _webViewController!.canGoBack();
-      final canGoForward = await _webViewController!.canGoForward();
+    final tab = _currentTab;
+    final controller = tab.controller;
+    if (controller == null) return;
+    
+    try {
+      final canGoBack = await controller.canGoBack();
+      final canGoForward = await controller.canGoForward();
       if (mounted) {
         setState(() {
-          _canGoBack = canGoBack;
-          _canGoForward = canGoForward;
+          tab.canGoBack = canGoBack;
+          tab.canGoForward = canGoForward;
         });
       }
+    } catch (e) {
     }
   }
 
@@ -117,7 +271,6 @@ class _BrowserScreenState extends State<BrowserScreen> {
       _showBottomBar = visible;
     });
     
-    // Сбрасываем флаг после завершения анимации
     Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted) {
         _isBottomBarAnimating = false;
@@ -164,7 +317,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
               label: 'Обновить',
               onTap: () {
                 Navigator.pop(context);
-                _webViewController?.reload();
+                try {
+                  _webViewController?.reload();
+                } catch (e) {
+                }
               },
               colors: colors,
             ),
@@ -275,6 +431,299 @@ class _BrowserScreenState extends State<BrowserScreen> {
       ),
     );
   }
+  
+  Widget _buildTabsPanel(ColorScheme colors, double bottomPadding) {
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: colors.shadow.withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colors.onSurfaceVariant.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Row(
+              children: [
+                Text(
+                  'Вкладки (${_tabs.length})',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: _hideTabsPanel,
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: GridView.builder(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottomPadding),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                childAspectRatio: 0.7,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+              ),
+              itemCount: _tabs.length + 1,
+              itemBuilder: (context, index) {
+                if (index == _tabs.length) {
+                  return _buildAddTabCard(colors);
+                }
+                
+                final tab = _tabs[index];
+                final isActive = index == _currentTabIndex;
+                
+                return _buildTabCard(tab, index, isActive, colors);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildAddTabCard(ColorScheme colors) {
+    return GestureDetector(
+      onTap: () => _createNewTab(),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: colors.outlineVariant,
+            width: 2,
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colors.primaryContainer.withValues(alpha: 0.5),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.add_rounded,
+                size: 32,
+                color: colors.primary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Новая вкладка',
+              style: TextStyle(
+                color: colors.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildTabCard(BrowserTab tab, int index, bool isActive, ColorScheme colors) {
+    return GestureDetector(
+      onTap: () => _switchTab(index),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isActive 
+              ? colors.primaryContainer 
+              : colors.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(16),
+          border: isActive
+              ? Border.all(color: colors.primary, width: 2.5)
+              : Border.all(color: colors.outlineVariant.withValues(alpha: 0.5)),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: colors.primary.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(isActive ? 13.5 : 15),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: tab.screenshot != null
+                    ? Image.memory(
+                        tab.screenshot!,
+                        fit: BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                        gaplessPlayback: true,
+                      )
+                    : Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              colors.surfaceContainerHighest,
+                              colors.surfaceContainerLow,
+                            ],
+                          ),
+                        ),
+                        child: Center(
+                          child: Icon(
+                            Icons.language_rounded,
+                            size: 48,
+                            color: colors.onSurfaceVariant.withValues(alpha: 0.3),
+                          ),
+                        ),
+                      ),
+              ),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 24, 12, 12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        (isActive ? colors.primaryContainer : colors.surfaceContainerHighest).withValues(alpha: 0.9),
+                        isActive ? colors.primaryContainer : colors.surfaceContainerHighest,
+                      ],
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          if (tab.isLoading)
+                            SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  isActive ? colors.onPrimaryContainer : colors.primary,
+                                ),
+                              ),
+                            )
+                          else
+                            Icon(
+                              tab.url.startsWith('https://')
+                                  ? Icons.lock_rounded
+                                  : Icons.language_rounded,
+                              size: 12,
+                              color: isActive ? colors.onPrimaryContainer : colors.primary,
+                            ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              tab.title,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isActive 
+                                    ? colors.onPrimaryContainer 
+                                    : colors.onSurface,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _getDisplayUrl(tab.url),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isActive
+                              ? colors.onPrimaryContainer.withValues(alpha: 0.7)
+                              : colors.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 6,
+                right: 6,
+                child: GestureDetector(
+                  onTap: () => _closeTab(index),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: colors.surface.withValues(alpha: 0.9),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: colors.shadow.withValues(alpha: 0.2),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 14,
+                      color: colors.onSurface,
+                    ),
+                  ),
+                ),
+              ),
+              if (isActive)
+                Positioned(
+                  top: 6,
+                  left: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: colors.primary,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'Активная',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: colors.onPrimary,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   void _showAdBlockSettings(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -366,7 +815,6 @@ class _BrowserScreenState extends State<BrowserScreen> {
               const SizedBox(height: 16),
               const Divider(height: 1),
               
-              // Секция пользовательских доменов
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Row(
@@ -434,7 +882,6 @@ class _BrowserScreenState extends State<BrowserScreen> {
               
               const Divider(height: 24),
               
-              // Секция hosts-файлов
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Row(
@@ -627,11 +1074,9 @@ class _BrowserScreenState extends State<BrowserScreen> {
     final keyboardHeight = mediaQuery.viewInsets.bottom;
     final isKeyboardOpen = keyboardHeight > 50;
     
-    // Высота верхней панели (компактная)
     const topBarContentHeight = 4.0 + 38.0 + 8.0;
     final topBarHeight = topPadding + topBarContentHeight;
     
-    // Скрываем нижнюю панель когда клавиатура открыта
     final shouldShowBottomBar = _showBottomBar && !isKeyboardOpen;
     
     return Scaffold(
@@ -639,7 +1084,6 @@ class _BrowserScreenState extends State<BrowserScreen> {
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
-          // WebView с отступом сверху (под верхней панелью)
           Positioned(
             top: topBarHeight,
             left: 0,
@@ -653,11 +1097,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
                         _urlFocusNode.unfocus();
                       }
                     },
-                    child: _buildWebView(colors),
+                    child: IndexedStack(
+                      index: _currentTabIndex,
+                      children: _tabs.map((tab) => _buildWebView(colors, tab)).toList(),
+                    ),
                   ),
           ),
 
-          // Верхняя панель (всегда видна)
           Positioned(
             top: 0,
             left: 0,
@@ -672,7 +1118,6 @@ class _BrowserScreenState extends State<BrowserScreen> {
                   padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
                   child: Row(
                     children: [
-                      // Кнопка закрытия (скрывается при редактировании)
                       AnimatedSize(
                         duration: const Duration(milliseconds: 200),
                         curve: Curves.easeOutCubic,
@@ -689,7 +1134,6 @@ class _BrowserScreenState extends State<BrowserScreen> {
                                 ],
                               ),
                       ),
-                      // Адресная строка
                       Expanded(
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
@@ -698,7 +1142,6 @@ class _BrowserScreenState extends State<BrowserScreen> {
                               setState(() {
                                 _isEditingUrl = true;
                               });
-                              // Запрашиваем фокус после того, как TextField появится
                               WidgetsBinding.instance.addPostFrameCallback((_) {
                                 _urlFocusNode.requestFocus();
                               });
@@ -714,7 +1157,6 @@ class _BrowserScreenState extends State<BrowserScreen> {
                             ),
                             child: Row(
                               children: [
-                                // Кнопка отмены при редактировании
                                 if (_isEditingUrl)
                                   GestureDetector(
                                     onTap: () {
@@ -814,7 +1256,6 @@ class _BrowserScreenState extends State<BrowserScreen> {
                           ),
                         ),
                       ),
-                      // Кнопка меню (скрывается при редактировании)
                       AnimatedSize(
                         duration: const Duration(milliseconds: 200),
                         curve: Curves.easeOutCubic,
@@ -822,6 +1263,8 @@ class _BrowserScreenState extends State<BrowserScreen> {
                             ? const SizedBox.shrink()
                             : Row(
                                 children: [
+                                  const SizedBox(width: 6),
+                                  _buildTabsButton(colors),
                                   const SizedBox(width: 6),
                                   _buildCircleButton(
                                     icon: Icons.more_horiz_rounded,
@@ -838,7 +1281,6 @@ class _BrowserScreenState extends State<BrowserScreen> {
             ),
           ),
 
-          // Индикатор прогресса
           if (_isLoading && _progress > 0)
             Positioned(
               top: topPadding + 42,
@@ -855,7 +1297,6 @@ class _BrowserScreenState extends State<BrowserScreen> {
               ),
             ),
 
-          // Плавающая нижняя панель навигации
           Positioned(
             bottom: 0,
             left: 0,
@@ -894,8 +1335,11 @@ class _BrowserScreenState extends State<BrowserScreen> {
                               icon: Icons.arrow_back_ios_rounded,
                               onTap: _canGoBack
                                   ? () async {
-                                      await _webViewController?.goBack();
-                                      await _updateNavigationState();
+                                      try {
+                                        await _webViewController?.goBack();
+                                        await _updateNavigationState();
+                                      } catch (e) {
+                                      }
                                     }
                                   : null,
                               colors: colors,
@@ -904,8 +1348,11 @@ class _BrowserScreenState extends State<BrowserScreen> {
                               icon: Icons.arrow_forward_ios_rounded,
                               onTap: _canGoForward
                                   ? () async {
-                                      await _webViewController?.goForward();
-                                      await _updateNavigationState();
+                                      try {
+                                        await _webViewController?.goForward();
+                                        await _updateNavigationState();
+                                      } catch (e) {
+                                      }
                                     }
                                   : null,
                               colors: colors,
@@ -920,10 +1367,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
                                   ? Icons.close_rounded
                                   : Icons.refresh_rounded,
                               onTap: () {
-                                if (_isLoading) {
-                                  _webViewController?.stopLoading();
-                                } else {
-                                  _webViewController?.reload();
+                                try {
+                                  if (_isLoading) {
+                                    _webViewController?.stopLoading();
+                                  } else {
+                                    _webViewController?.reload();
+                                  }
+                                } catch (e) {
                                 }
                               },
                               colors: colors,
@@ -938,7 +1388,6 @@ class _BrowserScreenState extends State<BrowserScreen> {
             ),
           ),
 
-          // Кнопка показа нижней панели (когда скрыта)
           if (!_showBottomBar && !isKeyboardOpen && !Platform.isLinux)
             Positioned(
               bottom: bottomPadding + 16,
@@ -966,6 +1415,40 @@ class _BrowserScreenState extends State<BrowserScreen> {
                 ),
               ),
             ),
+            
+          if (_showTabBar)
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: !_showTabBar,
+                child: RepaintBoundary(
+                  child: FadeTransition(
+                    opacity: _tabsFadeAnimation,
+                    child: GestureDetector(
+                      onTap: _hideTabsPanel,
+                      child: Container(
+                        color: Colors.black.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (_showTabBar)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: MediaQuery.of(context).size.height * 0.85,
+              child: IgnorePointer(
+                ignoring: !_showTabBar,
+                child: RepaintBoundary(
+                  child: SlideTransition(
+                    position: _tabsSlideAnimation,
+                    child: _buildTabsPanel(colors, bottomPadding),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -986,6 +1469,55 @@ class _BrowserScreenState extends State<BrowserScreen> {
           shape: BoxShape.circle,
         ),
         child: Icon(icon, size: 18, color: colors.onSurface),
+      ),
+    );
+  }
+  
+  Widget _buildTabsButton(ColorScheme colors) {
+    return GestureDetector(
+      onTap: _showTabsPanel,
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHighest.withValues(alpha: 0.9),
+          shape: BoxShape.circle,
+          border: _tabs.length > 1 
+              ? Border.all(color: colors.primary, width: 1.5)
+              : null,
+        ),
+        child: Center(
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Icon(
+                Icons.tab_rounded,
+                size: 18,
+                color: colors.onSurface,
+              ),
+              if (_tabs.length > 1)
+                Positioned(
+                  bottom: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: colors.primary,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      _tabs.length > 99 ? '99+' : '${_tabs.length}',
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                        color: colors.onPrimary,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1016,9 +1548,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
   }
 
-  Widget _buildWebView(ColorScheme colors) {
+  Widget _buildWebView(ColorScheme colors, BrowserTab tab) {
     return InAppWebView(
-      initialUrlRequest: URLRequest(url: WebUri(_currentUrl)),
+      key: ValueKey(tab.id),
+      initialUrlRequest: URLRequest(url: WebUri(tab.url)),
       initialSettings: InAppWebViewSettings(
         javaScriptEnabled: true,
         transparentBackground: true,
@@ -1042,53 +1575,71 @@ class _BrowserScreenState extends State<BrowserScreen> {
         thirdPartyCookiesEnabled: true,
       ),
       onWebViewCreated: (controller) {
-        _webViewController = controller;
+        setState(() {
+          tab.controller = controller;
+        });
       },
       onLoadStart: (controller, url) {
         setState(() {
-          _isLoading = true;
-          _progress = 0;
-          _blockedAdsCount = 0; // Сбрасываем счётчик при новой загрузке
+          tab.isLoading = true;
+          tab.progress = 0;
+          tab.blockedAdsCount = 0;
           if (url != null) {
-            _currentUrl = url.toString();
-            if (!_urlFocusNode.hasFocus) {
-              _urlController.text = _currentUrl;
+            tab.url = url.toString();
+            if (tab == _currentTab && !_urlFocusNode.hasFocus) {
+              _urlController.text = tab.url;
             }
           }
         });
       },
       onLoadStop: (controller, url) async {
+        String? title;
+        try {
+          title = await controller.getTitle();
+        } catch (e) {
+        }
+        
+        if (!mounted) return;
+        
         setState(() {
-          _isLoading = false;
-          _progress = 1;
+          tab.isLoading = false;
+          tab.progress = 1;
           if (url != null) {
-            _currentUrl = url.toString();
-            if (!_urlFocusNode.hasFocus) {
-              _urlController.text = _currentUrl;
+            tab.url = url.toString();
+            if (tab == _currentTab && !_urlFocusNode.hasFocus) {
+              _urlController.text = tab.url;
             }
           }
+          if (title != null && title.isNotEmpty) {
+            tab.title = title;
+          }
         });
-        await _updateNavigationState();
+        
+        if (tab == _currentTab) {
+          await _updateNavigationState();
+        }
+        
+        await _captureTabScreenshot(tab);
       },
       onProgressChanged: (controller, progress) {
         setState(() {
-          _progress = progress / 100;
+          tab.progress = progress / 100;
         });
       },
       onScrollChanged: (controller, x, y) {
+        if (tab != _currentTab) return;
+        
         final scrollDelta = y - _lastScrollY;
         _lastScrollY = y;
         
-        // Определяем нужное состояние панели
         bool? targetVisible;
         if (scrollDelta > 15 && _showBottomBar && y > 100) {
-          targetVisible = false; // Скрыть
+          targetVisible = false;
         } else if (scrollDelta < -15 && !_showBottomBar) {
-          targetVisible = true; // Показать
+          targetVisible = true;
         }
         
         if (targetVisible != null) {
-          // Debounce: откладываем изменение на короткое время
           _scrollDebounceTimer?.cancel();
           _scrollDebounceTimer = Timer(const Duration(milliseconds: 50), () {
             _setBottomBarVisible(targetVisible!);
@@ -1096,15 +1647,32 @@ class _BrowserScreenState extends State<BrowserScreen> {
         }
       },
       onUpdateVisitedHistory: (controller, url, androidIsReload) async {
+        if (!mounted) return;
+        
         if (url != null) {
           setState(() {
-            _currentUrl = url.toString();
-            if (!_urlFocusNode.hasFocus) {
-              _urlController.text = _currentUrl;
+            tab.url = url.toString();
+            if (tab == _currentTab && !_urlFocusNode.hasFocus) {
+              _urlController.text = tab.url;
             }
           });
         }
-        await _updateNavigationState();
+        
+        if (tab == _currentTab) {
+          await _updateNavigationState();
+        }
+        
+        try {
+          final canGoBack = await controller.canGoBack();
+          final canGoForward = await controller.canGoForward();
+          if (mounted) {
+            setState(() {
+              tab.canGoBack = canGoBack;
+              tab.canGoForward = canGoForward;
+            });
+          }
+        } catch (e) {
+        }
       },
       onReceivedError: (controller, request, error) {
         print('❌ Browser error: ${error.description} (${error.type})');
@@ -1119,7 +1687,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
       onCreateWindow: (controller, createWindowAction) async {
         final uri = createWindowAction.request.url;
         if (uri != null) {
-          await controller.loadUrl(urlRequest: URLRequest(url: uri));
+          _createNewTab(url: uri.toString());
         }
         return true;
       },
@@ -1133,21 +1701,23 @@ class _BrowserScreenState extends State<BrowserScreen> {
               return NavigationActionPolicy.CANCEL;
             }
           }
-          // Блокируем рекламные URL
           if (AdBlockService.instance.shouldBlockDomain(uri.toString())) {
+            setState(() {
+              tab.blockedAdsCount++;
+            });
             return NavigationActionPolicy.CANCEL;
           }
         }
         return NavigationActionPolicy.ALLOW;
       },
       shouldInterceptRequest: (controller, request) async {
-        // Быстрая проверка - если блокировщик выключен, пропускаем
         if (!AdBlockService.instance.isEnabled) return null;
         
         final url = request.url.toString();
         if (AdBlockService.instance.shouldBlockDomain(url)) {
-          _blockedAdsCount++;
-          // Возвращаем пустой ответ для заблокированного запроса
+          setState(() {
+            tab.blockedAdsCount++;
+          });
           return WebResourceResponse(
             contentType: 'text/plain',
             data: Uint8List(0),
