@@ -7973,7 +7973,15 @@ class _ControlMessageChip extends StatelessWidget {
     switch (eventType) {
       case 'new':
         final title = controlAttach['title'] ?? 'Новая группа';
-        return '$senderDisplayName создал(а) группу "$title"';
+
+        // Костыль i think
+        // Best method is check for type of channel but i dont know how to get it
+        if (message.senderId == 0) {
+          return 'Создана группа "$title"';
+        } else {
+          return '$senderDisplayName создал(а) группу "$title"';
+        }
+
 
       case 'add':
         final userIds = List<int>.from(
@@ -8014,10 +8022,21 @@ class _ControlMessageChip extends StatelessWidget {
 
       case 'title':
         final newTitle = controlAttach['title'] ?? '';
+
         if (newTitle.isEmpty) {
-          return '$senderDisplayName изменил(а) название группы';
+          if (message.senderId == myId) {
+            return '$senderDisplayName изменили название группы';
+          } else {
+            return '$senderDisplayName изменил(а) название группы';
+          }
         }
-        return '$senderDisplayName изменил(а) название группы на "$newTitle"';
+
+        if (message.senderId == myId) {
+            return '$senderDisplayName изменили название группы на "$newTitle"';
+        } else {
+          return '$senderDisplayName изменил(а) название группы на "$newTitle"';
+        }
+
 
       case 'avatar':
       case 'photo':
@@ -8112,10 +8131,14 @@ class _ControlMessageChip extends StatelessWidget {
         final eventTypeStr = eventType?.toString() ?? 'неизвестное';
 
         if (eventTypeStr.toLowerCase() == 'system') {
-          return 'Стартовое событие, не обращайте внимания.';
+          final message = controlAttach['message'];
+          if (message is String && message.isNotEmpty) {
+            return message;
+          }
+          return 'Системное событие';
         }
         if (eventTypeStr == 'joinByLink') {
-          return 'Кто-то присоединился(ась) по пригласительной ссылке...';
+          return '$senderName присоединился(ась) по пригласительной ссылке...';
         }
 
         return 'Событие: $eventTypeStr';
