@@ -541,7 +541,7 @@ class MessageHandler {
               final updatedChat = Chat.fromJson(updatedChatData);
               setState(() {
                 allChats.removeAt(chatIndex);
-                allChats.insert(0, updatedChat);
+                _insertChatAtCorrectPosition(updatedChat);
                 filterChats();
               });
             }
@@ -854,21 +854,17 @@ class MessageHandler {
   }
 
   void _insertChatAtCorrectPosition(Chat chat) {
-    if (isSavedMessages(chat)) {
-      if (chat.id == 0) {
-        allChats.insert(0, chat);
-      } else {
-        final savedIndex = allChats.indexWhere(
-          (c) => isSavedMessages(c) && c.id == 0,
-        );
-        final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
-        allChats.insert(insertIndex, chat);
+    // Вставляем чат в правильную позицию по времени последнего сообщения
+    final chatTime = chat.lastMessage.time;
+    int insertIndex = 0;
+    for (int i = 0; i < allChats.length; i++) {
+      if (chatTime >= allChats[i].lastMessage.time) {
+        insertIndex = i;
+        break;
       }
-    } else {
-      final savedIndex = allChats.indexWhere(isSavedMessages);
-      final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
-      allChats.insert(insertIndex, chat);
+      insertIndex = i + 1;
     }
+    allChats.insert(insertIndex, chat);
   }
 
   /// Показать уведомление с известным контактом

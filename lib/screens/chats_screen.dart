@@ -1086,25 +1086,9 @@ class _ChatsScreenState extends State<ChatsScreen>
   }
 
   Future<void> _loadChatOrder() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedOrder = prefs.getStringList('chat_order');
-    if (savedOrder != null && savedOrder.isNotEmpty) {
-      final chatIds = savedOrder.map((id) => int.parse(id)).toList();
-      final orderedChats = <Chat>[];
-      final remainingChats = List<Chat>.from(_allChats);
-
-      for (final id in chatIds) {
-        final chatIndex = remainingChats.indexWhere((chat) => chat.id == id);
-        if (chatIndex != -1) {
-          orderedChats.add(remainingChats.removeAt(chatIndex));
-        }
-      }
-
-      orderedChats.addAll(remainingChats);
-
-      _allChats = orderedChats;
-      _filteredChats = List.from(_allChats);
-    }
+    // Сортируем чаты по времени последнего сообщения (новые сверху)
+    _allChats.sort((a, b) => b.lastMessage.time.compareTo(a.lastMessage.time));
+    _filteredChats = List.from(_allChats);
   }
 
   Future<void> _loadMissingContact(int contactId) async {
@@ -1333,7 +1317,8 @@ class _ChatsScreenState extends State<ChatsScreen>
               }
 
               if (_filteredChats.isEmpty && _allChats.isNotEmpty) {
-                _filteredChats = List.from(_allChats);
+                _filteredChats = List.from(_allChats)
+                  ..sort((a, b) => b.lastMessage.time.compareTo(a.lastMessage.time));
               }
               if (_filteredChats.isEmpty && _allChats.isEmpty) {
                 return const Center(child: CircularProgressIndicator());
