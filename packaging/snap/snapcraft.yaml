@@ -1,0 +1,61 @@
+name: komet
+version: '${VERSION}'
+summary: Альтернативный FOSS клиент для мессенджера MAX
+description: |
+  Komet - это альтернативный клиент с открытым исходным кодом 
+  для мессенджера MAX. Предоставляет удобный интерфейс и расширенные
+  возможности для общения.
+
+grade: stable
+confinement: strict
+base: core24
+architectures:
+  - build-on: amd64
+
+parts:
+  komet:
+    plugin: nil
+    source: .
+    build-packages:
+      - clang
+      - cmake
+      - ninja-build
+      - pkg-config
+      - libgtk-3-dev
+      - libsecret-1-dev
+      - libblkid-dev
+      - curl
+      - unzip
+      - git
+    stage-packages:
+      - libgtk-3-0
+      - libsecret-1-0
+      - libblkid1
+    override-build: |
+      # Install Flutter
+      git clone https://github.com/flutter/flutter.git -b stable --depth 1 $CRAFT_PART_SRC/flutter
+      export PATH="$CRAFT_PART_SRC/flutter/bin:$PATH"
+      flutter doctor
+      flutter pub get
+      flutter build linux --release
+      
+      # Copy bundle to install directory
+      mkdir -p $CRAFT_PART_INSTALL/opt/komet
+      cp -r build/linux/x64/release/bundle/* $CRAFT_PART_INSTALL/opt/komet/
+
+apps:
+  komet:
+    command: opt/komet/Komet
+    desktop: usr/share/applications/komet.desktop
+    extensions: [gnome]
+    plugs:
+      - network
+      - network-bind
+      - home
+      - desktop
+      - desktop-legacy
+      - wayland
+      - x11
+      - opengl
+      - audio-playback
+      - camera

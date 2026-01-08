@@ -1,0 +1,73 @@
+name: Build Linux Snap Package
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'lib/**'
+      - 'linux/**'
+      - 'pubspec.yaml'
+      - 'packaging/snap/**'
+      - '.github/workflows/build-linux-snap.yml'
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'linux/**'
+      - 'pubspec.yaml'
+      - 'packaging/snap/**'
+      - '.github/workflows/build-linux-snap.yml'
+
+jobs:
+  build-linux-snap:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Get version from pubspec.yaml
+        id: version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Generate snapcraft.yaml with version
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          mkdir -p snap
+          sed "s/\${VERSION}/${VERSION}/g" packaging/snap/snapcraft.yaml > snap/snapcraft.yaml
+          
+          # Also copy desktop file for snap
+          mkdir -p snap/gui
+          cp packaging/linux/komet.desktop snap/gui/
+          cp assets/icon/komet_512.png snap/gui/komet.png
+          
+          cat snap/snapcraft.yaml
+
+      - name: Install Snapcraft
+        uses: snapcore/action-build@v1
+        id: build
+        continue-on-error: true
+
+      - name: Upload Snap artifact
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: komet-linux-snap-${{ steps.version.outputs.version }}
+          path: ${{ steps.build.outputs.snap }}
+          retention-days: 30
+
+      - name: Upload snapcraft.yaml as artifact (for manual build)
+        if: steps.build.outcome != 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: komet-linux-snap-config-${{ steps.version.outputs.version }}
+          path: |
+            snap/snapcraft.yaml
+            snap/gui/
+          retention-days: 30

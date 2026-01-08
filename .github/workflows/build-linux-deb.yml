@@ -1,0 +1,104 @@
+name: Build Linux DEB Package
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'lib/**'
+      - 'linux/**'
+      - 'pubspec.yaml'
+      - 'packaging/linux/**'
+      - '.github/workflows/build-linux-deb.yml'
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'linux/**'
+      - 'pubspec.yaml'
+      - 'packaging/linux/**'
+      - '.github/workflows/build-linux-deb.yml'
+
+jobs:
+  build-linux-deb:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Get version from pubspec.yaml
+        id: version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libx11-dev pkg-config cmake ninja-build libblkid-dev libsecret-1-dev dpkg-dev
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.5'
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Linux
+        run: flutter build linux --release
+
+      - name: Create DEB package structure
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          PKG_DIR=komet_${VERSION}_amd64
+          
+          mkdir -p ${PKG_DIR}/DEBIAN
+          mkdir -p ${PKG_DIR}/opt/komet
+          mkdir -p ${PKG_DIR}/usr/bin
+          mkdir -p ${PKG_DIR}/usr/share/applications
+          mkdir -p ${PKG_DIR}/usr/share/icons/hicolor/512x512/apps
+          
+          # Copy bundle
+          cp -r build/linux/x64/release/bundle/* ${PKG_DIR}/opt/komet/
+          
+          # Create launcher script
+          cat > ${PKG_DIR}/usr/bin/komet << 'EOF'
+          #!/bin/bash
+          cd /opt/komet
+          exec ./Komet "$@"
+          EOF
+          chmod +x ${PKG_DIR}/usr/bin/komet
+          
+          # Copy desktop file and icon
+          cp packaging/linux/komet.desktop ${PKG_DIR}/usr/share/applications/
+          cp assets/icon/komet_512.png ${PKG_DIR}/usr/share/icons/hicolor/512x512/apps/komet.png
+          
+          # Create control file
+          cat > ${PKG_DIR}/DEBIAN/control << EOF
+          Package: komet
+          Version: ${VERSION}
+          Section: net
+          Priority: optional
+          Architecture: amd64
+          Depends: libgtk-3-0, libsecret-1-0
+          Maintainer: KometTeam <kometteam@users.noreply.github.com>
+          Description: Альтернативный FOSS клиент для мессенджера MAX
+           Komet - это альтернативный клиент с открытым исходным кодом
+           для мессенджера MAX.
+          EOF
+          
+          # Build DEB package
+          dpkg-deb --build ${PKG_DIR}
+
+      - name: Upload DEB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: komet-linux-deb-${{ steps.version.outputs.version }}
+          path: komet_${{ steps.version.outputs.version }}_amd64.deb
+          retention-days: 30

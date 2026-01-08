@@ -1,0 +1,44 @@
+# Maintainer: KometTeam <kometteam@users.noreply.github.com>
+pkgname=komet
+pkgver=${VERSION}
+pkgrel=1
+pkgdesc="Альтернативный FOSS клиент для мессенджера MAX"
+arch=('x86_64')
+url="https://github.com/KometTeam/Komet"
+license=('MIT')
+depends=('gtk3' 'libsecret')
+makedepends=('flutter' 'clang' 'cmake' 'ninja' 'pkgconf')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/KometTeam/Komet/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/Komet-$pkgver"
+  flutter pub get
+  flutter build linux --release
+}
+
+package() {
+  cd "$srcdir/Komet-$pkgver"
+  
+  # Install bundle
+  install -d "$pkgdir/opt/$pkgname"
+  cp -r build/linux/x64/release/bundle/* "$pkgdir/opt/$pkgname/"
+  
+  # Create launcher script
+  install -d "$pkgdir/usr/bin"
+  cat > "$pkgdir/usr/bin/$pkgname" << EOF
+#!/bin/bash
+cd /opt/$pkgname
+exec ./Komet "\$@"
+EOF
+  chmod +x "$pkgdir/usr/bin/$pkgname"
+  
+  # Install desktop file
+  install -Dm644 "packaging/linux/komet.desktop" "$pkgdir/usr/share/applications/$pkgname.desktop"
+  
+  # Install icon
+  install -Dm644 "assets/icon/komet_512.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/$pkgname.png"
+  
+  # Install license
+  install -Dm644 "LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
