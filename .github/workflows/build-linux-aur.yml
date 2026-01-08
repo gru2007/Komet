@@ -51,7 +51,6 @@ jobs:
       - name: Setup Flutter
         run: |
           export PATH="/opt/flutter/bin:$PATH"
-          flutter doctor --android-licenses || true
           flutter doctor
 
       - name: Get dependencies

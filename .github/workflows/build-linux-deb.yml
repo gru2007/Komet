@@ -70,8 +70,7 @@ jobs:
           # Create launcher script
           cat > ${PKG_DIR}/usr/bin/komet << 'EOF'
           #!/bin/bash
-          cd /opt/komet
-          exec ./Komet "$@"
+          exec /opt/komet/Komet "$@"
           EOF
           chmod +x ${PKG_DIR}/usr/bin/komet
           

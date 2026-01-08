@@ -28,8 +28,7 @@ package() {
   install -d "$pkgdir/usr/bin"
   cat > "$pkgdir/usr/bin/$pkgname" << EOF
 #!/bin/bash
-cd /opt/$pkgname
-exec ./Komet "\$@"
+exec /opt/$pkgname/Komet "\$@"
 EOF
   chmod +x "$pkgdir/usr/bin/$pkgname"
   

@@ -49,25 +49,13 @@ jobs:
           
           cat snap/snapcraft.yaml
 
-      - name: Install Snapcraft
+      - name: Build Snap
         uses: snapcore/action-build@v1
         id: build
-        continue-on-error: true
 
       - name: Upload Snap artifact
-        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: komet-linux-snap-${{ steps.version.outputs.version }}
           path: ${{ steps.build.outputs.snap }}
-          retention-days: 30
-
-      - name: Upload snapcraft.yaml as artifact (for manual build)
-        if: steps.build.outcome != 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: komet-linux-snap-config-${{ steps.version.outputs.version }}
-          path: |
-            snap/snapcraft.yaml
-            snap/gui/
           retention-days: 30

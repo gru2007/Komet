@@ -68,8 +68,7 @@ jobs:
           cat > ${BUNDLE_DIR}/run.sh << 'EOF'
           #!/bin/bash
           SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-          cd "$SCRIPT_DIR"
-          exec ./Komet "$@"
+          exec "$SCRIPT_DIR/Komet" "$@"
           EOF
           chmod +x ${BUNDLE_DIR}/run.sh
           
