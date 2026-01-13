@@ -40,15 +40,14 @@ jobs:
         with:
           channel: main # latest version
 
-      - name: Deploy Android and iOS
-        uses: MTtankkeo/flutter-fastlane-action@main
+      - name: Deploy iOS
+        uses: gru2007/flutter-fastlane-action@main
         with:
           platform: "ios"
           ios-app-id: "tech.artemev.banilife"
 
-          # Fastlane match git repository (e.g., "my-org/my-cert-repo")
           # Version name for this build (e.g., 1.0.0)
-          version-name: "1.0" # TestFlight Requirement. Do not change.
+          # version-name: "1.0" # TestFlight Requirement. Do not change.
 
           # Build number for this build (e.g., 42)
           build-number: ${{ github.event.inputs.BUILD_NUMBER }}
