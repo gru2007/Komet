@@ -12,11 +12,6 @@ name: Deploy iOS TestFlight
 on:
   workflow_dispatch:
     inputs:
-      VERSION_NAME:
-        description: "Version Name (e.g. 1.2.3)"
-        required: true
-        type: string
-
       BUILD_NUMBER:
         description: "Build Number (e.g. 43)"
         required: true
