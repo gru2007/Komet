@@ -41,7 +41,7 @@ jobs:
           channel: main # latest version
 
       - name: Deploy iOS
-        uses: gru2007/flutter-fastlane-action@main
+        uses: gru2007/flutter-fastlane-action-testflight@main
         with:
           platform: "ios"
           ios-app-id: "tech.artemev.banilife"
