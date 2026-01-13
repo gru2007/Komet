@@ -1,0 +1,9 @@
+# Deliverfile - Fastlane deliver configuration
+# This file allows you to customize deliver behavior
+
+# Skip app version update to prevent version normalization from 1.0 to 1.0.0
+# This prevents Fastlane from updating the version in App Store Connect
+# This allows using existing version "1.0" in TestFlight instead of creating "1.0.0"
+# Note: The version in IPA will still be "1.0.0" (normalized by Flutter),
+# but Fastlane will not update the version in App Store Connect metadata
+skip_app_version_update(true)

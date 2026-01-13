@@ -47,7 +47,7 @@ jobs:
           ios-app-id: "tech.artemev.banilife"
 
           # Version name for this build (e.g., 1.0.0)
-          # version-name: "1.0" # TestFlight Requirement. Do not change.
+          version-name: "1.0" # TestFlight Requirement. Do not change.
 
           # Build number for this build (e.g., 42)
           build-number: ${{ github.event.inputs.BUILD_NUMBER }}

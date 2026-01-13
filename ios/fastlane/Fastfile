@@ -1,0 +1,61 @@
+# Fastfile for iOS deployment
+# This file contains custom lanes for iOS build and deployment
+
+default_platform(:ios)
+
+platform :ios do
+  # Hook to fix version before deliver
+  before_all do
+    # Fix version in archive if it exists
+    archive_path = "build/ios/archive/Runner.xcarchive"
+    if Dir.exist?(archive_path)
+      app_path = "#{archive_path}/Products/Applications/Runner.app"
+      info_plist = "#{app_path}/Info.plist"
+      
+      if File.exist?(info_plist)
+        current_version = get_info_plist_value(path: info_plist, key: "CFBundleShortVersionString")
+        if current_version == "1.0.0"
+          UI.message("🔧 Fixing version from 1.0.0 to 1.0 in #{info_plist}")
+          set_info_plist_value(path: info_plist, key: "CFBundleShortVersionString", value: "1.0")
+          UI.success("✅ Version fixed successfully")
+        else
+          UI.message("ℹ️  Version is already #{current_version}, no change needed")
+        end
+      end
+    end
+    
+    # Also try to fix using the script
+    script_path = "#{lane_context[SharedValues::FASTLANE_DIR]}/fix_version.sh"
+    if File.exist?(script_path)
+      UI.message("🔧 Running fix_version.sh script...")
+      sh("bash", script_path)
+    end
+  end
+
+  # Lane to fix version normalization from 1.0.0 to 1.0
+  # This should be called after Flutter build but before IPA creation
+  lane :fix_version do
+    sh("bash", "#{lane_context[SharedValues::FASTLANE_DIR]}/fix_version.sh")
+  end
+
+  # Lane to fix version in archive
+  lane :fix_version_in_archive do
+    archive_path = lane_context[SharedValues::XCODEBUILD_ARCHIVE] || "build/ios/archive/Runner.xcarchive"
+    app_path = "#{archive_path}/Products/Applications/Runner.app"
+    info_plist = "#{app_path}/Info.plist"
+    
+    if File.exist?(info_plist)
+      current_version = get_info_plist_value(path: info_plist, key: "CFBundleShortVersionString")
+      if current_version == "1.0.0"
+        UI.message("Changing version from 1.0.0 to 1.0 in #{info_plist}")
+        set_info_plist_value(path: info_plist, key: "CFBundleShortVersionString", value: "1.0")
+        UI.success("Version fixed successfully")
+      else
+        UI.message("Version is already #{current_version}, no change needed")
+      end
+    else
+      UI.important("Info.plist not found at #{info_plist}, trying script method...")
+      sh("bash", "#{lane_context[SharedValues::FASTLANE_DIR]}/fix_version.sh", app_path)
+    end
+  end
+end
