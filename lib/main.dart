@@ -166,7 +166,7 @@ class MyApp extends StatelessWidget {
                   TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
                 },
               )
-            : const PageTransitionsTheme(
+            : PageTransitionsTheme(
                 builders: {
                   TargetPlatform.android: CupertinoPageTransitionsBuilder(),
                 },
