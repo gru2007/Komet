@@ -1,3 +1,8 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoPageTransition;
+import 'package:dynamic_color/dynamic_color.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -168,7 +173,8 @@ class MyApp extends StatelessWidget {
               )
             : PageTransitionsTheme(
                 builders: {
-                  TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+                  TargetPlatform.android:
+                      _CupertinoStyleAndroidPageTransitionsBuilder(),
                 },
               );
 
@@ -356,6 +362,27 @@ class _MiniFpsHudState extends State<_MiniFpsHud> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CupertinoStyleAndroidPageTransitionsBuilder
+    extends PageTransitionsBuilder {
+  const _CupertinoStyleAndroidPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return CupertinoPageTransition(
+      primaryRouteAnimation: animation,
+      secondaryRouteAnimation: secondaryAnimation,
+      linearTransition: false,
+      child: child,
     );
   }
 }
