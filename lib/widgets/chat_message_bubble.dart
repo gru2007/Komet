@@ -17,6 +17,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui';
 import 'package:flutter_linkify/flutter_linkify.dart';
+import 'package:linkify/linkify.dart' show UrlLinkifier;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:gwid/screens/chat_screen.dart';
 import 'package:gwid/services/avatar_cache_service.dart';
@@ -73,12 +74,22 @@ class DomainLinkifier extends Linkifier {
       caseSensitive: false,
     );
 
-    // URL без протокола - требуем www. или известную доменную зону
-    final urlWithoutProtocolRegex = RegExp(
+    // URL без протокола с www.
+    final urlWithWwwRegex = RegExp(
       r'(?:www\.)[а-яёa-z0-9-]{1,128}\.(?:' +
           validTlds +
           r')(?::[0-9]{1,5})?(?:/[а-яёa-z0-9.,_@%&?+=~/-]*)?(?:#[^ ]*)?',
       caseSensitive: false,
+    );
+
+    // Голые домены без протокола и без www (напр. max.ru, olo.su)
+    // Требуем word-boundary: слева не буква/цифра/точка, справа — не буква/цифра после TLD
+    final urlWithoutProtocolRegex = RegExp(
+      r'(?<![а-яёa-z0-9._-])(?:[а-яёa-z0-9](?:[а-яёa-z0-9-]{0,61}[а-яёa-z0-9])?\.)+(?:' +
+          validTlds +
+          r')(?::[0-9]{1,5})?(?:/[а-яёa-z0-9.,_@%&?+=~/-]*)?(?:#[^ ]*)?(?![а-яёa-z0-9])',
+      caseSensitive: false,
+      unicode: true,
     );
 
     // IP адреса
@@ -105,8 +116,22 @@ class DomainLinkifier extends Linkifier {
             ),
           );
         }
+        for (final match in urlWithWwwRegex.allMatches(text)) {
+          if (!allMatches.any(
+            (m) => match.start >= m.start && match.end <= m.end,
+          )) {
+            allMatches.add(
+              LinkifyMatch(
+                match.start,
+                match.end,
+                text.substring(match.start, match.end),
+                false,
+              ),
+            );
+          }
+        }
         for (final match in urlWithoutProtocolRegex.allMatches(text)) {
-          // Проверяем, что это не пересекается с уже найденными URL с протоколом
+          // Проверяем, что это не пересекается с уже найденными
           if (!allMatches.any(
             (m) => match.start >= m.start && match.end <= m.end,
           )) {
@@ -180,6 +205,7 @@ bool isMobile =
     Platform.instance.operatingSystem.android;
 
 class ChatMessageBubble extends StatelessWidget {
+  static final Expando<List<KometSegment>> _segmentsCache = Expando();
   final Message message;
   final bool isMe;
   final MessageReadStatus? readStatus;
@@ -272,13 +298,20 @@ class ChatMessageBubble extends StatelessWidget {
   }
 
   EdgeInsets _getMessageMargin(BuildContext context) {
+    final bool needsSmallLeftInset = !isMe && (
+      (!isGroupChat && !isChannel) || // direct chat (no leading avatar)
+      (isGroupChat && !isFirstInGroup) || // grouped messages without avatar
+      (isChannel) // channel messages typically have no per-message avatar
+    );
+    final leftMargin = needsSmallLeftInset ? 6.0 : 0.0;
+
     if (isLastInGroup) {
-      return const EdgeInsets.only(bottom: 6);
+      return EdgeInsets.only(left: leftMargin, bottom: 6);
     }
     if (isFirstInGroup) {
-      return const EdgeInsets.only(bottom: 2);
+      return EdgeInsets.only(left: leftMargin, bottom: 2);
     }
-    return const EdgeInsets.only(bottom: 2);
+    return EdgeInsets.only(left: leftMargin, bottom: 2);
   }
 
   Widget _buildForwardedMessage(
@@ -545,11 +578,10 @@ class ChatMessageBubble extends StatelessWidget {
                   );
 
                   final linkStyle = TextStyle(
-                    color: textColor.withValues(
-                      alpha: 0.9 * messageTextOpacity,
-                    ),
+                    color: const Color(0xFF90CAF9),
                     fontSize: 14,
                     decoration: TextDecoration.underline,
+                    decorationColor: const Color(0xFF90CAF9),
                   );
 
                   Future<void> onOpenLink(LinkableElement link) async {
@@ -935,6 +967,15 @@ class ChatMessageBubble extends StatelessWidget {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isUltraOptimized = themeProvider.ultraOptimizeChats;
 
+    // Системные сообщения (CONTROL) отображаются по центру без аватарки
+    final isSystemMessage =
+        message.attaches.isNotEmpty &&
+        message.attaches.every((a) => a['_type'] == 'CONTROL') &&
+        message.text.isEmpty;
+    if (isSystemMessage) {
+      return _buildSystemMessage(context);
+    }
+
     final isStickerOnly =
         message.attaches.length == 1 &&
         message.attaches.any((a) => a['_type'] == 'STICKER') &&
@@ -1030,14 +1071,19 @@ class ChatMessageBubble extends StatelessWidget {
     );
 
     Future<void> onOpenLink(LinkableElement link) async {
-      final uri = Uri.parse(link.url);
-      if (await canLaunchUrl(uri)) {
+      final uri = Uri.tryParse(link.url);
+      if (uri == null) return;
+      try {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Не удалось открыть ссылку: ${link.url}')),
-          );
+      } catch (_) {
+        try {
+          await launchUrl(uri, mode: LaunchMode.platformDefault);
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Не удалось открыть ссылку: ${link.url}')),
+            );
+          }
         }
       }
     }
@@ -1418,6 +1464,54 @@ class ChatMessageBubble extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildSystemMessage(BuildContext context) {
+    final control = message.attaches.firstWhere((a) => a['_type'] == 'CONTROL');
+    final shortMessage = control['shortMessage'] as String? ?? '';
+
+    if (shortMessage.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isDarkMode
+                ? Colors.white.withOpacity(0.1)
+                : Colors.black.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 14,
+                color: isDarkMode ? Colors.white70 : Colors.black54,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  shortMessage,
+                  style: TextStyle(
+                    color: isDarkMode ? Colors.white70 : Colors.black54,
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -2235,7 +2329,14 @@ class ChatMessageBubble extends StatelessWidget {
     bool isUltraOptimized,
     double messageTextOpacity,
   ) {
-    final photos = attaches.where((a) => a['_type'] == 'PHOTO').toList();
+    final photos = attaches.where((a) {
+      if (a['_type'] != 'PHOTO') return false;
+      // Real photo attaches have width/height from server
+      if (a['width'] != null || a['height'] != null) return true;
+      final url = (a['url'] ?? a['baseUrl'] ?? '') as String;
+      // Accept image-like URLs
+      return RegExp(r'\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)', caseSensitive: false).hasMatch(url);
+    }).toList();
     final List<Widget> widgets = [];
 
     if (photos.isEmpty) return widgets;
@@ -2506,6 +2607,64 @@ class ChatMessageBubble extends StatelessWidget {
     return widgets;
   }
 
+  List<Widget> _buildControlMessages(
+    BuildContext context,
+    List<Map<String, dynamic>> attaches,
+    Color textColor,
+    bool isUltraOptimized,
+    double messageTextOpacity,
+  ) {
+    final controls = attaches.where((a) {
+      final type = a['_type'];
+      return type == 'CONTROL';
+    }).toList();
+    final List<Widget> widgets = [];
+
+    if (controls.isEmpty) return widgets;
+
+    for (final control in controls) {
+      final event = control['event'] as String?;
+      final shortMessage = control['shortMessage'] as String?;
+
+      // Отображаем системные сообщения (звонки, и т.д.)
+      if (event == 'system' &&
+          shortMessage != null &&
+          shortMessage.isNotEmpty) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: textColor.withValues(alpha: 0.7 * messageTextOpacity),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    shortMessage,
+                    style: TextStyle(
+                      color: textColor.withValues(
+                        alpha: 0.8 * messageTextOpacity,
+                      ),
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        widgets.add(const SizedBox(height: 6));
+      }
+    }
+
+    return widgets;
+  }
+
   Widget _buildCallWidget(
     BuildContext context,
     Map<String, dynamic> callData,
@@ -2533,7 +2692,7 @@ class ChatMessageBubble extends StatelessWidget {
         final callTypeText = callType == 'VIDEO' ? 'Видеозвонок' : 'Звонок';
         callText = '$callTypeText, $durationText';
         callIcon = callType == 'VIDEO' ? Icons.videocam : Icons.call;
-        callColor = Theme.of(context).colorScheme.primary;
+        callColor = Colors.green; // Зелёный цвет для успешных звонков
         break;
 
       case 'MISSED':
@@ -2570,45 +2729,16 @@ class ChatMessageBubble extends StatelessWidget {
         break;
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: callColor.withValues(alpha: 0.1),
-        borderRadius: borderRadius,
-        border: Border.all(color: callColor.withValues(alpha: 0.3), width: 1),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: callColor.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(callIcon, color: callColor, size: 24),
-            ),
-            const SizedBox(width: 12),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    callText,
-                    style: TextStyle(
-                      color: callColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+    // Компактный вид как в оригинале - просто иконка + текст
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(callIcon, size: 18, color: callColor),
+          const SizedBox(width: 6),
+          Text(callText, style: TextStyle(color: callColor, fontSize: 14)),
+        ],
       ),
     );
   }
@@ -3560,9 +3690,17 @@ class ChatMessageBubble extends StatelessWidget {
 
     for (final audio in audioAttaches) {
       final url = (audio['url'] ?? audio['baseUrl'] ?? '').toString();
-      final durationSeconds = (audio['count'] is num)
+      // Пробуем получить длительность из разных полей (приходит в МИЛЛИСЕКУНДАХ!)
+      final durationMs = (audio['count'] is num)
           ? (audio['count'] as num).toInt()
-          : int.tryParse(audio['count']?.toString() ?? '') ?? 0;
+          : (audio['duration'] is num)
+          ? (audio['duration'] as num).toInt()
+          : int.tryParse(audio['count']?.toString() ?? '') ??
+                int.tryParse(audio['duration']?.toString() ?? '') ??
+                0;
+
+      // Конвертируем миллисекунды в секунды
+      final durationSeconds = durationMs ~/ 1000;
       final audioId = (audio['audioId'] is num)
           ? (audio['audioId'] as num).toInt()
           : (audio['id'] is num)
@@ -3770,15 +3908,6 @@ class ChatMessageBubble extends StatelessWidget {
       token: token,
       chatId: chatId,
     );
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Начато скачивание файла...'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
   }
 
   void _startBackgroundDownload(
@@ -3877,16 +4006,6 @@ class ChatMessageBubble extends StatelessWidget {
           musicMetadata[fileId] = track.toJson();
           await prefs.setString('music_metadata', jsonEncode(musicMetadata));
         }
-      }
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Файл сохранен: $fileName'),
-            duration: const Duration(seconds: 3),
-            action: SnackBarAction(label: 'OK', onPressed: () {}),
-          ),
-        );
       }
     } catch (e) {
       FileDownloadProgressService().clearProgress(fileId);
@@ -4564,6 +4683,13 @@ class ChatMessageBubble extends StatelessWidget {
             isUltraOptimized,
             messageTextOpacity,
           ),
+          ..._buildControlMessages(
+            context,
+            attachesToShow,
+            textColor,
+            isUltraOptimized,
+            messageTextOpacity,
+          ),
           ..._buildAudioAttachments(
             context,
             attachesToShow,
@@ -4664,7 +4790,7 @@ class ChatMessageBubble extends StatelessWidget {
               linkStyle: linkStyle,
               onOpen: onOpenLink,
               options: const LinkifyOptions(humanize: false),
-              linkifiers: const [DomainLinkifier(), EmailLinkifier()],
+              linkifiers: const [UrlLinkifier(), DomainLinkifier(), EmailLinkifier()],
               textAlign: TextAlign.left,
             )
           else if (message.text.contains("komet.cosmetic.") ||
@@ -4829,7 +4955,13 @@ class ChatMessageBubble extends StatelessWidget {
       if (markerType == null) {
         if (index < text.length) {
           segments.add(
-            KometSegment(text.substring(index), KometSegmentType.normal),
+            KometSegment(
+              text.substring(index),
+              KometSegmentType.normal,
+              absStart: index,
+              absEnd: text.length,
+              contentStart: index,
+            ),
           );
         }
         break;
@@ -4840,6 +4972,9 @@ class ChatMessageBubble extends StatelessWidget {
           KometSegment(
             text.substring(index, nextMarker),
             KometSegmentType.normal,
+            absStart: index,
+            absEnd: nextMarker,
+            contentStart: index,
           ),
         );
       }
@@ -4855,10 +4990,18 @@ class ChatMessageBubble extends StatelessWidget {
           if (secondQuote != -1) {
             final segmentText = afterHash.substring(textStart, secondQuote);
             final color = _parseKometHexColor(hexStr, null);
+            final segmentAbsEnd = nextMarker + prefix.length + secondQuote + 1;
             segments.add(
-              KometSegment(segmentText, KometSegmentType.pulse, color: color),
+              KometSegment(
+                segmentText,
+                KometSegmentType.pulse,
+                color: color,
+                absStart: nextMarker,
+                absEnd: segmentAbsEnd,
+                contentStart: nextMarker + prefix.length + textStart,
+              ),
             );
-            index = nextMarker + prefix.length + secondQuote + 2;
+            index = segmentAbsEnd;
             continue;
           }
         }
@@ -4869,27 +5012,51 @@ class ChatMessageBubble extends StatelessWidget {
           KometSegment(
             text.substring(nextMarker, safeEnd),
             KometSegmentType.normal,
+            absStart: nextMarker,
+            absEnd: safeEnd,
+            contentStart: nextMarker,
           ),
         );
         index = safeEnd;
       } else if (markerType == "galaxy") {
-        const prefix = "komet.cosmetic.galaxy''";
+        final bool isDouble = text.startsWith(
+          "komet.cosmetic.galaxy''",
+          nextMarker,
+        );
+        final String prefix = isDouble
+            ? "komet.cosmetic.galaxy''"
+            : "komet.cosmetic.galaxy'";
+        final String delimiter = isDouble ? "''" : "'";
+
         final textStart = nextMarker + prefix.length;
-        final quoteIndex = text.indexOf("''", textStart);
+        final quoteIndex = text.indexOf(delimiter, textStart);
         if (quoteIndex != -1) {
           final segmentText = text.substring(textStart, quoteIndex);
-          segments.add(KometSegment(segmentText, KometSegmentType.galaxy));
-          index = quoteIndex + 2;
+          final segmentAbsEnd = quoteIndex + delimiter.length;
+          segments.add(
+            KometSegment(
+              segmentText,
+              KometSegmentType.galaxy,
+              absStart: nextMarker,
+              absEnd: segmentAbsEnd,
+              contentStart: textStart,
+            ),
+          );
+          index = segmentAbsEnd;
           continue;
         }
 
+        final safeEnd = (textStart + 10).clamp(0, text.length);
         segments.add(
           KometSegment(
-            text.substring(nextMarker, textStart + 10),
+            text.substring(nextMarker, safeEnd),
             KometSegmentType.normal,
+            absStart: nextMarker,
+            absEnd: safeEnd,
+            contentStart: nextMarker,
           ),
         );
-        index = textStart + 10;
+        index = safeEnd == nextMarker ? text.length : safeEnd;
       } else if (markerType == "color") {
         const marker = 'komet.color_';
         final colorStart = nextMarker + marker.length;
@@ -4901,21 +5068,33 @@ class ChatMessageBubble extends StatelessWidget {
           if (secondQuote != -1) {
             final segmentText = text.substring(textStart, secondQuote);
             final color = _parseKometHexColor(colorStr, null);
+            final segmentAbsEnd = secondQuote + 1;
             segments.add(
-              KometSegment(segmentText, KometSegmentType.colored, color: color),
+              KometSegment(
+                segmentText,
+                KometSegmentType.colored,
+                color: color,
+                absStart: nextMarker,
+                absEnd: segmentAbsEnd,
+                contentStart: textStart,
+              ),
             );
-            index = secondQuote + 1;
+            index = segmentAbsEnd;
             continue;
           }
         }
 
+        final safeEnd = (colorStart + 10).clamp(0, text.length);
         segments.add(
           KometSegment(
-            text.substring(nextMarker, colorStart + 10),
+            text.substring(nextMarker, safeEnd),
             KometSegmentType.normal,
+            absStart: nextMarker,
+            absEnd: safeEnd,
+            contentStart: nextMarker,
           ),
         );
-        index = colorStart + 10;
+        index = safeEnd == nextMarker ? text.length : safeEnd;
       }
     }
 
@@ -4939,13 +5118,41 @@ class ChatMessageBubble extends StatelessWidget {
       text = '${text.substring(0, maxTextLength)}... (сообщение обрезано)';
     }
 
-    final segments = _parseMixedMessageSegments(text);
+    final segments = _segmentsCache[message] ??= _parseMixedMessageSegments(
+      text,
+    );
 
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 2.0, // Add spacing between segments
       runSpacing: 2.0, // Add spacing between lines
       children: segments.map((seg) {
+        // Slicing elements for the current segment
+        final List<Map<String, dynamic>> slicedElements = [];
+        // Content boundaries for the current segment
+        final int contentStart = seg.contentStart;
+        final int contentEnd = contentStart + seg.text.length;
+
+        for (final el in elements) {
+          final from = (el['from'] as int?) ?? 0;
+          final length = (el['length'] as int?) ?? 0;
+          if (length <= 0) continue;
+
+          final end = from + length;
+
+          // Check for overlap between segment content [contentStart, contentEnd] and element [from, end]
+          final overlapStart = from < contentStart ? contentStart : from;
+          final overlapEnd = end > contentEnd ? contentEnd : end;
+
+          if (overlapEnd > overlapStart) {
+            final mapped = Map<String, dynamic>.from(el);
+            // Translate original from to segment-relative from
+            mapped['from'] = overlapStart - contentStart;
+            mapped['length'] = overlapEnd - overlapStart;
+            slicedElements.add(mapped);
+          }
+        }
+
         switch (seg.type) {
           case KometSegmentType.normal:
           case KometSegmentType.colored:
@@ -4953,7 +5160,7 @@ class ChatMessageBubble extends StatelessWidget {
                 ? baseStyle.copyWith(color: seg.color)
                 : baseStyle;
 
-            if (elements.isEmpty) {
+            if (slicedElements.isEmpty) {
               return Container(
                 constraints: const BoxConstraints(maxWidth: double.infinity),
                 child: Linkify(
@@ -4962,7 +5169,7 @@ class ChatMessageBubble extends StatelessWidget {
                   linkStyle: linkStyle,
                   onOpen: onOpenLink,
                   options: const LinkifyOptions(humanize: false),
-                  linkifiers: const [DomainLinkifier(), EmailLinkifier()],
+                  linkifiers: const [UrlLinkifier(), DomainLinkifier(), EmailLinkifier()],
                   textAlign: TextAlign.left,
                   overflow: TextOverflow.visible,
                   softWrap: true,
@@ -4975,14 +5182,17 @@ class ChatMessageBubble extends StatelessWidget {
                   context,
                   seg.text,
                   baseForSeg,
-                  elements,
+                  slicedElements,
+                  bubbleLinkStyle: linkStyle,
                 ),
               );
             }
           case KometSegmentType.galaxy:
-            return Container(
-              constraints: const BoxConstraints(maxWidth: double.infinity),
-              child: GalaxyAnimatedText(text: seg.text),
+            return RepaintBoundary(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: double.infinity),
+                child: GalaxyAnimatedText(text: seg.text),
+              ),
             );
           case KometSegmentType.pulse:
             final hexStr = seg.color!
@@ -4991,10 +5201,12 @@ class ChatMessageBubble extends StatelessWidget {
                 .padLeft(8, '0')
                 .substring(2)
                 .toUpperCase();
-            return Container(
-              constraints: const BoxConstraints(maxWidth: double.infinity),
-              child: PulseAnimatedText(
-                text: "komet.cosmetic.pulse#$hexStr'${seg.text}'",
+            return RepaintBoundary(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: double.infinity),
+                child: PulseAnimatedText(
+                  text: "komet.cosmetic.pulse#$hexStr'${seg.text}'",
+                ),
               ),
             );
         }
@@ -5006,8 +5218,9 @@ class ChatMessageBubble extends StatelessWidget {
     BuildContext context,
     String text,
     TextStyle baseStyle,
-    List<Map<String, dynamic>> elements,
-  ) {
+    List<Map<String, dynamic>> elements, {
+    TextStyle? bubbleLinkStyle,
+  }) {
     if (text.isEmpty || elements.isEmpty) {
       return Text(
         text,
@@ -5089,6 +5302,7 @@ class ChatMessageBubble extends StatelessWidget {
           segText,
           baseStyle,
           segElements,
+          bubbleLinkStyle: bubbleLinkStyle,
         );
 
         if (!isQuote) return segmentWidget;
@@ -5189,6 +5403,54 @@ class ChatMessageBubble extends StatelessWidget {
       return mentionEntityIds[i];
     }
 
+    // Regex для детекции URL в форматированном тексте (такой же как в DomainLinkifier)
+    const _frtValidTlds =
+        r'рф|онлайн|сайт|ру|su|com|net|org|mil|edu|arpa|gov|biz|info|aero|inc|name|app|dev|io|co|shop|club|guru|ninja|xyz|top|store|tech|space|world|today|news|ua|by|kz|uz|ge|az|am|md|tj|tm|kg|lv|lt|ee|pl|cz|sk|hu|ro|bg|rs|hr|si|al|ba|mk|me|cn|jp|kr|tw|hk|sg|my|id|th|vn|ph|in|pk|bd|lk|np|au|nz|ca|us|uk|de|fr|it|es|pt|nl|be|ch|at|se|no|dk|fi|is|ie|eu|mobi|travel|museum|coop|jobs|дети|москва|бел';
+    final _frtUrlRegex = RegExp(
+      r'(?:(?:https?|ftp)://(?:[а-яёa-z0-9-]{1,128}\.)+(?:' +
+          _frtValidTlds +
+          r')(?::[0-9]{1,5})?(?:/[а-яёa-z0-9.,_@%&?+=~/#-]*)?)'
+          r'|'
+          r'(?:(?<![а-яёa-z0-9._-])(?:[а-яёa-z0-9](?:[а-яёa-z0-9-]{0,61}[а-яёa-z0-9])?\.)+(?:' +
+          _frtValidTlds +
+          r')(?::[0-9]{1,5})?(?:/[а-яёa-z0-9.,_@%&?+=~/#-]*)?(?![а-яёa-z0-9]))',
+      caseSensitive: false,
+      unicode: true,
+    );
+
+    void addSpansForText(String spanText, TextStyle style) {
+      final matches = _frtUrlRegex.allMatches(spanText).toList();
+      if (matches.isEmpty) {
+        spans.add(TextSpan(text: spanText, style: style));
+        return;
+      }
+      int pos = 0;
+      for (final m in matches) {
+        if (m.start > pos) {
+          spans.add(TextSpan(text: spanText.substring(pos, m.start), style: style));
+        }
+        final rawUrl = spanText.substring(m.start, m.end);
+        final fullUrl = rawUrl.startsWith('http://') || rawUrl.startsWith('https://') || rawUrl.startsWith('ftp://')
+            ? rawUrl
+            : 'https://$rawUrl';
+        final urlStyle = bubbleLinkStyle ?? style.copyWith(
+          color: Colors.blue,
+          decoration: TextDecoration.underline,
+          decorationColor: Colors.blue,
+        );
+        final recognizer = TapGestureRecognizer()
+          ..onTap = () async {
+            final uri = Uri.tryParse(fullUrl);
+            if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+          };
+        spans.add(TextSpan(text: rawUrl, style: urlStyle, recognizer: recognizer));
+        pos = m.end;
+      }
+      if (pos < spanText.length) {
+        spans.add(TextSpan(text: spanText.substring(pos), style: style));
+      }
+    }
+
     while (start < text.length) {
       int end = start + 1;
       final style = styleForIndex(start);
@@ -5215,7 +5477,7 @@ class ChatMessageBubble extends StatelessWidget {
           ),
         );
       } else {
-        spans.add(TextSpan(text: spanText, style: style));
+        addSpansForText(spanText, style);
       }
       start = end;
     }
@@ -5331,7 +5593,8 @@ class ChatMessageBubble extends StatelessWidget {
       ThemeData.estimateBrightnessForColor(bubbleColor),
     ).isDark;
     if (isMe) {
-      return isDark ? Colors.white : Colors.blue[700]!;
+      // На тёмном пузырьке — светло-голубой, на светлом — стандартный синий
+      return isDark ? const Color(0xFF90CAF9) : Colors.blue[700]!;
     }
     return Colors.blue[700]!;
   }
@@ -8567,7 +8830,14 @@ class _VideoCirclePlayerState extends State<_VideoCirclePlayer> {
                         ),
                       )
               else
-                VideoPlayer(_controller!),
+                FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _controller!.value.size.width,
+                    height: _controller!.value.size.height,
+                    child: VideoPlayer(_controller!),
+                  ),
+                ),
 
               if (_isLoading)
                 Container(

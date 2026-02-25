@@ -42,7 +42,22 @@ extension ApiServiceContacts on ApiService {
       'forAll': forAll,
       'lastEventTime': DateTime.now().millisecondsSinceEpoch,
     };
-    _sendMessage(54, payload);
+
+    final int seq = await _sendMessage(54, payload);
+
+    // Слушаем messages stream — ERROR-пакеты теперь тоже попадают туда с cmd=3 и нужным seq
+    final response = await messages
+        .firstWhere((msg) => msg['seq'] == seq)
+        .timeout(const Duration(seconds: 10));
+
+    if (response['cmd'] == 3) {
+      final errorPayload = response['payload'] ?? {};
+      final errorMessage =
+          errorPayload['localizedMessage'] ??
+          errorPayload['message'] ??
+          'Ошибка очистки истории чата';
+      throw Exception(errorMessage);
+    }
   }
 
   Future<Map<String, dynamic>> getChatInfoByLink(String link) async {
@@ -278,8 +293,14 @@ extension ApiServiceContacts on ApiService {
       return [];
     }
 
+    final idsToFetch = contactIds.where((id) => !_missingContactIds.contains(id)).toList();
+    
+    if (idsToFetch.isEmpty) {
+      return [];
+    }
+
     try {
-      final int contactSeq = await _sendMessage(32, {"contactIds": contactIds});
+      final int contactSeq = await _sendMessage(32, {"contactIds": idsToFetch});
 
       final contactResponse = await messages
           .firstWhere((msg) => msg['seq'] == contactSeq)
@@ -295,12 +316,17 @@ extension ApiServiceContacts on ApiService {
           .map((json) => Contact.fromJson(json))
           .toList();
 
-      if (contacts.length < contactIds.length) {
+      if (contacts.length < idsToFetch.length) {
         final receivedIds = contacts.map((c) => c.id).toSet();
-        final missingIds = contactIds
+        final missingIds = idsToFetch
             .where((id) => !receivedIds.contains(id))
             .toList();
-        debugPrint('Missing contact IDs: $missingIds');
+        
+        for (final missingId in missingIds) {
+          if (_missingContactIds.add(missingId)) {
+            debugPrint('⚠️ Контакт $missingId не найден, добавлен в черный список');
+          }
+        }
       }
 
       for (final contact in contacts) {
@@ -310,5 +336,33 @@ extension ApiServiceContacts on ApiService {
     } catch (e) {
       return [];
     }
+  }
+
+  /// Удаление канала (только для владельца) — opcode 52
+  Future<void> deleteChannel(int chatId) async {
+    await waitUntilOnline();
+    final payload = {
+      'chatId': chatId,
+      'lastEventTime': DateTime.now().millisecondsSinceEpoch,
+      'forAll': true,
+    };
+    _sendMessage(52, payload);
+  }
+
+  /// Передать права владельца каналу — opcode 55
+  Future<void> transferChannelOwnership(int chatId, int newOwnerId) async {
+    await waitUntilOnline();
+    final payload = {
+      'chatId': chatId,
+      'changeOwnerId': newOwnerId,
+    };
+    _sendMessage(55, payload);
+  }
+
+  /// Выйти из канала — opcode 58
+  Future<void> leaveChat(int chatId) async {
+    await waitUntilOnline();
+    final payload = {'chatId': chatId};
+    _sendMessage(58, payload);
   }
 }

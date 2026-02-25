@@ -51,6 +51,9 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
       _waveformData = widget.waveBytes!.toList();
     } else if (widget.wave != null && widget.wave!.isNotEmpty) {
       _decodeWaveform(widget.wave!);
+    } else {
+      // Если waveform нет - генерируем простую заглушку
+      _generateFallbackWaveform();
     }
 
     if (widget.url.isNotEmpty) {
@@ -70,7 +73,13 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
 
         if (state.processingState == ProcessingState.completed &&
             !wasCompleted) {
+          // Сбрасываем позицию и останавливаем, чтобы кнопка вернулась к play
+          _audioPlayer.seek(Duration.zero);
           _audioPlayer.pause();
+          setState(() {
+            _isPlaying = false;
+            _position = Duration.zero;
+          });
         }
       }
     });
@@ -83,6 +92,8 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
             _isPlaying;
 
         if (reachedEnd) {
+          // Сбрасываем позицию и останавливаем
+          _audioPlayer.seek(Duration.zero);
           _audioPlayer.pause();
         }
 
@@ -91,6 +102,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
           if (reachedEnd) {
             _isPlaying = false;
             _isCompleted = true;
+            _position = Duration.zero;
           }
         });
       }
@@ -117,6 +129,18 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
     } catch (e) {
       _waveformData = null;
     }
+  }
+  
+  void _generateFallbackWaveform() {
+    // Генерируем простую waveform если её нет
+    // Используем случайные значения для имитации звуковой волны
+    final random = widget.duration.hashCode; // Детерминированный "случайный" seed
+    _waveformData = List.generate(40, (i) {
+      // Создаём волнообразный паттерн
+      final base = (i % 10) / 10.0;
+      final wave = (((random + i * 7) % 100) / 100.0) * 0.6 + base * 0.4;
+      return (wave * 200 + 55).toInt(); // Значения от 55 до 255
+    });
   }
 
   Future<void> _preCacheAudio() async {
@@ -305,7 +329,9 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : Icon(
-                          _isPlaying ? Icons.pause : Icons.play_arrow,
+                          _isPlaying 
+                              ? Icons.pause 
+                              : (_isCompleted ? Icons.replay : Icons.play_arrow),
                           color: widget.textColor.withValues(
                             alpha: 0.8 * widget.messageTextOpacity,
                           ),
@@ -319,76 +345,46 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (_waveformData != null && _waveformData!.isNotEmpty)
-                      SizedBox(
-                        height: 30,
-                        child: CustomPaint(
-                          painter: WaveformPainter(
-                            waveform: _waveformData!,
-                            progress: progress,
-                            color: widget.textColor.withValues(
-                              alpha: 0.6 * widget.messageTextOpacity,
-                            ),
-                            progressColor: widget.textColor.withValues(
-                              alpha: 0.9 * widget.messageTextOpacity,
-                            ),
+                    // Всегда показываем waveform (либо настоящую, либо сгенерированную)
+                    SizedBox(
+                      height: 30,
+                      child: CustomPaint(
+                        painter: WaveformPainter(
+                          waveform: _waveformData ?? [],
+                          progress: progress,
+                          color: widget.textColor.withValues(
+                            alpha: 0.6 * widget.messageTextOpacity,
                           ),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              return GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTapDown: (details) {
-                                  final tapProgress =
-                                      details.localPosition.dx /
-                                      constraints.maxWidth;
-                                  final clampedProgress = tapProgress.clamp(
-                                    0.0,
-                                    1.0,
-                                  );
-                                  final newPosition = Duration(
-                                    milliseconds:
-                                        (_totalDuration.inMilliseconds *
-                                                clampedProgress)
-                                            .round(),
-                                  );
-                                  _seek(newPosition);
-                                },
-                                onLongPress: () {},
-                              );
-                            },
-                          ),
-                        ),
-                      )
-                    else
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          activeTrackColor: widget.textColor.withValues(
-                            alpha: 0.8 * widget.messageTextOpacity,
-                          ),
-                          inactiveTrackColor: widget.textColor.withValues(
-                            alpha: 0.1,
-                          ),
-                          thumbColor: widget.textColor.withValues(
+                          progressColor: widget.textColor.withValues(
                             alpha: 0.9 * widget.messageTextOpacity,
                           ),
-                          overlayColor: widget.textColor.withValues(alpha: 0.1),
-                          thumbShape: const RoundSliderThumbShape(
-                            enabledThumbRadius: 6,
-                          ),
-                          trackHeight: 3,
                         ),
-                        child: Slider(
-                          value: progress.clamp(0.0, 1.0),
-                          onChanged: (value) {
-                            final newPosition = Duration(
-                              milliseconds:
-                                  (_totalDuration.inMilliseconds * value)
-                                      .round(),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTapDown: (details) {
+                                final tapProgress =
+                                    details.localPosition.dx /
+                                    constraints.maxWidth;
+                                final clampedProgress = tapProgress.clamp(
+                                  0.0,
+                                  1.0,
+                                );
+                                final newPosition = Duration(
+                                  milliseconds:
+                                      (_totalDuration.inMilliseconds *
+                                              clampedProgress)
+                                          .round(),
+                                );
+                                _seek(newPosition);
+                              },
+                              onLongPress: () {},
                             );
-                            _seek(newPosition);
                           },
                         ),
                       ),
+                    ),
                     const SizedBox(height: 4),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -403,9 +399,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                           ),
                         ),
                         Text(
-                          _totalDuration.inMilliseconds > 0
-                              ? _formatDuration(_totalDuration)
-                              : widget.durationText,
+                          _formatDuration(_totalDuration),
                           style: TextStyle(
                             color: widget.textColor.withValues(
                               alpha: 0.7 * widget.messageTextOpacity,

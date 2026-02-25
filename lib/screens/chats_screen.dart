@@ -39,6 +39,7 @@ import 'package:gwid/models/account.dart';
 import 'package:gwid/services/message_queue_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:gwid/services/contact_local_names_service.dart';
+import 'package:gwid/services/message_read_status_service.dart';
 
 import 'package:gwid/screens/chat/models/search_result.dart';
 import 'package:gwid/screens/chat/widgets/typing_dots.dart';
@@ -47,6 +48,7 @@ import 'package:gwid/screens/chat/widgets/chats_screen_scaffold.dart';
 import 'package:gwid/screens/chat/widgets/chats_list_page.dart';
 import 'package:gwid/screens/chat/dialogs/add_chats_to_folder_dialog.dart';
 import 'package:gwid/screens/chat/dialogs/read_settings_dialog.dart';
+import 'package:gwid/screens/settings/chat_notification_settings_dialog.dart';
 import 'package:gwid/screens/chat/screens/calls_screen.dart';
 import 'package:gwid/screens/chat/screens/sferum_webview_panel.dart';
 import 'package:gwid/screens/chat/handlers/message_handler.dart';
@@ -87,7 +89,8 @@ class _ChatsScreenState extends State<ChatsScreen>
   StreamSubscription? _apiSubscription;
   List<Chat> _allChats = [];
   bool _chatsLoaded = false;
-  bool _chatOrderLoaded = false; // Флаг для предотвращения повторной загрузки порядка
+  bool _chatOrderLoaded =
+      false; // Флаг для предотвращения повторной загрузки порядка
   MessageHandler? _messageHandler;
   List<Chat> _filteredChats = [];
   Map<int, Contact> _contacts = {};
@@ -96,6 +99,14 @@ class _ChatsScreenState extends State<ChatsScreen>
   // Используем Debouncer из OptimizedStateMixin вместо Timer
   List<SearchResult> _searchResults = [];
   String _searchFilter = 'all';
+
+  Timer? _globalSearchDebounce;
+  int _globalSearchToken = 0;
+  bool _isGlobalSearchLoading = false;
+  String? _globalSearchError;
+  List<Map<String, dynamic>> _globalSearchResults = [];
+  String? _globalSearchMarker;
+  bool _globalSearchHasMore = false;
   bool _hasRequestedBlockedContacts = false;
   final Set<int> _loadingContactIds = {};
   bool _isSwitchingAccounts = false;
@@ -113,6 +124,7 @@ class _ChatsScreenState extends State<ChatsScreen>
   StreamSubscription<void>? _connectionStatusSubscription;
   StreamSubscription<String>? _connectionStateSubscription;
   StreamSubscription<int>? _contactNamesSubscription;
+  StreamSubscription<MessageReadUpdate>? _readStatusSubscription;
   bool _isAccountsExpanded = false;
   bool _isReconnecting = false;
 
@@ -166,7 +178,7 @@ class _ChatsScreenState extends State<ChatsScreen>
     _searchController.addListener(_onSearchChanged);
     _searchFocusNode.addListener(_onSearchFocusChanged);
 
-    _listenForUpdates();
+    unawaited(_listenForUpdates());
 
     _connectionStateSubscription = ApiService.instance.connectionStatus.listen((
       status,
@@ -189,6 +201,20 @@ class _ChatsScreenState extends State<ChatsScreen>
 
     _contactNamesSubscription = ContactLocalNamesService().changes.listen((_) {
       if (mounted) setState(() {});
+    });
+
+    // Подписываемся на обновления статусов прочитанности
+    _readStatusSubscription = MessageReadStatusService().statusUpdates.listen((
+      update,
+    ) {
+      print(
+        '🔔 [ChatsScreen] Получено обновление статуса прочитанности для чата ${update.chatId}',
+      );
+      if (mounted) {
+        setState(() {
+          // setState триггерит перерисовку списка чатов
+        });
+      }
     });
   }
 
@@ -354,10 +380,9 @@ class _ChatsScreenState extends State<ChatsScreen>
       final updatedChat = _allChats[chatIndex].copyWith(
         lastMessage: newLastMessage,
       );
-      setState(() {
-        _allChats[chatIndex] = updatedChat;
-        _filterChats();
-      });
+      _allChats[chatIndex] = updatedChat;
+      _filterChats();
+      setState(() {});
     }
   }
 
@@ -443,58 +468,60 @@ class _ChatsScreenState extends State<ChatsScreen>
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           title: const Text('Создать канал'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleController,
-                decoration: const InputDecoration(
-                  labelText: 'Название канала',
-                  border: OutlineInputBorder(),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(
+                    labelText: 'Название канала',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              const Text('Выберите первых подписчиков:'),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 200,
-                width: 300,
-                child: ListView.builder(
-                  itemCount: availableContacts.length,
-                  itemBuilder: (context, index) {
-                    final contact = availableContacts[index];
-                    final isSelected = selectedContacts.contains(contact.id);
+                const SizedBox(height: 16),
+                const Text('Выберите первых подписчиков:'),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 200,
+                  width: 300,
+                  child: ListView.builder(
+                    itemCount: availableContacts.length,
+                    itemBuilder: (context, index) {
+                      final contact = availableContacts[index];
+                      final isSelected = selectedContacts.contains(contact.id);
 
-                    return CheckboxListTile(
-                      title: Text(
-                        getContactDisplayName(
-                          contactId: contact.id,
-                          originalName: contact.name,
-                          originalFirstName: contact.firstName,
-                          originalLastName: contact.lastName,
+                      return CheckboxListTile(
+                        title: Text(
+                          getContactDisplayName(
+                            contactId: contact.id,
+                            originalName: contact.name,
+                            originalFirstName: contact.firstName,
+                            originalLastName: contact.lastName,
+                          ),
                         ),
-                      ),
-                      subtitle: Text(
-                        contact.firstName.isNotEmpty &&
-                                contact.lastName.isNotEmpty
-                            ? '${contact.firstName} ${contact.lastName}'
-                            : '',
-                      ),
-                      value: isSelected,
-                      onChanged: (value) {
-                        setState(() {
-                          if (value == true) {
-                            selectedContacts.add(contact.id);
-                          } else {
-                            selectedContacts.remove(contact.id);
-                          }
-                        });
-                      },
-                    );
-                  },
+                        subtitle: Text(
+                          contact.firstName.isNotEmpty &&
+                                  contact.lastName.isNotEmpty
+                              ? '${contact.firstName} ${contact.lastName}'
+                              : '',
+                        ),
+                        value: isSelected,
+                        onChanged: (value) {
+                          setState(() {
+                            if (value == true) {
+                              selectedContacts.add(contact.id);
+                            } else {
+                              selectedContacts.remove(contact.id);
+                            }
+                          });
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -519,8 +546,11 @@ class _ChatsScreenState extends State<ChatsScreen>
     );
   }
 
-  void _listenForUpdates() {
-    _messageHandler?.listen()?.cancel();
+  Future<void> _listenForUpdates() async {
+    // КРИТИЧНО: отменяем старую подписку перед созданием новой
+    await _apiSubscription?.cancel();
+    _apiSubscription = null;
+
     final handler = MessageHandler(
       setState: setState,
       getContext: () => context,
@@ -561,11 +591,18 @@ class _ChatsScreenState extends State<ChatsScreen>
       _allChats.removeWhere((c) => c.id == chatId);
       _filteredChats.removeWhere((c) => c.id == chatId);
     });
+    // Чистим disk cache чтобы чат не воскрес после перезапуска
+    ChatCacheService().removeChatFromCachedList(chatId);
+    ChatCacheService().clearChatCache(chatId);
+    // Убираем чат из кэшированного payload API
+    ApiService.instance.removeChatFromLastPayload(chatId);
   }
 
   final Map<int, Timer> _typingDecayTimers = {};
   final Set<int> _typingChats = {};
   final Set<int> _onlineChats = {};
+
+  bool _isFilteringInProgress = false;
   void _setTypingForChat(int chatId) {
     _typingChats.add(chatId);
     _typingDecayTimers[chatId]?.cancel();
@@ -616,8 +653,9 @@ class _ChatsScreenState extends State<ChatsScreen>
                 .where((json) => json != null)
                 .map(
                   (json) =>
-                      Chat.fromJson((json as Map).cast<String, dynamic>()),
+                      Chat.tryFromJson((json as Map).cast<String, dynamic>()),
                 )
+                .whereType<Chat>()
                 .toList();
             _contacts.clear();
             for (final contactJson in contacts) {
@@ -628,13 +666,12 @@ class _ChatsScreenState extends State<ChatsScreen>
               _contacts[contact.id] = contact;
             }
 
-            setState(() {
-              if (profileData != null) {
-                _myProfile = Profile.fromJson(profileData);
-                _isProfileLoading = false;
-              }
-              _filterChats();
-            });
+            if (profileData != null) {
+              _myProfile = Profile.fromJson(profileData);
+              _isProfileLoading = false;
+            }
+            _filterChats();
+            setState(() {});
           }
         })
         .catchError((error) {
@@ -652,127 +689,129 @@ class _ChatsScreenState extends State<ChatsScreen>
       builder: (BuildContext context) {
         return Container(
           padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Создать',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 20),
-
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(
-                    context,
-                  ).colorScheme.primaryContainer,
-                  child: Icon(
-                    Icons.group_add,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                title: const Text('Создать группу'),
-                subtitle: const Text('Создать чат с несколькими участниками'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showCreateGroupDialog();
-                },
-              ),
-
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(
+                const SizedBox(height: 20),
+                Text(
+                  'Создать',
+                  style: Theme.of(
                     context,
-                  ).colorScheme.primaryContainer,
-                  child: Icon(
-                    Icons.campaign,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  ),
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
-                title: const Text('Создать канал'),
-                subtitle: const Text('Публичные посты для подписчиков'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showCreateChannelDialog();
-                },
-              ),
+                const SizedBox(height: 20),
 
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(
-                    context,
-                  ).colorScheme.primaryContainer,
-                  child: Icon(
-                    Icons.person_search,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  ),
-                ),
-                title: const Text('Найти контакт'),
-                subtitle: const Text('Поиск по номеру телефона'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const SearchContactScreen(),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer,
+                    child: Icon(
+                      Icons.group_add,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
                     ),
-                  );
-                },
-              ),
-
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(
-                    context,
-                  ).colorScheme.secondaryContainer,
-                  child: Icon(
-                    Icons.link,
-                    color: Theme.of(context).colorScheme.onSecondaryContainer,
                   ),
+                  title: const Text('Создать группу'),
+                  subtitle: const Text('Создать чат с несколькими участниками'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showCreateGroupDialog();
+                  },
                 ),
-                title: const Text('Присоединиться по ссылке'),
-                subtitle: const Text('По ссылке-приглашению'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const JoinGroupScreen(),
-                    ),
-                  );
-                },
-              ),
 
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(
-                    context,
-                  ).colorScheme.primaryContainer,
-                  child: const Icon(Icons.download, color: Colors.white),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer,
+                    child: Icon(
+                      Icons.campaign,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                  title: const Text('Создать канал'),
+                  subtitle: const Text('Публичные посты для подписчиков'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showCreateChannelDialog();
+                  },
                 ),
-                title: const Text('Загрузки'),
-                subtitle: const Text('Скачанные файлы'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const DownloadsScreen(),
-                    ),
-                  );
-                },
-              ),
 
-              const SizedBox(height: 20),
-            ],
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer,
+                    child: Icon(
+                      Icons.person_search,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                  title: const Text('Найти контакт'),
+                  subtitle: const Text('Поиск по номеру телефона'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const SearchContactScreen(),
+                      ),
+                    );
+                  },
+                ),
+
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.secondaryContainer,
+                    child: Icon(
+                      Icons.link,
+                      color: Theme.of(context).colorScheme.onSecondaryContainer,
+                    ),
+                  ),
+                  title: const Text('Присоединиться по ссылке'),
+                  subtitle: const Text('По ссылке-приглашению'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const JoinGroupScreen(),
+                      ),
+                    );
+                  },
+                ),
+
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer,
+                    child: const Icon(Icons.download, color: Colors.white),
+                  ),
+                  title: const Text('Загрузки'),
+                  subtitle: const Text('Скачанные файлы'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const DownloadsScreen(),
+                      ),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         );
       },
@@ -797,59 +836,61 @@ class _ChatsScreenState extends State<ChatsScreen>
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           title: const Text('Создать группу'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Название группы',
-                  border: OutlineInputBorder(),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Название группы',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              const Text('Выберите участников:'),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 200,
-                width: 300,
+                const SizedBox(height: 16),
+                const Text('Выберите участников:'),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 200,
+                  width: 300,
 
-                child: ListView.builder(
-                  itemCount: availableContacts.length,
-                  itemBuilder: (context, index) {
-                    final contact = availableContacts[index];
-                    final isSelected = selectedContacts.contains(contact.id);
+                  child: ListView.builder(
+                    itemCount: availableContacts.length,
+                    itemBuilder: (context, index) {
+                      final contact = availableContacts[index];
+                      final isSelected = selectedContacts.contains(contact.id);
 
-                    return CheckboxListTile(
-                      title: Text(
-                        getContactDisplayName(
-                          contactId: contact.id,
-                          originalName: contact.name,
-                          originalFirstName: contact.firstName,
-                          originalLastName: contact.lastName,
+                      return CheckboxListTile(
+                        title: Text(
+                          getContactDisplayName(
+                            contactId: contact.id,
+                            originalName: contact.name,
+                            originalFirstName: contact.firstName,
+                            originalLastName: contact.lastName,
+                          ),
                         ),
-                      ),
-                      subtitle: Text(
-                        contact.firstName.isNotEmpty &&
-                                contact.lastName.isNotEmpty
-                            ? '${contact.firstName} ${contact.lastName}'
-                            : '',
-                      ),
-                      value: isSelected,
-                      onChanged: (value) {
-                        setState(() {
-                          if (value == true) {
-                            selectedContacts.add(contact.id);
-                          } else {
-                            selectedContacts.remove(contact.id);
-                          }
-                        });
-                      },
-                    );
-                  },
+                        subtitle: Text(
+                          contact.firstName.isNotEmpty &&
+                                  contact.lastName.isNotEmpty
+                              ? '${contact.firstName} ${contact.lastName}'
+                              : '',
+                        ),
+                        value: isSelected,
+                        onChanged: (value) {
+                          setState(() {
+                            if (value == true) {
+                              selectedContacts.add(contact.id);
+                            } else {
+                              selectedContacts.remove(contact.id);
+                            }
+                          });
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -1032,49 +1073,84 @@ class _ChatsScreenState extends State<ChatsScreen>
   }
 
   void _filterChats() {
-    final query = _searchController.text.toLowerCase();
-    List<Chat> chatsToFilter = _allChats;
-
-    if (_selectedFolderId != null) {
-      final selectedFolder = _folders.firstWhere(
-        (f) => f.id == _selectedFolderId,
-        orElse: () => _folders.first,
-      );
-      chatsToFilter = _allChats
-          .where((chat) => _chatBelongsToFolder(chat, selectedFolder))
-          .toList();
+    // КРИТИЧНО: Блокируем реентрантные вызовы
+    if (_isFilteringInProgress) {
+      print('⚠️ [filterChats] УЖЕ ВЫПОЛНЯЕТСЯ, пропускаем');
+      return;
     }
 
-    if (query.isEmpty && !_searchFocusNode.hasFocus) {
-      _filteredChats = List.from(chatsToFilter);
+    _isFilteringInProgress = true;
 
-      // Сортировка по времени последнего сообщения (новые сверху)
-      _filteredChats.sort((a, b) {
-        return b.lastMessage.time.compareTo(a.lastMessage.time);
-      });
-    } else if (_searchFocusNode.hasFocus && query.isEmpty) {
-      _filteredChats = [];
-    } else if (query.isNotEmpty) {
-      _filteredChats = chatsToFilter.where((chat) {
-        final isSavedMessages = _isSavedMessages(chat);
-        if (isSavedMessages) {
-          return "избранное".contains(query);
-        }
-        final otherParticipantId = chat.participantIds.firstWhere(
-          (id) => id != _myId,
-          orElse: () => 0,
+    try {
+      // DEBUG: Выводим откуда вызван
+      print(
+        '🔍 [filterChats] Начало фильтрации, _allChats.length=${_allChats.length}',
+      );
+      print('📍 [filterChats] Вызван из:\n${StackTrace.current}');
+      final query = _searchController.text.toLowerCase();
+      List<Chat> chatsToFilter = _allChats;
+
+      if (_selectedFolderId != null) {
+        print('🔍 [filterChats] Фильтруем по папке $_selectedFolderId');
+        final selectedFolder = _folders.firstWhere(
+          (f) => f.id == _selectedFolderId,
+          orElse: () => _folders.first,
         );
-        final contactName =
-            _contacts[otherParticipantId]?.name.toLowerCase() ?? '';
-        return contactName.contains(query);
-      }).toList();
+        chatsToFilter = _allChats
+            .where((chat) => _chatBelongsToFolder(chat, selectedFolder))
+            .toList();
+        print(
+          '🔍 [filterChats] После фильтрации по папке: ${chatsToFilter.length}',
+        );
+      }
 
-      // Сортировка по времени последнего сообщения (новые сверху)
-      _filteredChats.sort((a, b) {
-        return b.lastMessage.time.compareTo(a.lastMessage.time);
-      });
-    } else {
-      _filteredChats = [];
+      if (query.isEmpty && !_searchFocusNode.hasFocus) {
+        print('🔍 [filterChats] Копируем все чаты');
+        _filteredChats = List.from(chatsToFilter);
+
+        print('🔍 [filterChats] Сортируем ${_filteredChats.length} чатов...');
+        _filteredChats.sort((a, b) {
+          final aPinned = a.favIndex > 0;
+          final bPinned = b.favIndex > 0;
+          if (aPinned && bPinned) return a.favIndex.compareTo(b.favIndex);
+          if (aPinned) return -1;
+          if (bPinned) return 1;
+          return b.lastMessage.time.compareTo(a.lastMessage.time);
+        });
+        print('🔍 [filterChats] Сортировка завершена');
+      } else if (_searchFocusNode.hasFocus && query.isEmpty) {
+        _filteredChats = [];
+      } else if (query.isNotEmpty) {
+        _filteredChats = chatsToFilter.where((chat) {
+          final isSavedMessages = _isSavedMessages(chat);
+          if (isSavedMessages) {
+            return "избранное".contains(query);
+          }
+          final otherParticipantId = chat.participantIds.firstWhere(
+            (id) => id != _myId,
+            orElse: () => 0,
+          );
+          final contactName =
+              _contacts[otherParticipantId]?.name.toLowerCase() ?? '';
+          return contactName.contains(query);
+        }).toList();
+
+        _filteredChats.sort((a, b) {
+          final aPinned = a.favIndex > 0;
+          final bPinned = b.favIndex > 0;
+          if (aPinned && bPinned) return a.favIndex.compareTo(b.favIndex);
+          if (aPinned) return -1;
+          if (bPinned) return 1;
+          return b.lastMessage.time.compareTo(a.lastMessage.time);
+        });
+      } else {
+        _filteredChats = [];
+      }
+      print(
+        '✅ [filterChats] Завершено, _filteredChats.length=${_filteredChats.length}',
+      );
+    } finally {
+      _isFilteringInProgress = false;
     }
   }
 
@@ -1085,6 +1161,95 @@ class _ChatsScreenState extends State<ChatsScreen>
     // Используем debouncedSetState для оптимизации
     debouncedSetState('search', delay: const Duration(milliseconds: 300));
     _performSearch();
+    _scheduleGlobalSearch();
+  }
+
+  void _scheduleGlobalSearch() {
+    _globalSearchDebounce?.cancel();
+
+    final q = _searchQuery.trim();
+    if (q.isEmpty) {
+      setState(() {
+        _isGlobalSearchLoading = false;
+        _globalSearchError = null;
+        _globalSearchResults = [];
+        _globalSearchMarker = null;
+        _globalSearchHasMore = false;
+      });
+      return;
+    }
+
+    _globalSearchDebounce = Timer(const Duration(milliseconds: 400), () {
+      unawaited(_performGlobalSearch(reset: true));
+    });
+  }
+
+  Future<void> _performGlobalSearch({required bool reset}) async {
+    final q = _searchQuery.trim();
+    if (q.isEmpty) return;
+
+    final int token = ++_globalSearchToken;
+
+    if (reset) {
+      setState(() {
+        _isGlobalSearchLoading = true;
+        _globalSearchError = null;
+        _globalSearchResults = [];
+        _globalSearchMarker = null;
+        _globalSearchHasMore = false;
+      });
+    } else {
+      setState(() {
+        _isGlobalSearchLoading = true;
+        _globalSearchError = null;
+      });
+    }
+
+    try {
+      final payload = await ApiService.instance.globalSearch(
+        q,
+        count: 30,
+        marker: reset ? null : _globalSearchMarker,
+        useTypeAll: false,
+      );
+
+      if (!mounted || token != _globalSearchToken) return;
+
+      final result = payload['result'];
+      final List<Map<String, dynamic>> items = [];
+      if (result is List) {
+        for (final item in result) {
+          if (item is! Map) continue;
+          final map = item.cast<String, dynamic>();
+          final section = map['section']?.toString();
+          if (section == 'MESSAGES') continue;
+          items.add(map);
+        }
+      }
+
+      final marker = payload['marker']?.toString();
+      final hasMore = marker != null && marker.isNotEmpty;
+
+      setState(() {
+        _globalSearchMarker = marker;
+        _globalSearchHasMore = hasMore;
+        if (reset) {
+          _globalSearchResults = items;
+        } else {
+          _globalSearchResults = [..._globalSearchResults, ...items];
+        }
+      });
+    } catch (e) {
+      if (!mounted || token != _globalSearchToken) return;
+      setState(() {
+        _globalSearchError = e.toString();
+      });
+    } finally {
+      if (!mounted || token != _globalSearchToken) return;
+      setState(() {
+        _isGlobalSearchLoading = false;
+      });
+    }
   }
 
   void _onSearchFocusChanged() {
@@ -1246,16 +1411,23 @@ class _ChatsScreenState extends State<ChatsScreen>
   void _clearSearch() {
     _searchController.clear();
     _searchFocusNode.unfocus();
+    _globalSearchDebounce?.cancel();
     setState(() {
       _searchQuery = '';
       _searchResults.clear();
       _isSearchExpanded = false;
+      _isGlobalSearchLoading = false;
+      _globalSearchError = null;
+      _globalSearchResults = [];
+      _globalSearchMarker = null;
+      _globalSearchHasMore = false;
     });
     _searchAnimationController.reverse();
   }
 
   void _loadChatsAndContacts() {
-    final future = ApiService.instance.getChatsOnly();
+    print('🔄 Принудительная загрузка чатов после переподключения...');
+    final future = ApiService.instance.getChatsAndContacts(force: true);
 
     setState(() {
       _chatsFuture = future;
@@ -1274,8 +1446,9 @@ class _ChatsScreenState extends State<ChatsScreen>
                 .where((json) => json != null)
                 .map(
                   (json) =>
-                      Chat.fromJson((json as Map).cast<String, dynamic>()),
+                      Chat.tryFromJson((json as Map).cast<String, dynamic>()),
                 )
+                .whereType<Chat>()
                 .toList();
 
             final newChatIds = newChats.map((c) => c.id).toSet();
@@ -1292,7 +1465,7 @@ class _ChatsScreenState extends State<ChatsScreen>
             }
 
             _allChats.removeWhere(
-              (chat) => !newChatIds.contains(chat.id) && chat.id != 0,
+              (chat) => !newChatIds.contains(chat.id),
             );
 
             for (final contactJson in contacts) {
@@ -1306,10 +1479,11 @@ class _ChatsScreenState extends State<ChatsScreen>
               _myProfile = Profile.fromJson(profileData);
               _isProfileLoading = false;
             }
-            
+
             _filterChats();
+            setState(() {});
           });
-          
+
           _loadChatDrafts();
         })
         .catchError((error) {
@@ -1526,11 +1700,12 @@ class _ChatsScreenState extends State<ChatsScreen>
                 final contactListJson = snapshot.data!['contacts'] as List;
                 _allChats = chatListJson
                     .map(
-                      (json) => Chat.fromJson((json as Map<String, dynamic>)),
+                      (json) => Chat.tryFromJson((json as Map<String, dynamic>)),
                     )
+                    .whereType<Chat>()
                     .toList();
                 _chatsLoaded = true;
-                _listenForUpdates();
+                unawaited(_listenForUpdates());
 
                 _loadChatDrafts();
                 final contacts = contactListJson.map(
@@ -1575,7 +1750,9 @@ class _ChatsScreenState extends State<ChatsScreen>
               }
 
               // ИСПРАВЛЕНИЕ: Проверяем флаг перед изменением состояния в build()
-              if (_filteredChats.isEmpty && _allChats.isNotEmpty && _chatOrderLoaded) {
+              if (_filteredChats.isEmpty &&
+                  _allChats.isNotEmpty &&
+                  _chatOrderLoaded) {
                 // Используем временную переменную вместо прямого изменения состояния
                 final sortedChats = List.from(_allChats)
                   ..sort(
@@ -2050,10 +2227,14 @@ class _ChatsScreenState extends State<ChatsScreen>
                     leading: const Icon(Icons.call_outlined),
                     title: const Text('Звонки'),
                     onTap: () {
+                      final apiService = context.read<ApiService>();
                       Navigator.pop(context);
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (context) => const CallsScreen(),
+                          builder: (context) => Provider<ApiService>.value(
+                            value: apiService,
+                            child: const CallsScreen(),
+                          ),
                         ),
                       );
                     },
@@ -2107,15 +2288,6 @@ class _ChatsScreenState extends State<ChatsScreen>
                       try {
                         await ApiService.instance.performFullReconnection();
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text(
-                                'Переподключение выполнено успешно',
-                              ),
-                              backgroundColor: colors.primaryContainer,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
                           Navigator.pop(context);
                         }
                       } catch (e) {
@@ -2282,7 +2454,23 @@ class _ChatsScreenState extends State<ChatsScreen>
       );
     }
 
-    if (_searchResults.isEmpty) {
+    final int globalHeaderCount = 1;
+    final int globalItemsCount = _globalSearchResults.length;
+    final int globalMoreCount = _globalSearchHasMore ? 1 : 0;
+    final int localHeaderCount = 1;
+    final int localItemsCount = _searchResults.length;
+
+    final int totalCount =
+        globalHeaderCount +
+        globalItemsCount +
+        globalMoreCount +
+        localHeaderCount +
+        localItemsCount;
+
+    if (!_isGlobalSearchLoading &&
+        _globalSearchError == null &&
+        _globalSearchResults.isEmpty &&
+        _searchResults.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -2314,9 +2502,104 @@ class _ChatsScreenState extends State<ChatsScreen>
     }
 
     return ListView.builder(
-      itemCount: _searchResults.length,
+      itemCount: totalCount,
       itemBuilder: (context, index) {
-        return _buildSearchResultItem(_searchResults[index]);
+        int i = index;
+
+        if (i == 0) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Глобальный поиск',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                if (_isGlobalSearchLoading)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+          );
+        }
+
+        i -= globalHeaderCount;
+
+        if (i < globalItemsCount) {
+          final item = _globalSearchResults[i];
+          final chat = item['chat'];
+          final highlights = item['highlights'];
+
+          String title = '';
+          String subtitle = '';
+
+          if (chat is Map) {
+            final chatMap = chat.cast<String, dynamic>();
+            title =
+                chatMap['title']?.toString() ??
+                chatMap['link']?.toString() ??
+                '';
+            subtitle = chatMap['description']?.toString() ?? '';
+          }
+
+          if (title.isEmpty) {
+            title = item['chatId']?.toString() ?? 'Результат';
+          }
+
+          if (highlights is List && highlights.isNotEmpty) {
+            final h = highlights.map((e) => e.toString()).join(', ');
+            subtitle = subtitle.isEmpty ? h : '$subtitle\n$h';
+          }
+
+          return ListTile(
+            title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
+            subtitle: subtitle.isEmpty
+                ? null
+                : Text(subtitle, maxLines: 3, overflow: TextOverflow.ellipsis),
+          );
+        }
+
+        i -= globalItemsCount;
+
+        if (_globalSearchHasMore && i == 0) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: _isGlobalSearchLoading
+                    ? null
+                    : () => _performGlobalSearch(reset: false),
+                child: const Text('Загрузить еще (глобально)'),
+              ),
+            ),
+          );
+        }
+
+        i -= globalMoreCount;
+
+        if (i == 0) {
+          return const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Text(
+              'Локальные результаты',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          );
+        }
+
+        i -= localHeaderCount;
+
+        if (i < localItemsCount) {
+          return _buildSearchResultItem(_searchResults[i]);
+        }
+
+        return const SizedBox.shrink();
       },
     );
   }
@@ -2735,10 +3018,9 @@ class _ChatsScreenState extends State<ChatsScreen>
       final folderId = index == 0 ? null : _folders[index - 1].id;
 
       if (_selectedFolderId != folderId) {
-        setState(() {
-          _selectedFolderId = folderId;
-          _filterChats();
-        });
+        _selectedFolderId = folderId;
+        _filterChats();
+        setState(() {});
       }
     }
   }
@@ -2897,8 +3179,10 @@ class _ChatsScreenState extends State<ChatsScreen>
                           onTap: (index) {},
                         ),
                       )
-                    : Transform.translate(
-                        offset: const Offset(-42, 0),
+                    : Padding(
+                        padding: const EdgeInsets.only(
+                          right: 48,
+                        ), // Место для кнопки +
                         child: TabBar(
                           controller: _folderTabController,
                           isScrollable: true,
@@ -3222,41 +3506,7 @@ class _ChatsScreenState extends State<ChatsScreen>
     ChatFolder? currentFolder,
     BuildContext context,
   ) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              'Действия',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-          ),
-          const Divider(),
-          if (currentFolder == null && _folders.isNotEmpty)
-            ListTile(
-              leading: const Icon(Icons.folder),
-              title: const Text('Добавить в папку'),
-              onTap: () {
-                Navigator.of(context).pop();
-                _showFolderSelectionMenu(chat);
-              },
-            ),
-          ListTile(
-            leading: const Icon(Icons.mark_chat_read),
-            title: const Text('Настройки чтения'),
-            subtitle: const Text('Настроить чтение сообщений для этого чата'),
-            onTap: () {
-              Navigator.of(context).pop();
-              _showReadSettingsDialog(chat);
-            },
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    );
+    return const SizedBox.shrink();
   }
 
   void _showFolderSelectionMenu(Chat chat) {
@@ -3335,12 +3585,6 @@ class _ChatsScreenState extends State<ChatsScreen>
     final currentInclude = folder.include ?? [];
 
     if (currentInclude.contains(chat.id)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Чат уже находится в папке "${folder.title}"'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
       return;
     }
 
@@ -3351,13 +3595,6 @@ class _ChatsScreenState extends State<ChatsScreen>
       title: folder.title,
       include: newInclude,
       filters: folder.filters,
-    );
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Чат добавлен в папку "${folder.title}"'),
-        duration: const Duration(seconds: 2),
-      ),
     );
   }
 
@@ -3395,42 +3632,12 @@ class _ChatsScreenState extends State<ChatsScreen>
   }
 
   void _updateFolderChats(List<Chat> selectedChats, ChatFolder folder) {
-    final currentInclude = folder.include ?? [];
-    final selectedChatIds = selectedChats.map((chat) => chat.id).toSet();
-
-    final newInclude = selectedChatIds.toList();
-
-    final addedCount = newInclude
-        .where((id) => !currentInclude.contains(id))
-        .length;
-    final removedCount = currentInclude
-        .where((id) => !selectedChatIds.contains(id))
-        .length;
-
+    final selectedChatIds = selectedChats.map((chat) => chat.id).toList();
     ApiService.instance.updateFolder(
       folder.id,
       title: folder.title,
-      include: newInclude,
+      include: selectedChatIds,
       filters: folder.filters,
-    );
-
-    String message;
-    if (addedCount > 0 && removedCount > 0) {
-      message = 'Папка "${folder.title}" обновлена';
-    } else if (addedCount > 0) {
-      message = addedCount == 1
-          ? 'Чат добавлен в папку "${folder.title}"'
-          : '$addedCount чатов добавлено в папку "${folder.title}"';
-    } else if (removedCount > 0) {
-      message = removedCount == 1
-          ? 'Чат удален из папки "${folder.title}"'
-          : '$removedCount чатов удалено из папки "${folder.title}"';
-    } else {
-      message = 'Изменения сохранены';
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
 
@@ -3846,12 +4053,6 @@ class _ChatsScreenState extends State<ChatsScreen>
                   await accountManager.removeAccount(account.id);
                   if (mounted) {
                     onDeleted();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Аккаунт удален'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
                   }
                 } catch (e) {
                   if (mounted) {
@@ -4594,7 +4795,10 @@ class _ChatsScreenState extends State<ChatsScreen>
       return '';
     }
 
-    // Получаем контакт отправителя
+    if (isChannel) {
+      return '';
+    }
+
     final contact = _contacts[message.senderId];
     if (contact != null) {
       return getContactDisplayName(
@@ -4605,8 +4809,8 @@ class _ChatsScreenState extends State<ChatsScreen>
       );
     }
 
-    // Если не нашли контакт, возвращаем пустую строку
-    return '';
+    _loadMissingContact(message.senderId);
+    return 'ID ${message.senderId}';
   }
 
   Widget _buildChatSubtitle(Chat chat) {
@@ -4758,19 +4962,39 @@ class _ChatsScreenState extends State<ChatsScreen>
         break;
 
       case 'CANCELED':
-        final callTypeText = callType == 'VIDEO'
-            ? 'Видеозвонок отменен'
-            : 'Звонок отменен';
-        callText = callTypeText;
+        if (duration > 0) {
+          final minutes = duration ~/ 60000;
+          final seconds = (duration % 60000) ~/ 1000;
+          final durationText = minutes > 0
+              ? '$minutes:${seconds.toString().padLeft(2, '0')}'
+              : '$seconds сек';
+          final callTypeText = callType == 'VIDEO' ? 'Видеозвонок' : 'Звонок';
+          callText = '$callTypeText, $durationText';
+        } else {
+          final callTypeText = callType == 'VIDEO'
+              ? 'Видеозвонок отменен'
+              : 'Звонок отменен';
+          callText = callTypeText;
+        }
         callIcon = callType == 'VIDEO' ? Icons.videocam_off : Icons.call_end;
         callColor = colors.onSurfaceVariant;
         break;
 
       case 'REJECTED':
-        final callTypeText = callType == 'VIDEO'
-            ? 'Видеозвонок отклонен'
-            : 'Звонок отклонен';
-        callText = callTypeText;
+        if (duration > 0) {
+          final minutes = duration ~/ 60000;
+          final seconds = (duration % 60000) ~/ 1000;
+          final durationText = minutes > 0
+              ? '$minutes:${seconds.toString().padLeft(2, '0')}'
+              : '$seconds сек';
+          final callTypeText = callType == 'VIDEO' ? 'Видеозвонок' : 'Звонок';
+          callText = '$callTypeText, $durationText';
+        } else {
+          final callTypeText = callType == 'VIDEO'
+              ? 'Видеозвонок отклонен'
+              : 'Звонок отклонен';
+          callText = callTypeText;
+        }
         callIcon = callType == 'VIDEO' ? Icons.videocam_off : Icons.call_end;
         callColor = colors.onSurfaceVariant;
         break;
@@ -4783,16 +5007,15 @@ class _ChatsScreenState extends State<ChatsScreen>
     }
 
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(callIcon, size: 16, color: callColor),
         const SizedBox(width: 4),
-        Expanded(
-          child: Text(
-            callText,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: callColor),
-          ),
+        Text(
+          callText,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: callColor),
         ),
       ],
     );
@@ -4851,7 +5074,9 @@ class _ChatsScreenState extends State<ChatsScreen>
       leadingIcon = Icons.person;
     }
 
-    return ListTile(
+    return GestureDetector(
+      onLongPress: () => _showChatContextMenu(chat, currentFolder),
+      child: ListTile(
       key: ValueKey(chat.id),
       onTap: () {
         print('🔘 onTap вызван для чата: ${chat.id}');
@@ -4862,10 +5087,9 @@ class _ChatsScreenState extends State<ChatsScreen>
             final updatedChat = oldChat.copyWith(newMessages: 0);
             SchedulerBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
-                setState(() {
-                  _allChats[chatIndex] = updatedChat;
-                  _filterChats();
-                });
+                _allChats[chatIndex] = updatedChat;
+                _filterChats();
+                setState(() {});
               }
             });
           }
@@ -4941,26 +5165,32 @@ class _ChatsScreenState extends State<ChatsScreen>
         children: [
           GestureDetector(
             onLongPress: () => _showMessagePreview(chat, currentFolder),
-            child: CircleAvatar(
-              radius: 24,
-              backgroundColor: colors.primaryContainer,
-
-              backgroundImage: avatarUrl != null
-                  ? CachedNetworkImageProvider(avatarUrl)
-                  : null,
-
-              child: avatarUrl == null
-                  ? (isSavedMessages || isGroupChat || isChannel)
+            child: (isSavedMessages || isGroupChat || isChannel)
+                ? CircleAvatar(
+                    radius: 24,
+                    backgroundColor: colors.primaryContainer,
+                    backgroundImage: avatarUrl != null
+                        ? CachedNetworkImageProvider(avatarUrl)
+                        : null,
+                    child: avatarUrl == null
                         ? Icon(leadingIcon, color: colors.onPrimaryContainer)
-                        : (RegExp(r'^\d+$').hasMatch(title) ||
-                              title.startsWith('ID '))
-                        ? Icon(Icons.person, color: colors.onPrimaryContainer)
-                        : Text(
-                            title.isNotEmpty ? title[0].toUpperCase() : '?',
-                            style: TextStyle(color: colors.onPrimaryContainer),
-                          )
-                  : null,
-            ),
+                        : null,
+                  )
+                : contact != null
+                ? ContactAvatarWidget(
+                    contactId: contact.id,
+                    originalAvatarUrl: contact.photoBaseUrl,
+                    radius: 24,
+                    fallbackText: title.isNotEmpty ? title[0].toUpperCase() : '?',
+                    backgroundColor: colors.primaryContainer,
+                  )
+                : ContactAvatarWidget(
+                    contactId: chat.id,
+                    originalAvatarUrl: avatarUrl,
+                    radius: 24,
+                    fallbackText: title.isNotEmpty ? title[0].toUpperCase() : '?',
+                    backgroundColor: colors.primaryContainer,
+                  ),
           ),
           Positioned(
             right: -4,
@@ -5013,7 +5243,428 @@ class _ChatsScreenState extends State<ChatsScreen>
                 style: TextStyle(color: colors.onPrimary, fontSize: 12),
               ),
             ),
+          ] else if (chat.isPinned && chat.newMessages == 0) ...[
+            const SizedBox(height: 4),
+            Icon(
+              Icons.push_pin,
+              size: 14,
+              color: colors.onSurfaceVariant,
+            ),
           ],
+        ],
+      ),
+    ),
+    );
+  }
+
+  void _showChatContextMenu(Chat chat, ChatFolder? currentFolder) {
+    final bool isGroupChat = _isGroupChat(chat);
+    final bool isChannel = chat.type == 'CHANNEL';
+    final bool isSavedMessages = _isSavedMessages(chat);
+
+    // Получаем контакт для личных чатов (нужен для блокировки)
+    Contact? contact;
+    if (!isGroupChat && !isChannel && !isSavedMessages) {
+      final otherParticipantId = chat.participantIds.firstWhere(
+        (id) => id != _myId,
+        orElse: () => 0,
+      );
+      contact = _contacts[otherParticipantId];
+    }
+
+    final String chatTitle = isSavedMessages
+        ? 'Избранное'
+        : isChannel
+        ? (chat.title ?? 'Канал')
+        : isGroupChat
+        ? (chat.title ?? 'Группа')
+        : contact?.name ?? chat.title ?? 'Чат';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final colors = Theme.of(ctx).colorScheme;
+        return Container(
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).padding.bottom + 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8, bottom: 4),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colors.onSurfaceVariant.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 4),
+              SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Удалить чат / Покинуть канал / Удалить канал
+                    if (isChannel)
+                      ListTile(
+                        leading: Icon(Icons.delete_outline, color: colors.error),
+                        title: Text(
+                          chat.ownerId == _myId ? 'Удалить канал' : 'Покинуть канал',
+                          style: TextStyle(color: colors.error),
+                        ),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          if (chat.ownerId == _myId) {
+                            _confirmDeleteChannel(chat, chatTitle);
+                          } else {
+                            _confirmLeaveChannel(chat, chatTitle);
+                          }
+                        },
+                      )
+                    else
+                      ListTile(
+                        leading: Icon(Icons.delete_outline, color: colors.error),
+                        title: Text('Удалить чат', style: TextStyle(color: colors.error)),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          _confirmDeleteChat(chat, chatTitle);
+                        },
+                      ),
+                    // Заблокировать — только для личных чатов
+                    if (!isGroupChat && !isChannel && !isSavedMessages && contact != null)
+                      ListTile(
+                        leading: Icon(Icons.block, color: colors.error),
+                        title: Text(
+                          contact.isBlockedByMe ? 'Разблокировать' : 'Заблокировать',
+                          style: TextStyle(color: colors.error),
+                        ),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          _confirmBlockContact(contact!, chatTitle);
+                        },
+                      ),
+                    const Divider(height: 1),
+                    // Очистить историю
+                    if (!isChannel)
+                      ListTile(
+                        leading: Icon(Icons.cleaning_services_outlined, color: colors.onSurface),
+                        title: Text('Очистить историю', style: TextStyle(color: colors.onSurface)),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          _confirmClearHistory(chat, chatTitle);
+                        },
+                      ),
+                    // Закрепить (нет API — показываем snackbar)
+                    ListTile(
+                      leading: Icon(Icons.push_pin_outlined, color: colors.onSurface),
+                      title: Text('Закрепить', style: TextStyle(color: colors.onSurface)),
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Закрепление чатов пока не поддерживается'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    ),
+                    // Уведомления
+                    ListTile(
+                      leading: Icon(Icons.notifications_outlined, color: colors.onSurface),
+                      title: Text('Уведомления', style: TextStyle(color: colors.onSurface)),
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        showChatNotificationSettings(
+                          context: context,
+                          chatId: chat.id,
+                          chatName: chatTitle,
+                          isGroupChat: isGroupChat,
+                          isChannel: isChannel,
+                        );
+                      },
+                    ),
+                    const Divider(height: 1),
+                    // Добавить в папку
+                    if (currentFolder == null && _folders.isNotEmpty)
+                      ListTile(
+                        leading: Icon(Icons.folder_outlined, color: colors.onSurface),
+                        title: Text('Добавить в папку', style: TextStyle(color: colors.onSurface)),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          _showFolderSelectionMenu(chat);
+                        },
+                      ),
+                    // Настройки чтения
+                    ListTile(
+                      leading: Icon(Icons.mark_chat_read_outlined, color: colors.onSurface),
+                      title: Text('Настройки чтения', style: TextStyle(color: colors.onSurface)),
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        _showReadSettingsDialog(chat);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _confirmDeleteChat(Chat chat, String chatTitle) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить чат?'),
+        content: Text(
+          'Вы уверены, что хотите удалить чат "$chatTitle"? '
+          'История сообщений будет удалена без возможности восстановления.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                await ApiService.instance.clearChatHistory(chat.id);
+                _removeChatLocally(chat.id);
+              } catch (e) {
+                if (mounted) {
+                  final msg = e.toString().replaceFirst('Exception: ', '');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(msg)),
+                  );
+                }
+              }
+            },
+            child: Text('Удалить', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmClearHistory(Chat chat, String chatTitle) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Очистить историю?'),
+        content: Text(
+          'Вы уверены, что хотите очистить историю чата "$chatTitle"?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              ApiService.instance
+                  .clearChatHistory(chat.id)
+                  .catchError((e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Ошибка очистки истории')),
+                      );
+                    }
+                  });
+            },
+            child: Text('Очистить', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmBlockContact(Contact contact, String chatTitle) {
+    final isBlocked = contact.isBlockedByMe;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isBlocked ? 'Разблокировать?' : 'Заблокировать?'),
+        content: Text(
+          isBlocked
+              ? 'Разблокировать пользователя "$chatTitle"?'
+              : 'Заблокировать пользователя "$chatTitle"? Он не сможет отправлять вам сообщения.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              final future = isBlocked
+                  ? ApiService.instance.unblockContact(contact.id)
+                  : ApiService.instance.blockContact(contact.id);
+              future.catchError((e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        isBlocked ? 'Ошибка разблокировки' : 'Ошибка блокировки',
+                      ),
+                    ),
+                  );
+                }
+              });
+            },
+            child: Text(
+              isBlocked ? 'Разблокировать' : 'Заблокировать',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Диалог удаления канала — только для владельца
+  void _confirmDeleteChannel(Chat chat, String chatTitle) {
+    final otherParticipants = chat.participantIds
+        .where((id) => id != _myId)
+        .toList();
+    final hasParticipants = otherParticipants.isNotEmpty;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => _DeleteChannelDialog(
+        chatTitle: chatTitle,
+        hasParticipants: hasParticipants,
+        onTransfer: () {
+          Navigator.of(ctx).pop();
+          _showTransferOwnershipPicker(chat, chatTitle);
+        },
+        onDelete: () {
+          Navigator.of(ctx).pop();
+          _doDeleteChannel(chat);
+        },
+        onCancel: () => Navigator.of(ctx).pop(),
+      ),
+    );
+  }
+
+  /// Выполнить удаление канала (opcode 52)
+  void _doDeleteChannel(Chat chat) {
+    ApiService.instance.deleteChannel(chat.id).then((_) {
+      _removeChatLocally(chat.id);
+    }).catchError((e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+    });
+  }
+
+  /// Показать пикер выбора нового владельца
+  void _showTransferOwnershipPicker(Chat chat, String chatTitle) {
+    // Получаем участников канала кроме себя
+    final otherParticipants = chat.participantIds
+        .where((id) => id != _myId)
+        .toList();
+
+    if (otherParticipants.isEmpty) {
+      // Нет других участников — просто удаляем
+      _doDeleteChannel(chat);
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Передать права владельца'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: otherParticipants.length,
+            itemBuilder: (context, index) {
+              final participantId = otherParticipants[index];
+              final contact = _contacts[participantId];
+              final name = contact?.name ?? participantId.toString();
+              return ListTile(
+                title: Text(name),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  ApiService.instance
+                      .transferChannelOwnership(chat.id, participantId)
+                      .then((_) {
+                        ApiService.instance.leaveChat(chat.id).then((_) {
+                          _removeChatLocally(chat.id);
+                        });
+                      })
+                      .catchError((e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                e.toString().replaceFirst('Exception: ', ''),
+                              ),
+                            ),
+                          );
+                        }
+                      });
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Диалог выхода из канала (не владелец)
+  void _confirmLeaveChannel(Chat chat, String chatTitle) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Покинуть канал?'),
+        content: Text('Вы хотите покинуть канал "$chatTitle"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              ApiService.instance.leaveChat(chat.id).then((_) {
+                _removeChatLocally(chat.id);
+              }).catchError((e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        e.toString().replaceFirst('Exception: ', ''),
+                      ),
+                    ),
+                  );
+                }
+              });
+            },
+            child: Text(
+              'Покинуть',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
         ],
       ),
     );
@@ -5031,12 +5682,138 @@ class _ChatsScreenState extends State<ChatsScreen>
     _connectionStatusSubscription?.cancel();
     _connectionStateSubscription?.cancel();
     _messageHandler?.listen()?.cancel();
+    _messageHandler
+        ?.dispose(); // Освобождаем ресурсы MessageHandler (debouncer)
     _searchController.dispose();
     _searchFocusNode.dispose();
     // Debouncer очищается автоматически в dispose миксина
     _searchAnimationController.dispose();
     _folderTabController.dispose();
     _contactNamesSubscription?.cancel();
+    _readStatusSubscription?.cancel();
     super.dispose();
+  }
+}
+
+/// Диалог удаления канала с анимацией треска на кнопке "Передать права"
+/// если участников нет
+class _DeleteChannelDialog extends StatefulWidget {
+  final String chatTitle;
+  final bool hasParticipants;
+  final VoidCallback onTransfer;
+  final VoidCallback onDelete;
+  final VoidCallback onCancel;
+
+  const _DeleteChannelDialog({
+    required this.chatTitle,
+    required this.hasParticipants,
+    required this.onTransfer,
+    required this.onDelete,
+    required this.onCancel,
+  });
+
+  @override
+  State<_DeleteChannelDialog> createState() => _DeleteChannelDialogState();
+}
+
+class _DeleteChannelDialogState extends State<_DeleteChannelDialog>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _shakeController;
+  late Animation<double> _shakeAnimation;
+  bool _cracked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _shakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _shakeAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0, end: -8), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: -8, end: 8), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: 8, end: -6), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: -6, end: 6), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: 6, end: -3), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: -3, end: 3), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: 3, end: 0), weight: 1),
+    ]).animate(CurvedAnimation(
+      parent: _shakeController,
+      curve: Curves.easeInOut,
+    ));
+
+    _shakeController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        setState(() => _cracked = true);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _shakeController.dispose();
+    super.dispose();
+  }
+
+  void _handleTransferTap() {
+    if (!widget.hasParticipants) {
+      if (!_cracked) {
+        _shakeController.forward(from: 0);
+      }
+      return;
+    }
+    widget.onTransfer();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: const Text('Удалить канал?'),
+      content: Text('Вы владелец канала "${widget.chatTitle}". Выберите действие:'),
+      actions: [
+        TextButton(
+          onPressed: widget.onCancel,
+          child: const Text('Отмена'),
+        ),
+        // Кнопка "Передать права и выйти" — с анимацией треска если некому передать
+        AnimatedBuilder(
+          animation: _shakeAnimation,
+          builder: (context, child) {
+            return Transform.translate(
+              offset: Offset(_shakeAnimation.value, 0),
+              child: child,
+            );
+          },
+          child: AnimatedOpacity(
+            opacity: _cracked ? 0.0 : 1.0,
+            duration: const Duration(milliseconds: 300),
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              child: _cracked
+                  ? const SizedBox.shrink()
+                  : TextButton(
+                      onPressed: _handleTransferTap,
+                      child: Text(
+                        'Передать права и выйти',
+                        style: TextStyle(
+                          color: widget.hasParticipants
+                              ? null
+                              : colors.onSurface.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: widget.onDelete,
+          child: Text(
+            'Удалить канал',
+            style: TextStyle(color: colors.error),
+          ),
+        ),
+      ],
+    );
   }
 }

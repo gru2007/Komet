@@ -10,6 +10,7 @@ import 'package:gwid/models/chat_folder.dart';
 import 'package:gwid/services/notification_service.dart';
 import 'package:gwid/services/message_queue_service.dart';
 import 'package:gwid/services/chat_cache_service.dart';
+import 'package:gwid/services/message_read_status_service.dart';
 
 class MessageHandler {
   final void Function(VoidCallback) setState;
@@ -34,6 +35,14 @@ class MessageHandler {
   // Дедупликация сообщений - храним ID последних обработанных сообщений
   static final Set<String> _processedMessageIds = {};
   static const int _maxProcessedMessages = 100;
+  
+  // Дедупликация обновлений чатов
+  static final Map<int, int> _lastChatUpdateTime = {};
+  static const int _chatUpdateThrottleMs = 500;
+
+  // Debouncer для filterChats - объединяет множественные вызовы в один
+  Timer? _filterChatsDebouncer;
+  bool _filterChatsScheduled = false;
 
   MessageHandler({
     required this.setState,
@@ -56,6 +65,22 @@ class MessageHandler {
     required this.isSavedMessages,
   });
 
+  /// Вызывает filterChats с debouncing для оптимизации при множественных обновлениях
+  void _debouncedFilterChats() {
+    _filterChatsDebouncer?.cancel();
+    _filterChatsScheduled = true;
+    _filterChatsDebouncer = Timer(const Duration(milliseconds: 50), () {
+      if (_filterChatsScheduled) {
+        _filterChatsScheduled = false;
+        filterChats();
+      }
+    });
+  }
+
+  /// Освобождает ресурсы
+  void dispose() {
+    _filterChatsDebouncer?.cancel();
+  }
   /// Получить текстовое представление вложения для уведомления
   String _getAttachmentPreviewText(Message message) {
     if (message.attaches.isEmpty) {
@@ -232,6 +257,8 @@ class MessageHandler {
         _handleEditedMessage(chatId, payload);
       } else if ((opcode == 66 || opcode == 142) && chatId != null) {
         _handleDeletedMessages(chatId, payload);
+      } else if (opcode == 130) {
+        _handleMessageReadStatus(payload);
       } else if (opcode == 132) {
         _handlePresenceUpdate(payload);
       } else if (opcode == 36) {
@@ -243,7 +270,8 @@ class MessageHandler {
       } else if (opcode == 55) {
         _handleChatUpdate(payload, cmd);
       } else if (opcode == 135) {
-        _handleChatChanged(payload);
+        // ОТКЛЮЧЕНО: opcode 135 вызывает критические баги с videoConversation
+        // _handleChatChanged(payload);
       } else if (opcode == 272) {
         _handleFoldersUpdate(payload);
       } else if (opcode == 274) {
@@ -274,7 +302,8 @@ class MessageHandler {
 
     // Если есть полный объект чата - используем его
     if (chatJson != null) {
-      final newChat = Chat.fromJson(chatJson);
+      final newChat = Chat.tryFromJson(chatJson);
+      if (newChat == null) return;
       ApiService.instance.updateChatInCacheFromJson(chatJson);
 
       final context = getContext();
@@ -290,8 +319,10 @@ class MessageHandler {
             final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
             allChats.insert(insertIndex, newChat);
           }
-          filterChats();
         });
+        // ОПТИМИЗАЦИЯ: Используем debounced вызов filterChats
+        // При множественных обновлениях это объединит вызовы в один
+        _debouncedFilterChats();
       }
     }
     // Если есть только сообщение и chatId - обновляем существующий чат
@@ -306,9 +337,11 @@ class MessageHandler {
             final updatedChat = oldChat.copyWith(lastMessage: newMessage);
             allChats.removeAt(chatIndex);
             _insertChatAtCorrectPosition(updatedChat);
-            filterChats();
           }
         });
+        // ОПТИМИЗАЦИЯ: Используем debounced вызов filterChats
+        // При множественных обновлениях это объединит вызовы в один
+        _debouncedFilterChats();
       }
     }
   }
@@ -319,6 +352,19 @@ class MessageHandler {
     if (allChats.isEmpty) {
       print('🔔 [MessageHandler] allChats пустой, выход');
       return;
+    }
+
+    // КРИТИЧНО: Игнорируем сообщения о звонках (CONTROL attach) - они вызывают баги
+    final messageJson = payload['message'] as Map<String, dynamic>?;
+    if (messageJson != null) {
+      final attaches = messageJson['attaches'] as List<dynamic>?;
+      if (attaches != null && attaches.isNotEmpty) {
+        final hasControl = attaches.any((a) => a is Map && a['_type'] == 'CONTROL');
+        if (hasControl) {
+          print('⏭️ [MessageHandler] Пропускаем CONTROL-сообщение (звонок)');
+          return;
+        }
+      }
     }
 
     final newMessage = Message.fromJson(payload['message']);
@@ -495,19 +541,20 @@ class MessageHandler {
       setState(() {
         allChats.removeAt(chatIndex);
         _insertChatAtCorrectPosition(updatedChat);
-        filterChats();
       });
+      _debouncedFilterChats();
     } else if (payload['chat'] is Map<String, dynamic>) {
       final chatJson = payload['chat'] as Map<String, dynamic>;
-      final newChat = Chat.fromJson(chatJson);
+      final newChat = Chat.tryFromJson(chatJson);
+      if (newChat == null) return;
       ApiService.instance.updateChatInCacheFromJson(chatJson);
 
       setState(() {
         final savedIndex = allChats.indexWhere(isSavedMessages);
         final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
         allChats.insert(insertIndex, newChat);
-        filterChats();
       });
+      _debouncedFilterChats();
     } else {
       final lastPayload = ApiService.instance.lastChatsPayload;
       if (lastPayload != null) {
@@ -521,7 +568,8 @@ class MessageHandler {
             }
           }
           if (chatJson != null) {
-            final newChat = Chat.fromJson(chatJson);
+            final newChat = Chat.tryFromJson(chatJson);
+            if (newChat == null) return;
             // Для новых чатов тоже учитываем автоматическое прочтение
             final shouldIncrementUnread = !isMyMessage && !shouldAutoMarkAsRead && !isInActiveChat;
             final updatedChat = newChat.copyWith(
@@ -531,8 +579,8 @@ class MessageHandler {
             setState(() {
               allChats.add(updatedChat);
               _insertChatAtCorrectPosition(updatedChat);
-              filterChats();
             });
+            _debouncedFilterChats();
           }
         }
       }
@@ -551,8 +599,8 @@ class MessageHandler {
         setState(() {
           allChats.removeAt(chatIndex);
           _insertChatAtCorrectPosition(updatedChat);
-          filterChats();
         });
+        _debouncedFilterChats();
       }
     }
   }
@@ -578,12 +626,13 @@ class MessageHandler {
                 ? filtered.first
                 : null;
             if (updatedChatData != null) {
-              final updatedChat = Chat.fromJson(updatedChatData);
+              final updatedChat = Chat.tryFromJson(updatedChatData);
+              if (updatedChat == null) return;
               setState(() {
                 allChats.removeAt(chatIndex);
                 _insertChatAtCorrectPosition(updatedChat);
-                filterChats();
               });
+              _debouncedFilterChats();
             }
           }
         });
@@ -672,7 +721,8 @@ class MessageHandler {
     }
 
     if (effectiveChatJson != null) {
-      final newChat = Chat.fromJson(effectiveChatJson);
+      final newChat = Chat.tryFromJson(effectiveChatJson);
+      if (newChat == null) return;
       ApiService.instance.updateChatInCacheFromJson(effectiveChatJson);
       final context = getContext();
       if (context.mounted) {
@@ -688,7 +738,7 @@ class MessageHandler {
             allChats.insert(insertIndex, newChat);
           }
         });
-        filterChats();
+        _debouncedFilterChats();
       }
     } else {
       refreshChats();
@@ -701,7 +751,8 @@ class MessageHandler {
     if (chatJson != null) {
       final chatType = chatJson['type'] as String?;
       if (chatType == 'CHAT') {
-        final newChat = Chat.fromJson(chatJson);
+        final newChat = Chat.tryFromJson(chatJson);
+        if (newChat == null) return;
         ApiService.instance.updateChatInCacheFromJson(chatJson);
         final context = getContext();
         if (context.mounted) {
@@ -716,8 +767,8 @@ class MessageHandler {
               final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
               allChats.insert(insertIndex, newChat);
             }
-            filterChats();
           });
+          _debouncedFilterChats();
         }
       }
     }
@@ -727,7 +778,8 @@ class MessageHandler {
     if (cmd != 0x100 && cmd != 256) return;
     final chatJson = payload['chat'] as Map<String, dynamic>?;
     if (chatJson != null) {
-      final updatedChat = Chat.fromJson(chatJson);
+      final updatedChat = Chat.tryFromJson(chatJson);
+      if (updatedChat == null) return;
       ApiService.instance.updateChatInCacheFromJson(chatJson);
       final context = getContext();
       if (context.mounted) {
@@ -742,47 +794,106 @@ class MessageHandler {
             final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
             allChats.insert(insertIndex, updatedChat);
           }
-          filterChats();
         });
+        _debouncedFilterChats();
       }
     }
   }
 
   void _handleChatChanged(Map<String, dynamic> payload) {
-    if (payload['chat'] is! Map<String, dynamic>) return;
-    final chatJson = payload['chat'] as Map<String, dynamic>;
-    final int? chatId = chatJson['id'] as int?;
-    final String? status = chatJson['status'] as String?;
+    try {
+      if (payload['chat'] is! Map<String, dynamic>) return;
+      
+      final chatJson = payload['chat'] as Map<String, dynamic>;
+      final int? chatId = chatJson['id'] as int?;
+      final String? status = chatJson['status'] as String?;
+      if (chatId == null) return;
 
-    if (chatId == null) return;
+      // Дедупликация: игнорируем повторные обновления в течение 500мс
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final lastUpdate = _lastChatUpdateTime[chatId] ?? 0;
+      if (now - lastUpdate < _chatUpdateThrottleMs) {
+        print('⏭️ [opcode 135] Пропускаем дубликат обновления чата $chatId');
+        return;
+      }
+      _lastChatUpdateTime[chatId] = now;
 
-    final context = getContext();
-    if (!context.mounted) return;
+      print('🔄 [opcode 135] chatId=$chatId, status=$status');
 
-    if (status == 'REMOVED') {
-      // Удаляем чат из списка
-      setState(() {
-        allChats.removeWhere((chat) => chat.id == chatId);
-        filterChats();
-      });
-    } else if (status == 'ACTIVE') {
-      // Добавляем или обновляем чат (подписка на канал)
-      final newChat = Chat.fromJson(chatJson);
-      ApiService.instance.updateChatInCacheFromJson(chatJson);
+      final context = getContext();
+      if (!context.mounted) {
+        print('⚠️ [opcode 135] Context not mounted');
+        return;
+      }
 
-      setState(() {
+      if (status == 'REMOVED') {
+        print('🗑️ [opcode 135] Удаляем чат $chatId');
+        // Удаляем чат из списка
+        setState(() {
+          allChats.removeWhere((chat) => chat.id == chatId);
+        });
+        _debouncedFilterChats();
+        // Чистим disk cache чтобы чат не воскрес после перезапуска
+        ChatCacheService().removeChatFromCachedList(chatId);
+        ChatCacheService().clearChatCache(chatId);
+      } else if (status == 'ACTIVE') {
+        print('✅ [opcode 135] Обновляем/добавляем чат $chatId');
+        
+        // КРИТИЧНО: Если есть videoConversation - зануляем его перед парсингом
+        final hasVideoConv = chatJson['videoConversation'] != null;
+        if (hasVideoConv) {
+          print('   ⚠️ [opcode 135] Обнаружен videoConversation, удаляем из JSON');
+          chatJson['videoConversation'] = null;
+        }
+        
+        // КРИТИЧНО: парсинг Chat.tryFromJson может зависнуть на videoConversation
+        Chat? newChat;
+        try {
+          print('   📝 [opcode 135] Парсинг Chat.tryFromJson...');
+          newChat = Chat.tryFromJson(chatJson);
+          print('   ✅ [opcode 135] Chat.tryFromJson успешно');
+        } catch (e, stackTrace) {
+          print('   ❌ [opcode 135] Ошибка Chat.tryFromJson: $e');
+          print('   Stack: $stackTrace');
+          return;
+        }
+        if (newChat == null) {
+          return;
+        }
+
+        try {
+          print('   📝 [opcode 135] updateChatInCacheFromJson...');
+          ApiService.instance.updateChatInCacheFromJson(chatJson);
+          print('   ✅ [opcode 135] Кэш обновлен');
+        } catch (e) {
+          print('   ⚠️ [opcode 135] Ошибка обновления кэша: $e');
+          // Продолжаем даже если кэш не обновился
+        }
+
         final existingIndex = allChats.indexWhere((chat) => chat.id == chatId);
         if (existingIndex != -1) {
-          // Обновляем существующий чат
-          allChats[existingIndex] = newChat;
+          print('   🔄 [opcode 135] Обновляем существующий чат на позиции $existingIndex');
+          allChats[existingIndex] = newChat!;
         } else {
-          // Добавляем новый чат (новая подписка на канал)
+          print('   ➕ [opcode 135] Добавляем новый чат');
           final savedIndex = allChats.indexWhere(isSavedMessages);
           final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
-          allChats.insert(insertIndex, newChat);
+          allChats.insert(insertIndex, newChat!);
         }
-        filterChats();
-      });
+        
+        // Вызываем setState только если контекст всё ещё mounted
+        if (context.mounted) {
+          setState(() {});
+          print('   ✅ [opcode 135] setState выполнен');
+        }
+        
+        print('✅ [opcode 135] _handleChatChanged завершен успешно');
+      }
+    } catch (e, stackTrace) {
+      print('❌ [opcode 135] КРИТИЧЕСКАЯ ОШИБКА в _handleChatChanged: $e');
+      print('Stack trace: $stackTrace');
+      print('Payload: $payload');
+      // НЕ пробрасываем ошибку дальше - это предотвратит зависание
     }
   }
 
@@ -817,7 +928,7 @@ class MessageHandler {
             sortFoldersByOrder(foldersOrder);
           });
           updateFolderTabController();
-          filterChats();
+          _debouncedFilterChats();
         }
       }
     } catch (e) {
@@ -849,7 +960,7 @@ class MessageHandler {
           });
 
           updateFolderTabController();
-          filterChats();
+          _debouncedFilterChats();
 
           if (isNewFolder) {
             final newFolderIndex = folders.indexWhere((f) => f.id == folderId);
@@ -882,7 +993,7 @@ class MessageHandler {
         });
 
         updateFolderTabController();
-        filterChats();
+        _debouncedFilterChats();
 
         if (currentIndex >= folderTabController.length) {
           folderTabController.animateTo(0);
@@ -1059,19 +1170,43 @@ class MessageHandler {
 
     // Из payload
     if (chatFromPayload != null) {
-      return Chat.fromJson(chatFromPayload);
+      return Chat.tryFromJson(chatFromPayload);
     }
 
     // Из кэша
     try {
       final cachedChatJson = await ChatCacheService().getChatById(chatId);
       if (cachedChatJson != null) {
-        return Chat.fromJson(cachedChatJson);
+        return Chat.tryFromJson(cachedChatJson);
       }
     } catch (e) {
       print('⚠️ Ошибка получения чата $chatId из кэша: $e');
     }
 
     return null;
+  }
+
+  /// Обработка opcode 130 - статус прочитанности сообщений
+  /// 
+  /// Payload: {
+  ///   "setAsUnread": false,     // false = прочитали, true = пометить непрочитанным
+  ///   "chatId": 6747636,        // ID чата
+  ///   "userId": 103666767,      // ID пользователя (кто прочитал)
+  ///   "mark": 1771481427964     // ID сообщения которое прочли
+  /// }
+  void _handleMessageReadStatus(Map<String, dynamic> payload) {
+    print('📖 [opcode 130] Получен статус прочитанности: $payload');
+    
+    // Передаем обработку в сервис
+    MessageReadStatusService().handleReadStatusUpdate(payload);
+    
+    // Триггерим обновление UI для чата
+    final chatId = payload['chatId'] as int?;
+    if (chatId != null) {
+      final context = getContext();
+      if (context.mounted) {
+        setState(() {});
+      }
+    }
   }
 }

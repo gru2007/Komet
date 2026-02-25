@@ -383,6 +383,8 @@ class _ContactProfileDialogState extends State<ContactProfileDialog> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Не удалось найти чат с пользователем'),
+              behavior: SnackBarBehavior.floating,
+              margin: EdgeInsets.only(bottom: 80, left: 8, right: 8),
             ),
           );
         }
@@ -411,7 +413,11 @@ class _ContactProfileDialogState extends State<ContactProfileDialog> {
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+        ).showSnackBar(SnackBar(
+          content: Text('Ошибка: $e'),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 80, left: 8, right: 8),
+        ));
       }
     }
   }
@@ -438,32 +444,33 @@ class _ContactProfileDialogState extends State<ContactProfileDialog> {
 
   void _openChannelInfo(BuildContext context) async {
     Navigator.of(context).pop(); // Закрываем профиль
-    
+
     // Показываем индикатор загрузки
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
+      builder: (context) => const Center(child: CircularProgressIndicator()),
     );
-    
+
     try {
-      final channelDetails = await ApiService.instance.getChannelDetails(widget.contact.id);
-      
+      final channelDetails = await ApiService.instance.getChannelDetails(
+        widget.contact.id,
+      );
+
       if (!context.mounted) return;
       Navigator.of(context).pop(); // Закрываем индикатор загрузки
-      
+
       if (channelDetails == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Не удалось загрузить данные канала'),
             behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.only(bottom: 80, left: 8, right: 8),
           ),
         );
         return;
       }
-      
+
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => ChannelSettingsScreen(
@@ -480,6 +487,7 @@ class _ContactProfileDialogState extends State<ContactProfileDialog> {
         SnackBar(
           content: Text('Ошибка: $e'),
           behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 80, left: 8, right: 8),
         ),
       );
     }
@@ -523,24 +531,13 @@ class _ContactProfileDialogState extends State<ContactProfileDialog> {
         _ProfileActionButton(
           icon: Icons.call,
           label: 'Позвонить',
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Звонки скоро будут доступны')),
-            );
-          },
+          onPressed: () {},
           colors: colors,
         ),
         _ProfileActionButton(
           icon: Icons.info_outline,
           label: 'Подробнее',
-          onPressed: () {
-            // TODO: Показать полную информацию о контакте
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Подробная информация скоро будет доступна'),
-              ),
-            );
-          },
+          onPressed: () {},
           colors: colors,
         ),
       ],
@@ -994,7 +991,11 @@ class _MentionDropdownPanel extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      ContactAvatarWidget(contactId: user.id, radius: 16),
+                      ContactAvatarWidget(
+                        contactId: user.id,
+                        originalAvatarUrl: user.photoBaseUrl,
+                        radius: 16,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(

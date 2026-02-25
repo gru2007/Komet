@@ -208,6 +208,9 @@ extension ApiServiceConnection on ApiService {
 
     _isSessionOnline = false;
     _isSessionReady = false;
+    
+    clearChatMessageContactCache();
+    _missingContactIds.clear();
 
     _connectionStatusController.add("connecting");
     _updateConnectionState(
@@ -302,6 +305,14 @@ extension ApiServiceConnection on ApiService {
     return await _sendMessage(opcode, payload);
   }
 
+  Future<Map<String, dynamic>> joinGroupCall(String joinLink) async {
+    final response = await sendRequest(89, {
+      'link': joinLink,
+    });
+
+    return response as Map<String, dynamic>;
+  }
+
 
   void _listen() async {
     if (!_socketConnected || _socket == null) {
@@ -369,13 +380,16 @@ extension ApiServiceConnection on ApiService {
       );
       if (opcode != 19) {
         final bool shouldLogPayload =
-            opcode != 129 &&
             opcode != 132 &&
             opcode != 48 &&
             opcode != 49;
 
         if (shouldLogPayload) {
-          _log('📥 PAYLOAD: ${truncatePayloadObjectForLog(payload)}');
+          if (opcode == 129) {
+            _log('📥 🔔 OPCODE 129 PAYLOAD: $payload');
+          } else {
+            _log('📥 PAYLOAD: ${truncatePayloadObjectForLog(payload)}');
+          }
         }
       }
 
@@ -437,6 +451,14 @@ extension ApiServiceConnection on ApiService {
         final errorMsg = error?['message'] ?? error?['error'] ?? 'server_error';
         print('← ERROR: $errorMsg');
         _healthMonitor.onError(errorMsg);
+
+        // Пробрасываем ERROR в messages stream с seq, чтобы ожидающие запросы могли поймать ошибку
+        _messageController.add({
+          'cmd': 3,
+          'seq': decodedMessage['seq'],
+          'opcode': decodedMessage['opcode'],
+          'payload': error,
+        });
 
         if (error != null && error['localizedMessage'] != null) {
           _errorController.add(error['localizedMessage']);
@@ -649,6 +671,28 @@ extension ApiServiceConnection on ApiService {
         });
       }
 
+      if ((decodedMessage['opcode'] == 68 || decodedMessage['opcode'] == 60) &&
+          (decodedMessage['cmd'] == 0x100 || decodedMessage['cmd'] == 256)) {
+        final payload = decodedMessage['payload'];
+        _messageController.add({
+          'type': 'global_search_result',
+          'payload': payload,
+          'opcode': decodedMessage['opcode'],
+          'seq': decodedMessage['seq'],
+        });
+      }
+
+      if ((decodedMessage['opcode'] == 68 || decodedMessage['opcode'] == 60) &&
+          (decodedMessage['cmd'] == 0x300 || decodedMessage['cmd'] == 768)) {
+        final payload = decodedMessage['payload'];
+        _messageController.add({
+          'type': 'global_search_error',
+          'payload': payload,
+          'opcode': decodedMessage['opcode'],
+          'seq': decodedMessage['seq'],
+        });
+      }
+
       // Обработка ответа на loadChat (opcode 49) - обновляем данные чата
       if (decodedMessage['opcode'] == 49 &&
           (decodedMessage['cmd'] == 0x100 || decodedMessage['cmd'] == 256)) {
@@ -698,6 +742,16 @@ extension ApiServiceConnection on ApiService {
           (decodedMessage['cmd'] == 0x300 || decodedMessage['cmd'] == 768)) {
         final payload = decodedMessage['payload'];
         _messageController.add({'type': 'channel_error', 'payload': payload});
+      }
+
+      if (decodedMessage['opcode'] == 89 && decodedMessage['cmd'] == 1) {
+        final payload = decodedMessage['payload'];
+        if (payload != null && payload['videoConference'] != null) {
+          _messageController.add({
+            'type': 'video_conference_joined',
+            'payload': payload,
+          });
+        }
       }
 
       if (decodedMessage['opcode'] == 57 &&
