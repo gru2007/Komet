@@ -4,16 +4,43 @@ extension ApiServiceContacts on ApiService {
   Future<void> blockContact(int contactId) async {
     await waitUntilOnline();
     _sendMessage(34, {'contactId': contactId, 'action': 'BLOCK'});
+    final existing = _contactCache[contactId];
+    if (existing != null) {
+      final updated = existing.copyWith(isBlockedByMe: true);
+      _contactCache[contactId] = updated;
+      notifyContactUpdate(updated);
+    }
   }
 
   Future<void> unblockContact(int contactId) async {
     await waitUntilOnline();
     _sendMessage(34, {'contactId': contactId, 'action': 'UNBLOCK'});
+    final existing = _contactCache[contactId];
+    if (existing != null) {
+      final updated = existing.copyWith(isBlockedByMe: false);
+      _contactCache[contactId] = updated;
+      notifyContactUpdate(updated);
+    }
   }
 
   Future<void> addContact(int contactId) async {
     await waitUntilOnline();
     _sendMessage(34, {'contactId': contactId, 'action': 'ADD'});
+  }
+
+  Future<void> updateContactName(int contactId, String firstName, String lastName) async {
+    await waitUntilOnline();
+    _sendMessage(34, {
+      'contactId': contactId,
+      'action': 'UPDATE',
+      'firstName': firstName,
+      'lastName': lastName,
+    });
+  }
+
+  Future<void> removeContact(int contactId) async {
+    await waitUntilOnline();
+    _sendMessage(34, {'contactId': contactId, 'action': 'REMOVE'});
   }
 
   Future<void> requestContactsByIds(List<int> contactIds) async {
@@ -83,13 +110,17 @@ extension ApiServiceContacts on ApiService {
         throw Exception(errorMessage);
       }
 
-      if (response['cmd'] == 1 &&
-          response['payload'] != null &&
+      if (response['payload'] != null &&
           response['payload']['chat'] != null) {
         print(
           'Информация о чате получена: ${response['payload']['chat']['title']}',
         );
         return response['payload']['chat'] as Map<String, dynamic>;
+      } else if (response['payload'] != null &&
+          response['payload']['user'] != null) {
+        // Для ботов сервер возвращает user вместо chat
+        final user = response['payload']['user'] as Map<String, dynamic>;
+        return user;
       } else {
         print('Не удалось найти "chat" в ответе opcode 89: $response');
         throw Exception('Неверный ответ от сервера');
@@ -163,10 +194,19 @@ extension ApiServiceContacts on ApiService {
     final userPresence = _presenceData[userId.toString()];
     if (userPresence != null && userPresence['seen'] != null) {
       final seenTimestamp = userPresence['seen'] as int;
-
+      if (seenTimestamp <= 0) return null;
       return DateTime.fromMillisecondsSinceEpoch(seenTimestamp * 1000);
     }
     return null;
+  }
+
+  bool isBlockedByUser(int userId) {
+    final userPresence = _presenceData[userId.toString()];
+    if (userPresence != null && userPresence['seen'] != null) {
+      final seenTimestamp = userPresence['seen'] as int;
+      return seenTimestamp < 0;
+    }
+    return false;
   }
 
   void updatePresenceData(Map<String, dynamic> presenceData) {
@@ -255,6 +295,41 @@ extension ApiServiceContacts on ApiService {
     print(
       'Запрос на поиск каналов отправлен с payload: ${truncatePayloadObjectForLog(payload)}',
     );
+  }
+
+  Future<int?> getBotChatId(int botId) async {
+    await waitUntilOnline();
+    final seq = await _sendMessage(145, {'botId': botId});
+    try {
+      final response = await messages
+          .firstWhere((msg) => msg['seq'] == seq)
+          .timeout(const Duration(seconds: 10));
+      
+      if (response['cmd'] == 3) {
+        print('Ошибка getBotChatId: ${response['payload']?['message']}');
+        return null;
+      }
+      
+      return response['payload']?['chatId'] as int?;
+    } catch (e) {
+      print('Ошибка в getBotChatId: $e');
+      return null;
+    }
+  }
+
+  Future<void> sendBotStarted(int chatId) async {
+    await waitUntilOnline();
+    final payload = {
+      'chatId': chatId,
+      'message': {
+        'cid': DateTime.now().millisecondsSinceEpoch,
+        'attaches': [
+          {'_type': 'CONTROL', 'event': 'botStarted'}
+        ],
+      },
+      'notify': true,
+    };
+    await _sendMessage(64, payload);
   }
 
   Future<void> enterChannel(String link) async {

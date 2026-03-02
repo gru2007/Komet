@@ -43,9 +43,6 @@ extension on _ChatScreenState {
       final replyIdForServer = _replyingToMessage?.id;
       final replyMsgForLocal = _replyingToMessage;
 
-      // Trigger flying text animation
-      _animateFlyingText(originalText);
-
       _addMessage(tempMessage);
       _clearInputState();
       _sendToServer(
@@ -89,16 +86,43 @@ extension on _ChatScreenState {
   }
 
   List<Map<String, dynamic>> _captureMentions() {
-    return _mentions.map((m) {
+    final fromController = _mentions.map((m) {
       return {'entityId': m.entityId, 'type': m.type, 'length': m.length};
     }).toList();
+
+    // Парсим @username из текста и добавляем USER_MENTION elements
+    final text = _textController.text;
+    final mentionRegex = RegExp(r'@([a-zA-Z0-9_]{3,})');
+    final textMentions = <Map<String, dynamic>>[];
+    for (final match in mentionRegex.allMatches(text)) {
+      final username = match.group(1)!;
+      final from = match.start;
+      final length = match.end - match.start;
+      // Не дублируем если уже есть из контроллера
+      final alreadyAdded = fromController.any((e) =>
+          e['type'] == 'USER_MENTION' &&
+          (e['entityName'] == username || e['from'] == from));
+      if (!alreadyAdded) {
+        textMentions.add({
+          'type': 'USER_MENTION',
+          'from': from,
+          'length': length,
+          'entityName': username,
+        });
+      }
+    }
+
+    return [...fromController, ...textMentions];
   }
 
   bool _validateMentions(List<Map<String, dynamic>> elements) {
+    // Разрешаем mentions у которых есть entityId или entityName
     for (final element in elements) {
       if (element['type'] == 'USER_MENTION') {
         final entityId = element['entityId'];
-        if (entityId == null || entityId is! int || entityId <= 0) {
+        final entityName = element['entityName'];
+        if ((entityId == null || entityId is! int || entityId <= 0) &&
+            (entityName == null || entityName.toString().isEmpty)) {
           return false;
         }
       }
@@ -137,41 +161,6 @@ extension on _ChatScreenState {
     _setStateIfMounted(() {});
   }
 
-  void _animateFlyingText(String text) {
-    if (!mounted) return;
-    final RenderBox? renderBox =
-        _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-
-    final Offset startOffset = renderBox.localToGlobal(Offset.zero);
-    final Size size = renderBox.size;
-
-    // Aim for the bottom-right area where the new message will appear
-    final mediaQuery = MediaQuery.of(context);
-    final Offset endOffset = Offset(
-      mediaQuery.size.width - 150, // Right side
-      mediaQuery.size.height - 180, // Slightly above input
-    );
-
-    final OverlayState overlayState = Overlay.of(context);
-    late OverlayEntry entry;
-
-    entry = OverlayEntry(
-      builder: (context) => _FlyingTextWidget(
-        text: text,
-        startOffset: startOffset,
-        endOffset: endOffset,
-        size: size,
-        onComplete: () {
-          if (entry.mounted) {
-            entry.remove();
-          }
-        },
-      ),
-    );
-
-    overlayState.insert(entry);
-  }
 
   void _clearSelectionStyles() {
     if (_isDisposed) return;
@@ -893,11 +882,6 @@ extension on _ChatScreenState {
           }
         }
 
-        // Добавляем в кэш (с сохранением link из локального сообщения)
-        unawaited(
-          ChatCacheService().addMessageToCache(widget.chatId, newMessage),
-        );
-
         // Если идёт загрузка истории, откладываем обработку
         if (_isLoadingHistory) {
           _pendingMessagesDuringLoad.add(newMessage);
@@ -1047,15 +1031,8 @@ extension on _ChatScreenState {
                 _lastPeerReadMessageIdStr = messageIdStr;
               });
 
-              // Синхронизируем с новым сервисом статусов прочитанности
-              print(
-                '📖 [opcode 50] Обновляем статус через MessageReadStatusService',
-              );
-              MessageReadStatusService().handleReadStatusUpdate({
-                'chatId': widget.chatId,
-                'mark': messageId,
-                'setAsUnread': false,
-              });
+              // Обновляем глобальный кэш прочитанности по messageId
+              ApiService.instance.updatePeerReadMessageId(widget.chatId, messageId);
             }
           } else if (messageIdStr != null && messageIdStr.isNotEmpty) {
             if (_lastPeerReadMessageIdStr == null ||
@@ -1114,7 +1091,6 @@ extension on _ChatScreenState {
 
       if (widget.isGroupChat) await _loadGroupParticipants();
       _buildChatItems();
-      _messagesToAnimate.clear();
 
       Future.microtask(() {
         _setStateIfMounted(() {
@@ -1152,7 +1128,6 @@ extension on _ChatScreenState {
                 _hasMore = initial.length >= initialLimit;
 
                 _buildChatItems();
-                _messagesToAnimate.clear();
 
                 _setStateIfMounted(() {
                   _isLoadingHistory =
@@ -1317,7 +1292,6 @@ extension on _ChatScreenState {
       _hasMore = nextHasMore;
 
       _buildChatItems();
-      _messagesToAnimate.clear();
 
       Future.microtask(() {
         _setStateIfMounted(() {
@@ -1473,15 +1447,10 @@ extension on _ChatScreenState {
     );
     if (_messages.any((m) => m.id == normalizedMessage.id)) return;
 
-    final allMessages = [..._messages, normalizedMessage]
-      ..sort((a, b) => a.time.compareTo(b.time));
-    unawaited(ChatCacheService().cacheChatMessages(widget.chatId, allMessages));
-
     final wasAtBottom = _isUserAtBottom;
     final isMyMessage = normalizedMessage.senderId == _actualMyId;
     final lastMessage = _messages.isNotEmpty ? _messages.last : null;
     _messages.add(normalizedMessage);
-    _messagesToAnimate.add(normalizedMessage.id);
 
     final currentDate = DateTime.fromMillisecondsSinceEpoch(
       normalizedMessage.time,
@@ -1571,7 +1540,7 @@ extension on _ChatScreenState {
       })();
 
       _messages[index] = finalMessageWithOriginalText;
-      unawaited(ChatCacheService().cacheChatMessages(widget.chatId, _messages));
+      unawaited(ChatCacheService().addMessageToCache(widget.chatId, finalMessageWithOriginalText));
 
       if (mounted) {
         _setStateIfMounted(() {});
@@ -2039,6 +2008,13 @@ extension on _ChatScreenState {
     _mentionOverlay = OverlayEntry(
       builder: (context) {
         final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+        // Базовая высота панели ввода + отступ
+        const double inputBarHeight = 70.0;
+        // Дополнительная высота панели ответа/редактирования
+        final double replyPanelHeight = _replyingToMessage != null ? 50.0 : 0.0;
+        final double editPanelHeight = _editingMessage != null ? 42.0 : 0.0;
+        final double totalBottom = keyboardHeight + inputBarHeight + replyPanelHeight + editPanelHeight;
+
         return ValueListenableBuilder<bool>(
           valueListenable: _showScrollToBottomNotifier,
           builder: (context, showScrollButton, child) {
@@ -2049,7 +2025,7 @@ extension on _ChatScreenState {
               right: showScrollButton
                   ? MentionPanelPosition.right + 60
                   : MentionPanelPosition.right,
-              bottom: keyboardHeight + MentionPanelPosition.bottom,
+              bottom: totalBottom,
               child: Material(
                 color: Colors.transparent,
                 child: _MentionDropdownPanel(
@@ -2131,14 +2107,21 @@ extension on _ChatScreenState {
           return aDisplay.compareTo(bDisplay);
         });
 
-        if (!_showMentionDropdown) {
+        if (_filteredMentionableUsers.isEmpty) {
+          // Нет результатов — скрываем панель
+          if (_showMentionDropdown) {
+            _setStateIfMounted(() => _showMentionDropdown = false);
+            _removeMentionOverlay();
+          }
+        } else if (!_showMentionDropdown) {
           _setStateIfMounted(() {
             _showMentionDropdown = true;
           });
           _showMentionOverlay();
         } else {
           _setStateIfMounted(() {});
-          _showMentionOverlay();
+          // Обновляем позицию overlay при изменении клавиатуры
+          _mentionOverlay?.markNeedsBuild();
         }
       } else {
         if (_showMentionDropdown) {
@@ -2836,6 +2819,7 @@ extension on _ChatScreenState {
       );
     }
     _chatItems = items;
+    _cachedAllPhotos = _buildAllPhotos();
 
     if (_isVoiceUploading || _isVoiceUploadFailed) {
       _chatItems.add(
@@ -2878,6 +2862,7 @@ extension on _ChatScreenState {
 
   void _replyToMessage(Message message) {
     _setStateIfMounted(() => _replyingToMessage = message);
+    _mentionOverlay?.markNeedsBuild();
     _saveInputState();
   }
 
@@ -2900,6 +2885,72 @@ extension on _ChatScreenState {
     if (mounted) {
       // ignore: invalid_use_of_protected_member
       setState(fn);
+    }
+  }
+
+  Future<void> _openWebApp() async {
+    try {
+      final response = await ApiService.instance.sendRequest(160, {
+        'botId': _currentContact.id,
+        'chatId': widget.chatId,
+      });
+      final url = response['payload']?['url'] as String?;
+      if (url == null || !mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (ctx) => _WebAppScreen(
+            url: url,
+            title: _currentContact.name,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка открытия приложения: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadChatInfo() async {
+    try {
+      // Сначала проверяем кэш
+      Map<String, dynamic>? chatData = ApiService.instance.getChatInfo(widget.chatId);
+      
+      // Если нет в кэше — запрашиваем
+      if (chatData == null) {
+        final response = await ApiService.instance.sendRequest(
+          48,
+          {'chatIds': [widget.chatId]},
+        );
+        final chats = response['payload']?['chats'] as List?;
+        if (chats == null || chats.isEmpty) return;
+        chatData = chats.first as Map<String, dynamic>;
+      }
+      
+      if (!mounted) return;
+      setState(() {
+        _chatLink = chatData!['link'] as String?;
+        _chatParticipantsCount = chatData['participantsCount'] as int?;
+        _chatMessagesCount = chatData['messagesCount'] as int?;
+        _chatAccessType = chatData['access'] as String?;
+        final created = chatData['created'];
+        if (created != null && created != 1) {
+          _chatCreatedAt = DateTime.fromMillisecondsSinceEpoch(created as int);
+        }
+        final joined = chatData['joinTime'];
+        if (joined != null && joined != 1) {
+          _chatJoinedAt = DateTime.fromMillisecondsSinceEpoch(joined as int);
+        }
+        final options = chatData['options'] as Map?;
+        _chatIsOfficial = options?['OFFICIAL'] as bool?;
+      });
+    } catch (e) {
+      debugPrint('Ошибка загрузки инфо чата: $e');
     }
   }
 }

@@ -31,6 +31,7 @@ class MessageHandler {
   final Function(Profile) setMyProfile;
   final Function(String) showTokenExpiredDialog;
   final bool Function(Chat) isSavedMessages;
+  final Function(Chat)? onNewChat;
 
   // Дедупликация сообщений - храним ID последних обработанных сообщений
   static final Set<String> _processedMessageIds = {};
@@ -63,7 +64,18 @@ class MessageHandler {
     required this.setMyProfile,
     required this.showTokenExpiredDialog,
     required this.isSavedMessages,
+    this.onNewChat,
   });
+
+  void _addNewChatSafely(Chat newChat) {
+    if (onNewChat != null) {
+      onNewChat!(newChat);
+    } else {
+      final savedIndex = allChats.indexWhere(isSavedMessages);
+      final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
+      allChats.insert(insertIndex, newChat);
+    }
+  }
 
   /// Вызывает filterChats с debouncing для оптимизации при множественных обновлениях
   void _debouncedFilterChats() {
@@ -190,6 +202,14 @@ class MessageHandler {
     return ApiService.instance.messages.listen((message) {
       if (!getMounted()) return;
 
+      if (message['type'] == 'auto_switched_account') {
+        print('🔄 Автопереключение аккаунта: ${message['accountId']}');
+        if (getMounted()) {
+          refreshChats();
+        }
+        return;
+      }
+
       if (message['type'] == 'invalid_token') {
         print(
           'Получено событие недействительного токена, перенаправляем на вход',
@@ -270,8 +290,7 @@ class MessageHandler {
       } else if (opcode == 55) {
         _handleChatUpdate(payload, cmd);
       } else if (opcode == 135) {
-        // ОТКЛЮЧЕНО: opcode 135 вызывает критические баги с videoConversation
-        // _handleChatChanged(payload);
+        _handleChatChanged(payload);
       } else if (opcode == 272) {
         _handleFoldersUpdate(payload);
       } else if (opcode == 274) {
@@ -293,6 +312,33 @@ class MessageHandler {
         }
       });
     }
+
+    // Обновляем favIndex из config.chats
+    final config = payload['config'] as Map<String, dynamic>?;
+    final configChats = config?['chats'] as Map<String, dynamic>?;
+    if (configChats != null && configChats.isNotEmpty) {
+      Future.microtask(() {
+        final context = getContext();
+        if (!context.mounted) return;
+        setState(() {
+          for (var i = 0; i < allChats.length; i++) {
+            final chatIdStr = allChats[i].id.toString();
+            final chatConfig = configChats[chatIdStr] as Map<String, dynamic>?;
+            if (chatConfig != null) {
+              final newFavIndex = chatConfig['favIndex'] as int? ?? 0;
+              if (allChats[i].favIndex != newFavIndex) {
+                allChats[i] = allChats[i].copyWith(favIndex: newFavIndex);
+              }
+            } else {
+              if (allChats[i].favIndex != 0) {
+                allChats[i] = allChats[i].copyWith(favIndex: 0);
+              }
+            }
+          }
+        });
+        _debouncedFilterChats();
+      });
+    }
   }
 
   void _handleNewChat(Map<String, dynamic> payload) {
@@ -308,21 +354,27 @@ class MessageHandler {
 
       final context = getContext();
       if (context.mounted) {
+        final isInActiveChat = ApiService.instance.currentActiveChatId == newChat.id;
         setState(() {
-          final existingIndex = allChats.indexWhere(
-            (chat) => chat.id == newChat.id,
-          );
-          if (existingIndex != -1) {
-            allChats[existingIndex] = newChat;
+          final oldIndex = allChats.indexWhere((chat) => chat.id == newChat.id);
+          if (oldIndex != -1) {
+            if (newChat.favIndex > 0) {
+              allChats[oldIndex] = newChat;
+            } else {
+              allChats.removeAt(oldIndex);
+              _insertChatAtCorrectPosition(newChat);
+            }
           } else {
-            final savedIndex = allChats.indexWhere(isSavedMessages);
-            final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
-            allChats.insert(insertIndex, newChat);
+            _addNewChatSafely(newChat);
           }
         });
-        // ОПТИМИЗАЦИЯ: Используем debounced вызов filterChats
-        // При множественных обновлениях это объединит вызовы в один
-        _debouncedFilterChats();
+        if (!isInActiveChat) {
+          if (newChat.favIndex > 0) {
+            setState(() {});
+          } else {
+            _debouncedFilterChats();
+          }
+        }
       }
     }
     // Если есть только сообщение и chatId - обновляем существующий чат
@@ -330,18 +382,23 @@ class MessageHandler {
       final newMessage = Message.fromJson(messageJson);
       final context = getContext();
       if (context.mounted) {
+        final isInActiveChat = ApiService.instance.currentActiveChatId == chatId;
+        bool isPinned = false;
         setState(() {
-          final chatIndex = allChats.indexWhere((chat) => chat.id == chatId);
-          if (chatIndex != -1) {
-            final oldChat = allChats[chatIndex];
+          final oldIndex = allChats.indexWhere((chat) => chat.id == chatId);
+          if (oldIndex != -1) {
+            final oldChat = allChats[oldIndex];
             final updatedChat = oldChat.copyWith(lastMessage: newMessage);
-            allChats.removeAt(chatIndex);
-            _insertChatAtCorrectPosition(updatedChat);
+            isPinned = updatedChat.favIndex > 0;
+            if (isPinned) {
+              allChats[oldIndex] = updatedChat;
+            } else {
+              allChats.removeAt(oldIndex);
+              _insertChatAtCorrectPosition(updatedChat);
+            }
           }
         });
-        // ОПТИМИЗАЦИЯ: Используем debounced вызов filterChats
-        // При множественных обновлениях это объединит вызовы в один
-        _debouncedFilterChats();
+        if (!isInActiveChat && !isPinned) _debouncedFilterChats();
       }
     }
   }
@@ -404,8 +461,6 @@ class MessageHandler {
     if (_processedMessageIds.length > _maxProcessedMessages) {
       _processedMessageIds.remove(_processedMessageIds.first);
     }
-
-    ApiService.instance.clearCacheForChat(chatId);
 
     // Получаем myId из профиля
     int? myId;
@@ -538,22 +593,32 @@ class MessageHandler {
             : oldChat.newMessages,
       );
 
+      final isPinned = updatedChat.favIndex > 0;
       setState(() {
-        allChats.removeAt(chatIndex);
-        _insertChatAtCorrectPosition(updatedChat);
+        if (isPinned) {
+          // Закреплённый чат не двигается — просто обновляем на месте
+          allChats[chatIndex] = updatedChat;
+        } else {
+          allChats.removeAt(chatIndex);
+          _insertChatAtCorrectPosition(updatedChat);
+        }
       });
-      _debouncedFilterChats();
+      // Не перефильтровываем если это наше сообщение в активный чат
+      if (!(isMyMessage && isInActiveChat)) {
+        if (isPinned) {
+          // Закреплённый чат не двигается — просто перестраиваем UI
+          setState(() {});
+        } else {
+          _debouncedFilterChats();
+        }
+      }
     } else if (payload['chat'] is Map<String, dynamic>) {
       final chatJson = payload['chat'] as Map<String, dynamic>;
       final newChat = Chat.tryFromJson(chatJson);
       if (newChat == null) return;
       ApiService.instance.updateChatInCacheFromJson(chatJson);
 
-      setState(() {
-        final savedIndex = allChats.indexWhere(isSavedMessages);
-        final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
-        allChats.insert(insertIndex, newChat);
-      });
+      setState(() => _addNewChatSafely(newChat));
       _debouncedFilterChats();
     } else {
       final lastPayload = ApiService.instance.lastChatsPayload;
@@ -589,7 +654,6 @@ class MessageHandler {
 
   void _handleEditedMessage(int chatId, Map<String, dynamic> payload) {
     final editedMessage = Message.fromJson(payload['message']);
-    ApiService.instance.clearCacheForChat(chatId);
 
     final int chatIndex = allChats.indexWhere((chat) => chat.id == chatId);
     if (chatIndex != -1) {
@@ -608,7 +672,6 @@ class MessageHandler {
   void _handleDeletedMessages(int chatId, Map<String, dynamic> payload) {
     final rawMessageIds = payload['messageIds'] as List<dynamic>? ?? [];
     final deletedMessageIds = rawMessageIds.map((id) => id.toString()).toList();
-    ApiService.instance.clearCacheForChat(chatId);
 
     final int chatIndex = allChats.indexWhere((chat) => chat.id == chatId);
     if (chatIndex != -1) {
@@ -733,9 +796,7 @@ class MessageHandler {
           if (existingIndex != -1) {
             allChats[existingIndex] = newChat;
           } else {
-            final savedIndex = allChats.indexWhere(isSavedMessages);
-            final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
-            allChats.insert(insertIndex, newChat);
+            _addNewChatSafely(newChat);
           }
         });
         _debouncedFilterChats();
@@ -763,9 +824,7 @@ class MessageHandler {
             if (existingIndex != -1) {
               allChats[existingIndex] = newChat;
             } else {
-              final savedIndex = allChats.indexWhere(isSavedMessages);
-              final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
-              allChats.insert(insertIndex, newChat);
+              _addNewChatSafely(newChat);
             }
           });
           _debouncedFilterChats();
@@ -876,9 +935,7 @@ class MessageHandler {
           allChats[existingIndex] = newChat!;
         } else {
           print('   ➕ [opcode 135] Добавляем новый чат');
-          final savedIndex = allChats.indexWhere(isSavedMessages);
-          final insertIndex = savedIndex >= 0 ? savedIndex + 1 : 0;
-          allChats.insert(insertIndex, newChat!);
+          _addNewChatSafely(newChat!);
         }
         
         // Вызываем setState только если контекст всё ещё mounted
@@ -1025,13 +1082,21 @@ class MessageHandler {
   }
 
   /// Показать уведомление с известным контактом
+  Future<bool> _isChatArchived(int chatId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = ApiService.instance.userId ?? '0';
+    final key = 'archived_chats_$userId';
+    final ids = prefs.getStringList(key) ?? [];
+    return ids.contains(chatId.toString());
+  }
+
   void _showNotificationWithContact(
     int chatId,
     Message message,
     Contact contact, [
     Map<String, dynamic>? chatFromPayload,
   ]) async {
-    // Получаем данные чата
+    if (await _isChatArchived(chatId)) return;
     final effectiveChat = await _getEffectiveChat(chatId, chatFromPayload);
 
     // Сначала проверяем канал, потом группу
@@ -1129,6 +1194,7 @@ class MessageHandler {
     int userId, [
     Map<String, dynamic>? chatFromPayload,
   ]) async {
+    if (await _isChatArchived(chatId)) return;
     final effectiveChat = await _getEffectiveChat(chatId, chatFromPayload);
 
     // Сначала проверяем канал, потом группу

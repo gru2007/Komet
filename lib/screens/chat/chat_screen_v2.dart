@@ -82,6 +82,7 @@ class _ChatScreenV2State extends State<ChatScreenV2> {
                 onMessageLongPress: _showMessageOptions,
                 onLoadMore: _chatController.loadMoreMessages,
                 isGroupChat: widget.isGroupChat || widget.isChannel,
+                isChannel: widget.isChannel,
                 onGoToMessage: (messageId) =>
                     _chatController.scrollToMessage(messageId),
               ),
@@ -165,7 +166,12 @@ class _ChatScreenV2State extends State<ChatScreenV2> {
               title: const Text('Ответить'),
               onTap: () {
                 Navigator.pop(context);
-                _inputController.setReplyTo(message);
+                final senderName = message.senderId == widget.myId
+                    ? 'Вы'
+                    : widget.isGroupChat
+                        ? null
+                        : widget.contact.name;
+                _inputController.setReplyTo(message, senderName: senderName);
               },
             ),
             if (message.senderId == widget.myId)

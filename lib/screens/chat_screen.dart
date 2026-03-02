@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
@@ -111,6 +113,8 @@ class ChatScreen extends StatefulWidget {
   final bool isChannel;
   final int? participantCount;
   final bool isDesktopMode;
+  final String? channelLink;
+  final bool needBotStart;
 
   const ChatScreen({
     super.key,
@@ -126,6 +130,8 @@ class ChatScreen extends StatefulWidget {
     this.isChannel = false,
     this.participantCount,
     this.isDesktopMode = false,
+    this.channelLink,
+    this.needBotStart = false,
   });
 
   @override
@@ -162,8 +168,9 @@ class Mention {
 class _PhotoPickerResult {
   final List<String> paths;
   final String? caption;
+  final bool isVideo;
 
-  _PhotoPickerResult({required this.paths, this.caption});
+  _PhotoPickerResult({required this.paths, this.caption, this.isVideo = false});
 
   // Add getter for compatibility
   List<String> get images => paths;
@@ -201,10 +208,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
   // Core state fields
   bool _isDisposed = false;
   bool _isOpeningChannelSettings = false;
+  bool _isSubscribedLocally = false;
   final List<Message> _messages = [];
   List<ChatItem> _chatItems = [];
+  List<Map<String, dynamic>> _cachedAllPhotos = [];
   final Set<String> _deletingMessageIds = {};
-  final Set<String> _messagesToAnimate = {};
 
   // Loading states
   bool _isLoadingHistory = true;
@@ -220,8 +228,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
       ItemPositionsListener.create();
   final ValueNotifier<bool> _showScrollToBottomNotifier = ValueNotifier(false);
   final ValueNotifier<Message?> _pinnedMessageNotifier = ValueNotifier(null);
+
+  // Данные чата (загружаются через opcode 48)
+  String? _chatLink;
+  int? _chatParticipantsCount;
+  int? _chatMessagesCount;
+  String? _chatAccessType;
+  DateTime? _chatCreatedAt;
+  DateTime? _chatJoinedAt;
+  bool? _chatIsOfficial;
   final TextEditingController _searchController = TextEditingController();
-  final GlobalKey _textFieldKey = GlobalKey();
   final FocusNode _searchFocusNode = FocusNode();
 
   // Chat data
@@ -363,6 +379,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
     _currentContact = widget.contact;
     _pinnedMessage = widget.pinnedMessage;
     _pinnedMessageNotifier.value = widget.pinnedMessage;
+    // Инициализируем статус подписки на канал
+    if (widget.isChannel) {
+      _isSubscribedLocally = ApiService.instance.myChatIds.contains(widget.chatId);
+    }
 
     _recordCancelReturnController = AnimationController(
       vsync: this,
@@ -411,25 +431,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
         print(
           '✨ [opcode 130] Обновление статуса в UI для чата ${widget.chatId}',
         );
-        setState(() {
-          // Триггерим анимацию для обновленных сообщений
-          _messagesToAnimate.clear();
-          for (var msg in _messages) {
-            // update.lastReadMessageId - это timestamp, сравниваем с msg.time
-            if (msg.time <= update.lastReadMessageId) {
-              _messagesToAnimate.add(msg.id);
-            }
-          }
-        });
-
-        // Убираем анимацию через 1 секунду
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) {
-            setState(() {
-              _messagesToAnimate.clear();
-            });
-          }
-        });
       }
     });
 
@@ -463,6 +464,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    unawaited(ChatCacheService().flushPendingCache(widget.chatId));
     print('🗑️ dispose() вызван для чата ${widget.chatId}');
     print('📝 Текст перед dispose: "${_textController.text}"');
 
@@ -674,6 +676,19 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
     // Implemented in logic file
   }
 
+  List<Map<String, dynamic>> _buildAllPhotos() {
+    final result = <Map<String, dynamic>>[];
+    for (final msg in _messages) {
+      for (final attach in msg.attaches) {
+        final type = (attach['_type'] ?? attach['type']) as String?;
+        if (type == 'PHOTO' || type == 'IMAGE') {
+          result.add({...attach, '_messageId': msg.id});
+        }
+      }
+    }
+    return result;
+  }
+
   // Методы _initializeChat, _loadEncryptionConfig, _loadMore
   // реализованы в chat_screen_logic.dart как part of этого файла
 }
@@ -723,97 +738,83 @@ class _OutgoingCallDialogState extends State<_OutgoingCallDialog> {
   }
 }
 
-class _FlyingTextWidget extends StatefulWidget {
-  final String text;
-  final Offset startOffset;
-  final Offset endOffset;
-  final Size size;
-  final VoidCallback onComplete;
+class _WebAppScreen extends StatefulWidget {
+  final String url;
+  final String title;
 
-  const _FlyingTextWidget({
-    required this.text,
-    required this.startOffset,
-    required this.endOffset,
-    required this.size,
-    required this.onComplete,
-  });
+  const _WebAppScreen({required this.url, required this.title});
 
   @override
-  State<_FlyingTextWidget> createState() => _FlyingTextWidgetState();
+  State<_WebAppScreen> createState() => _WebAppScreenState();
 }
 
-class _FlyingTextWidgetState extends State<_FlyingTextWidget>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<Offset> _positionAnimation;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _opacityAnimation;
-  late Animation<double> _rotateAnimation;
+class _WebAppScreenState extends State<_WebAppScreen> {
+  InAppWebViewController? _webViewController;
+  bool _isLoading = true;
+
+  bool get _supportsWebView =>
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-
-    _positionAnimation = Tween<Offset>(
-      begin: widget.startOffset,
-      end: widget.endOffset,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-
-    _scaleAnimation = Tween<double>(
-      begin: 1.0,
-      end: 0.9,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
-
-    _opacityAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween<double>(begin: 1.0, end: 1.0), weight: 90),
-      TweenSequenceItem(tween: Tween<double>(begin: 1.0, end: 0.0), weight: 10),
-    ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
-
-    _rotateAnimation = const AlwaysStoppedAnimation(0.0);
-
-    _controller.forward().then((_) => widget.onComplete());
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+    if (!_supportsWebView) {
+      // На Linux/Windows открываем в браузере и закрываем экран
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final uri = Uri.tryParse(widget.url);
+        if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (mounted) Navigator.of(context).pop();
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Positioned(
-          left: _positionAnimation.value.dx,
-          top: _positionAnimation.value.dy,
-          child: Material(
-            color: Colors.transparent,
-            child: Opacity(
-              opacity: _opacityAnimation.value,
-              child: Transform.rotate(
-                angle: _rotateAnimation.value,
-                child: Transform.scale(
-                  scale: _scaleAnimation.value,
-                  child: Text(
-                    widget.text,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ),
-              ),
-            ),
+    if (!_supportsWebView) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+        backgroundColor: colors.surface,
+        foregroundColor: colors.onSurface,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _webViewController?.reload(),
           ),
-        );
-      },
+        ],
+      ),
+      body: Stack(
+        children: [
+          InAppWebView(
+            initialUrlRequest: URLRequest(
+              url: WebUri(widget.url),
+            ),
+            initialSettings: InAppWebViewSettings(
+              javaScriptEnabled: true,
+              domStorageEnabled: true,
+              mediaPlaybackRequiresUserGesture: false,
+              allowsInlineMediaPlayback: true,
+            ),
+            onWebViewCreated: (controller) {
+              _webViewController = controller;
+            },
+            onLoadStart: (controller, url) {
+              setState(() => _isLoading = true);
+            },
+            onLoadStop: (controller, url) {
+              setState(() => _isLoading = false);
+            },
+          ),
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator()),
+        ],
+      ),
     );
   }
 }
+
