@@ -18,6 +18,18 @@ class ChatCacheService {
     print('✅ ChatCacheService инициализирован');
   }
 
+  /// Cleans up any active timers and pending cache updates.
+  Future<void> dispose() async {
+    // Cancel all scheduled flush timers to prevent writes after teardown.
+    for (final timer in _flushTimers.values) {
+      timer.cancel();
+    }
+    _flushTimers.clear();
+
+    // Clear any pending cache updates that will no longer be flushed.
+    _pendingCacheUpdates.clear();
+  }
+
   static const String _chatsKey = 'cached_chats';
   static const String _contactsKey = 'cached_contacts';
   static const String _messagesKey = 'cached_messages';
@@ -29,12 +41,42 @@ class ChatCacheService {
   Duration get _messagesTTL => _settingsService.currentSettings.messagesTTL;
 
   final Map<int, List<Message>> _pendingCacheUpdates = {};
+  final Map<int, Timer> _flushTimers = {};
+
+  Duration _flushDebounce = const Duration(seconds: 2);
+
+  Duration get flushDebounce => _flushDebounce;
+  set flushDebounce(Duration value) {
+    _flushDebounce = value;
+  }
 
   Future<void> flushPendingCache(int chatId) async {
-    final pending = _pendingCacheUpdates.remove(chatId);
-    if (pending != null) {
+    _flushTimers.remove(chatId)?.cancel();
+    final pending = _pendingCacheUpdates[chatId];
+    if (pending == null || pending.isEmpty) return;
+
+    try {
       await cacheChatMessages(chatId, pending);
+      // Only remove if no new pending list has been assigned in the meantime
+      if (identical(_pendingCacheUpdates[chatId], pending)) {
+        _pendingCacheUpdates.remove(chatId);
+      }
+    } catch (e) {
+      // Keep pending messages so they can be retried on the next flush
+      print('Ошибка кэширования сообщений для чата $chatId: $e');
     }
+  }
+
+  void _scheduleFlush(int chatId) {
+    _flushTimers[chatId]?.cancel();
+    _flushTimers[chatId] = Timer(_flushDebounce, () async {
+      try {
+        await flushPendingCache(chatId);
+      } catch (e, st) {
+        print('Ошибка сброса кэша для чата $chatId: $e');
+        // Optionally log stack trace: print(st);
+      }
+    });
   }
 
   Future<void> cacheChats(List<Map<String, dynamic>> chats) async {
@@ -56,8 +98,11 @@ class ChatCacheService {
         return cached
             .cast<Map<String, dynamic>>()
             .where((c) {
-              final id = c['id'];
-              return id != null && id != 0;
+              final dynamic rawId = c['id'];
+              final intId = rawId is int
+                  ? rawId
+                  : int.tryParse(rawId?.toString() ?? '');
+              return intId != null && intId > 0;
             })
             .toList();
       }
@@ -262,6 +307,15 @@ class ChatCacheService {
       }
 
       _pendingCacheUpdates[chatId] = updatedMessages;
+
+      // Schedule a debounced flush so pending messages are persisted even if
+      // the chat screen is never explicitly disposed (e.g. app termination).
+      _flushTimers.remove(chatId)?.cancel();
+      _flushTimers[chatId] = Timer(_flushDebounce, () {
+        flushPendingCache(chatId).catchError((e, stackTrace) {
+          print('Ошибка сброса кэша для чата $chatId: $e');
+        });
+      });
     } catch (e) {
       print('Ошибка добавления сообщения в кэш: $e');
     }
@@ -382,6 +436,8 @@ class ChatCacheService {
 
   Future<void> clearChatCache(int chatId) async {
     try {
+      _flushTimers.remove(chatId)?.cancel();
+      _pendingCacheUpdates.remove(chatId);
       final keys = [
         '$_chatMessagesKey$chatId',
         'chat_info_$chatId',
